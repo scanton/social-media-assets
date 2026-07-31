@@ -8,11 +8,29 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 
 export const cx = (...parts: (string | false | null | undefined)[]) =>
   parts.filter(Boolean).join(" ");
+
+/* ========================= Platform shortcut ======================== */
+
+const noopSubscribe = () => () => {};
+const readModifier = () =>
+  /Mac|iPhone|iPad|iPod/.test(navigator.userAgent) ? "⌘" : "Ctrl";
+
+/**
+ * "⌘" on Apple platforms, "Ctrl" everywhere else.
+ *
+ * Goes through useSyncExternalStore rather than an effect so the server and the
+ * hydrating client agree on "Ctrl" first, then swap — no hydration mismatch and
+ * no setState-in-effect.
+ */
+export function usePasteShortcut(): string {
+  return useSyncExternalStore(noopSubscribe, readModifier, () => "Ctrl");
+}
 
 /* ============================== Button ============================== */
 

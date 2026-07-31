@@ -1,19 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { readVideoDuration, uploadToFal } from "@/lib/client-api";
 import { SURFACES } from "@/lib/options";
 import type { Asset } from "@/lib/studio-types";
 import { useStudio, uid } from "../studio-store";
 import { Uploader } from "../Uploader";
 import { AssetTile } from "../AssetTile";
-import { Button, Chip, useToast } from "../ui";
+import { Button, Chip, usePasteShortcut, useToast } from "../ui";
 import { SectionHead } from "./shared";
+
+/** Formats fal accepts and the image models handle cleanly. */
+const PASTEABLE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
 
 export function Step1Card() {
   const s = useStudio();
   const toast = useToast();
+  const pasteKey = usePasteShortcut();
   const [uploading, setUploading] = useState<null | "art" | "video">(null);
+  const [pasteProgress, setPasteProgress] = useState<number | null>(null);
 
   const cardArt = s.assets.filter((a) => a.kind === "card-art");
   const cardVideos = s.assets.filter((a) => a.kind === "card-video");
@@ -22,6 +27,7 @@ export function Step1Card() {
     file: File,
     kind: "card-art" | "card-video",
     onProgress: (pct: number) => void,
+    opts: { label?: string; extraTags?: string[] } = {},
   ) => {
     if (!s.keyConnected) {
       s.openKeyDialog();
@@ -45,8 +51,12 @@ export function Step1Card() {
         kind,
         url,
         contentType: file.type,
-        label: file.name.replace(/\.\w+$/, ""),
-        tags: [kind === "card-art" ? "artwork" : "clip", `${(file.size / 1024 / 1024).toFixed(1)}MB`],
+        label: opts.label ?? file.name.replace(/\.\w+$/, ""),
+        tags: [
+          kind === "card-art" ? "artwork" : "clip",
+          ...(opts.extraTags ?? []),
+          `${(file.size / 1024 / 1024).toFixed(1)}MB`,
+        ],
         createdAt: Date.now(),
       };
       s.addAssets([asset]);
@@ -59,6 +69,75 @@ export function Step1Card() {
       setUploading(null);
     }
   };
+
+  /* ------------------------------ paste ------------------------------ */
+
+  /**
+   * Anything pasted here is treated as card artwork — never a clip. Videos are
+   * far too big to live on a clipboard, so there's nothing to disambiguate.
+   */
+  const handlePaste = async (files: File[]) => {
+    setPasteProgress(0);
+    try {
+      for (const file of files) {
+        const stamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        // Clipboard files are usually called "image.png" — give it something
+        // recognisable in the roll and in the download filename.
+        const named = new File([file], `pasted-card-${Date.now()}.${file.type.split("/")[1] ?? "png"}`, {
+          type: file.type,
+        });
+        await upload(named, "card-art", setPasteProgress, {
+          label: `Pasted card · ${stamp}`,
+          extraTags: ["pasted"],
+        });
+      }
+    } finally {
+      setPasteProgress(null);
+    }
+  };
+
+  // Don't accept a paste mid-upload, or while the key dialog owns the keyboard.
+  const canPaste = !uploading && pasteProgress === null && !s.keyDialogOpen;
+
+  /*
+   * One "latest values" box, refreshed after every render. This lets the document
+   * listener below be registered exactly once instead of being torn down and
+   * rebuilt on every progress tick.
+   */
+  const latest = useRef({ handlePaste, toast, canPaste });
+  useEffect(() => {
+    latest.current = { handlePaste, toast, canPaste };
+  });
+
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      // Don't hijack a paste meant for a text field — the fal key input, the
+      // notes textareas, and so on.
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
+
+      const { handlePaste: run, toast: notify, canPaste: allowed } = latest.current;
+      if (!allowed) return;
+
+      const images = Array.from(e.clipboardData?.items ?? [])
+        .filter((i) => i.kind === "file" && i.type.startsWith("image/"))
+        .map((i) => i.getAsFile())
+        .filter((f): f is File => f !== null);
+
+      if (!images.length) return;
+      e.preventDefault();
+
+      const usable = images.filter((f) => PASTEABLE_TYPES.includes(f.type));
+      if (!usable.length) {
+        notify(`That's a ${images[0].type || "unknown"} image. Paste a PNG, JPEG, WebP or GIF.`, "error");
+        return;
+      }
+      void run(usable);
+    };
+
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  }, []);
 
   return (
     <div className="space-y-8">
@@ -93,18 +172,23 @@ export function Step1Card() {
             <div>
               <h3 className="font-display text-base font-bold text-ink">Card artwork</h3>
               <p className="mt-0.5 text-xs text-ink-faint">
-                PNG or JPG. This is what gets printed on the panel or shown on the screen.
+                PNG, JPG, WebP or GIF. This is what gets printed on the panel or shown on the screen.
               </p>
             </div>
-            <span className="sticker shrink-0">Step 3</span>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <span className="sticker border-stamp-200 bg-stamp-50 text-stamp-700">{pasteKey}V ready</span>
+              <span className="sticker">Step 3</span>
+            </div>
           </div>
 
           <Uploader
             emoji="🎨"
-            accept="image/png,image/jpeg,image/webp"
-            title="Drop card artwork"
-            subtitle="Front panel, inside spread, or a still frame from your 3D card"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            title="Drop, browse or paste"
+            subtitle="Front panel, inside spread, or a still frame from your 3D card. Copy an image anywhere and paste it straight onto this page."
             disabled={uploading !== null}
+            pasteable
+            externalProgress={pasteProgress}
             onFile={(f, p) => upload(f, "card-art", p)}
           />
 

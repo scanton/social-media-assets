@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { cx } from "./ui";
+import { cx, usePasteShortcut } from "./ui";
 
 export function Uploader({
   accept,
@@ -10,6 +10,8 @@ export function Uploader({
   emoji,
   onFile,
   disabled,
+  pasteable,
+  externalProgress,
 }: {
   accept: string;
   title: string;
@@ -17,10 +19,18 @@ export function Uploader({
   emoji: string;
   onFile: (file: File, onProgress: (pct: number) => void) => Promise<void> | void;
   disabled?: boolean;
+  /** Shows the ⌘V affordance. The listener itself lives in the parent. */
+  pasteable?: boolean;
+  /** Drives the progress bar for uploads started outside this component (e.g. a paste). */
+  externalProgress?: number | null;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const pasteKey = usePasteShortcut();
   const [over, setOver] = useState(false);
   const [progress, setProgress] = useState<number | null>(null);
+
+  const shownProgress = externalProgress ?? progress;
+  const busy = shownProgress !== null;
 
   const handle = async (file: File | undefined) => {
     if (!file) return;
@@ -47,9 +57,11 @@ export function Uploader({
       className={cx(
         "relative overflow-hidden rounded-3xl border-2 border-dashed transition-all duration-300",
         disabled && "pointer-events-none opacity-50",
-        over
-          ? "scale-[1.01] border-stamp-600 bg-stamp-50"
-          : "border-hairline bg-canvas-2/60 hover:border-stamp-300 hover:bg-stamp-50/40",
+        busy
+          ? "border-stamp-400 bg-stamp-50/60"
+          : over
+            ? "scale-[1.01] border-stamp-600 bg-stamp-50"
+            : "border-hairline bg-canvas-2/60 hover:border-stamp-300 hover:bg-stamp-50/40",
       )}
     >
       <button
@@ -62,8 +74,18 @@ export function Uploader({
         </span>
         <span className="mt-1 font-display text-base font-bold text-ink">{title}</span>
         <span className="max-w-xs text-xs leading-relaxed text-ink-faint">{subtitle}</span>
-        <span className="mt-2 rounded-full border border-hairline bg-white px-3.5 py-1.5 text-xs font-bold text-ink-soft">
-          Browse files
+        <span className="mt-2 flex flex-wrap items-center justify-center gap-1.5">
+          <span className="rounded-full border border-hairline bg-white px-3.5 py-1.5 text-xs font-bold text-ink-soft">
+            Browse files
+          </span>
+          {pasteable && (
+            <>
+              <span className="text-[11px] font-semibold text-ink-faint">or</span>
+              <span className="rounded-full border border-stamp-200 bg-stamp-50 px-3 py-1.5 text-xs font-bold text-stamp-700">
+                paste {pasteKey}V
+              </span>
+            </>
+          )}
         </span>
       </button>
 
@@ -78,15 +100,15 @@ export function Uploader({
         }}
       />
 
-      {progress !== null && (
+      {shownProgress !== null && (
         <div className="absolute inset-x-0 bottom-0">
           <p className="pb-1 text-center text-[11px] font-bold uppercase tracking-wider text-stamp-700">
-            Uploading {progress}%
+            Uploading {shownProgress}%
           </p>
           <div className="h-1 bg-stamp-100">
             <div
               className="h-full bg-stamp-600 transition-[width] duration-200 ease-out"
-              style={{ width: `${progress}%` }}
+              style={{ width: `${shownProgress}%` }}
             />
           </div>
         </div>
