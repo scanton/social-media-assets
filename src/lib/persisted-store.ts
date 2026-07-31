@@ -13,11 +13,10 @@ export type BaseConfig = {
   presenceId: string;
   angleIds: string[];
   aspectIds: AspectId[];
-  blankScreen: boolean;
-  /** Renders per angle × orientation combo in step 2. */
+  /** Renders per angle × orientation combo. */
   variations: number;
-  /** Placement attempts in step 3 — independent of the step 2 batch. */
-  compositeVariations: number;
+  /** Burn the HeartStamp emblem into the bottom-right corner of each still. */
+  logo: boolean;
   quality: "auto" | "low" | "medium" | "high";
   notes: string;
 };
@@ -48,9 +47,8 @@ export const DEFAULT_BASE: BaseConfig = {
   presenceId: "hands",
   angleIds: ["pov"],
   aspectIds: ["9:16"],
-  blankScreen: true,
-  variations: 2,
-  compositeVariations: 2,
+  variations: 1,
+  logo: true,
   quality: "high",
   notes: "",
 };
@@ -72,7 +70,7 @@ const DEFAULTS: Persisted = {
   surface: "screen",
 };
 
-const STORAGE_KEY = "heartstamp-studio-v1";
+const STORAGE_KEY = "heartstamp-studio-v2";
 
 /*
  * A tiny external store rather than useState + a hydration effect.

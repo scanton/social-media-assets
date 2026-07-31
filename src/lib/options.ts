@@ -447,7 +447,7 @@ export const byId = <T extends { id: string }>(list: T[], id: string | undefined
 const joinPrompts = (parts: (string | undefined)[]) =>
   parts.filter((p): p is string => Boolean(p && p.trim())).join(". ");
 
-export type BaseSelection = {
+export type SceneSelection = {
   surface: SurfaceKind;
   deviceId: string;
   sceneId: string;
@@ -457,33 +457,57 @@ export type BaseSelection = {
   presenceId: string;
   audienceId: string;
   aspect: AspectId;
-  blankScreen: boolean;
+  /** True when card artwork is supplied as a reference image. */
+  hasCard: boolean;
   extraNotes?: string;
 };
 
 /**
- * The non-negotiable part of the base-asset spec: the display surface must come
- * back perfectly empty so a HeartStamp card can be composited into it later.
+ * Fallback for when no card artwork is selected: leave the display surface empty
+ * and fully in frame so artwork can still be dropped in later.
  */
 function blankSurfaceClause(surface: SurfaceKind): string {
   if (surface === "print") {
     return [
-      "CRITICAL REQUIREMENT: the greeting card's printed panel must be COMPLETELY BLANK — pure flat white paper with absolutely no artwork, no text, no logo, no pattern and no printing of any kind",
+      "The greeting card's printed panel must be COMPLETELY BLANK — pure flat white paper with no artwork, no text, no logo and no printing of any kind",
       "the entire blank panel must be fully visible and unobstructed, never cropped by the frame edge and never covered by fingers, props or shadows",
-      "all four corners of the blank panel must be inside the frame with clean sharp edges, so a design can be composited onto it afterwards",
+      "all four corners of the blank panel must be inside the frame with clean sharp edges",
       "keep the paper evenly lit with no blown-out highlights and no heavy shadow across the panel",
     ].join(". ");
   }
   return [
-    "CRITICAL REQUIREMENT: the device screen must be COMPLETELY BLANK — a pure flat white rectangle with absolutely no user interface, no icons, no status bar, no wallpaper, no text and no imagery of any kind",
+    "The device screen must be COMPLETELY BLANK — a pure flat white rectangle with no user interface, no icons, no status bar, no wallpaper, no text and no imagery of any kind",
     "the entire screen area must be fully visible and unobstructed, never cropped by the frame edge and never covered by fingers, hair, props or glare",
-    "all four corners of the screen must be inside the frame with clean sharp edges and correct perspective, so a video can be composited onto it afterwards",
+    "all four corners of the screen must be inside the frame with clean sharp edges and correct perspective",
     "keep the screen evenly lit and matte with no strong specular reflections, no hotspots and no moiré",
   ].join(". ");
 }
 
-/** Compile a base-image prompt for GPT-Image-2. */
-export function buildBasePrompt(sel: BaseSelection): string {
+/**
+ * The card is now placed during scene generation rather than in a second pass,
+ * so this clause carries the whole burden of making it look genuinely displayed.
+ */
+function cardOnSurfaceClause(surface: SurfaceKind): string {
+  if (surface === "print") {
+    return [
+      "CRITICAL REQUIREMENT: the artwork in the supplied reference image is printed on the front panel of the greeting card in the scene",
+      "reproduce that artwork exactly as provided — same composition, same colours, same typography; do not redesign it, recolour it, restyle it, add text to it or invent new elements",
+      "fit it to the card panel edge to edge with the correct perspective and keystone for the card's angle, following any curl or fold in the paper",
+      "let the scene's lighting fall across it naturally — matching brightness, colour temperature, paper texture and grain — so it reads as genuinely printed rather than pasted on",
+      "the whole printed panel must be inside the frame, in focus and legible; fingers or props may overlap its edges naturally but must not cover the artwork",
+    ].join(". ");
+  }
+  return [
+    "CRITICAL REQUIREMENT: the artwork in the supplied reference image is displayed full-screen on the device in the scene",
+    "reproduce that artwork exactly as provided — same composition, same colours, same typography; do not redesign it, recolour it, restyle it, add text to it or invent new elements",
+    "fit it to the screen edge to edge with the correct perspective and keystone for the device's angle, with no status bar, no browser chrome, no app UI and no letterboxing",
+    "give it believable emissive screen brightness plus the scene's own reflections and glare, so it reads as genuinely displayed rather than pasted on",
+    "the whole screen must be inside the frame, in focus and legible; fingers or hair may overlap its edges naturally but must not cover the artwork",
+  ].join(". ");
+}
+
+/** Compile the scene prompt for GPT-Image-2 (text-to-image or edit). */
+export function buildScenePrompt(sel: SceneSelection): string {
   const device = byId(DEVICES, sel.deviceId);
   const scene = byId(SCENES, sel.sceneId);
   const angle = byId(ANGLES, sel.angleId);
@@ -507,41 +531,30 @@ export function buildBasePrompt(sel: BaseSelection): string {
     look?.prompt,
     audience ? `the styling, wardrobe and props should read as authentically ${audience.prompt}` : undefined,
     aspect ? `composed for a ${aspect.id} ${aspect.label.split(" ")[1].toLowerCase()} social crop` : undefined,
-    sel.blankScreen ? blankSurfaceClause(sel.surface) : undefined,
+    sel.hasCard ? cardOnSurfaceClause(sel.surface) : blankSurfaceClause(sel.surface),
     "Photorealistic, sharp, high dynamic range, believable real-world materials and physics",
-    "Absolutely no watermarks, no captions, no brand logos and no readable text anywhere in the image",
+    // The HeartStamp mark is composited on afterwards in the browser, so the
+    // model must not try to draw one of its own.
+    sel.hasCard
+      ? "No watermarks, no captions, no brand logos and no readable text anywhere except the supplied card artwork itself"
+      : "Absolutely no watermarks, no captions, no brand logos and no readable text anywhere in the image",
     sel.extraNotes?.trim(),
-  ]);
-}
-
-/** Compile the composite (screen/panel replacement) prompt for GPT-Image-2 edit. */
-export function buildCompositePrompt(opts: {
-  surface: SurfaceKind;
-  hasBase: boolean;
-  extraNotes?: string;
-}): string {
-  const target = opts.surface === "print" ? "printed card panel" : "device screen";
-  const artwork = opts.surface === "print" ? "@Image2 artwork" : "@Image2 card frame";
-
-  return joinPrompts([
-    `Take the first image and place the second image onto the blank ${target}`,
-    `The second image is HeartStamp greeting-card artwork. Replace the blank white ${target} in the first image with it`,
-    "Match the exact perspective, keystone and corner geometry of the original surface so the artwork looks genuinely printed or displayed there",
-    "Match the scene's brightness, contrast, colour temperature and white balance",
-    "Preserve the original reflections, glare, screen curvature, paper texture, grain and depth of field so the composite is invisible",
-    "Preserve every occlusion: fingers, hair, props or edges that overlapped the surface must still overlap the artwork",
-    "Do not crop, letterbox or distort the artwork's own proportions any more than the surface geometry requires; fill the surface edge to edge",
-    "Change absolutely nothing else in the photograph — same subject, same background, same lighting, same framing",
-    `The ${artwork} must remain legible and un-warped`,
-    opts.extraNotes?.trim(),
   ]);
 }
 
 /* ------------------------- VIDEO MOTION -------------------------- */
 
-export const MOTIONS: (Option & { surface?: SurfaceKind })[] = [
+export type MotionKind = "camera" | "action";
+
+/**
+ * "camera" moves the lens across an otherwise still scene.
+ * "action" makes the world move — people do things, the background lives.
+ */
+export const MOTIONS: (Option & { surface?: SurfaceKind; kind: MotionKind })[] = [
+  /* ------------------------------ camera ----------------------------- */
   {
     id: "hold-steady",
+    kind: "camera",
     label: "Steady hold",
     emoji: "🫱",
     prompt:
@@ -549,44 +562,128 @@ export const MOTIONS: (Option & { surface?: SurfaceKind })[] = [
   },
   {
     id: "slow-push",
+    kind: "camera",
     label: "Slow push in",
     emoji: "🎥",
     prompt: "the camera slowly pushes in toward the display surface in one smooth continuous dolly move",
   },
   {
     id: "slow-pull",
+    kind: "camera",
     label: "Slow pull out",
     emoji: "↔️",
     prompt: "the camera slowly pulls back to reveal more of the surrounding environment in one smooth continuous move",
   },
   {
     id: "orbit",
+    kind: "camera",
     label: "Gentle orbit",
     emoji: "🛰️",
     prompt: "the camera arcs gently around the subject in a slow parallax orbit",
   },
   {
     id: "handheld-walk",
+    kind: "camera",
     label: "Handheld walk",
     emoji: "🚶",
-    prompt: "handheld walking camera with natural bounce, the subject moves through the environment",
+    prompt:
+      "handheld walking camera with natural bounce, the subject moves through the environment, the background slides past with real parallax",
   },
   {
     id: "lift-to-camera",
+    kind: "camera",
     label: "Lift toward camera",
     emoji: "🙌",
     prompt: "the subject lifts the device up toward the camera, presenting the screen proudly to the viewer",
   },
+
+  /* ------------------------------ action ----------------------------- */
+  {
+    id: "open-and-react",
+    kind: "action",
+    label: "Open & react",
+    emoji: "🥹",
+    prompt:
+      "the subject looks down at the card and reacts in real time — eyebrows lift, a grin spreads, a hand comes up to their mouth, they let out a small laugh and shake their head. Shoulders and chest move with the breath and the laugh. Genuine, unforced, caught-in-the-moment energy",
+  },
+  {
+    id: "show-a-friend",
+    kind: "action",
+    label: "Show a friend",
+    emoji: "👯",
+    prompt:
+      "the subject turns and tilts the card toward a friend beside them; the friend leans into frame, eyes widen, they both start laughing and the friend grabs their arm. Two people genuinely reacting to each other, natural overlapping movement",
+  },
+  {
+    id: "scroll-and-stop",
+    kind: "action",
+    label: "Scroll & stop",
+    emoji: "👆",
+    prompt:
+      "a thumb swipes up the screen a couple of times with quick flicks, then stops dead on the card; the hand goes still, the head tilts in, the whole body pauses. The scroll-stopping moment",
+  },
+  {
+    id: "pass-it-over",
+    kind: "action",
+    label: "Pass it over",
+    emoji: "🤝",
+    prompt:
+      "the subject hands the card across to another person, who takes it, looks down at it and breaks into a smile. Hands cross in frame, the exchange has real weight and timing",
+  },
+  {
+    id: "busy-world",
+    kind: "action",
+    label: "Busy world",
+    emoji: "🌆",
+    prompt:
+      "the world around the subject is alive — people cross behind them in both directions, traffic and bicycles pass, a door swings, steam rises, leaves and fabric stir in the breeze. The subject stays with the card while life keeps moving around them",
+  },
+  {
+    id: "celebrate",
+    kind: "action",
+    label: "Celebration",
+    emoji: "🎉",
+    prompt:
+      "party energy erupts around the subject — friends cheer and clap, arms go up, confetti or streamers drift down through the frame, glasses clink just off-centre, everyone is laughing and moving at once",
+  },
+  {
+    id: "walk-and-talk",
+    kind: "action",
+    label: "Walk & talk",
+    emoji: "🗣️",
+    prompt:
+      "the subject walks toward camera talking animatedly and gesturing with their free hand, the environment sliding past behind them with strong parallax, hair and clothing bouncing with each step",
+  },
+  {
+    id: "settle-in",
+    kind: "action",
+    label: "Settle in",
+    emoji: "🛋️",
+    prompt:
+      "the subject sets a drink down, drops into a seat and gets comfortable, pulls one knee up, then finally settles their eyes on the card and softens into a smile. Unhurried, lived-in domestic motion",
+  },
+  {
+    id: "wind-and-light",
+    kind: "action",
+    label: "Wind & light",
+    emoji: "🍃",
+    prompt:
+      "a breeze moves through the shot — hair lifts and falls, loose fabric ripples, leaves and dappled sunlight shift across the subject and the surface, dust motes drift through the light. The subject breathes, blinks and shifts their weight naturally",
+  },
+
+  /* --------------------------- print-only ---------------------------- */
   {
     id: "card-open",
+    kind: "action",
     surface: "print",
     label: "Card opening",
     emoji: "💌",
     prompt:
-      "hands slowly open the folded greeting card to reveal the inside, the paper flexing naturally with realistic weight",
+      "hands slowly open the folded greeting card to reveal the inside, the paper flexing naturally with realistic weight, then the subject's eyes track across it",
   },
   {
     id: "card-zoom",
+    kind: "camera",
     surface: "print",
     label: "Stationary card zoom",
     emoji: "🔎",
@@ -595,20 +692,34 @@ export const MOTIONS: (Option & { surface?: SurfaceKind })[] = [
   },
   {
     id: "envelope-reveal",
+    kind: "action",
     surface: "print",
     label: "Envelope reveal",
     emoji: "✉️",
-    prompt: "hands slide the greeting card out of its envelope to reveal the front panel",
+    prompt:
+      "hands tear open the envelope, slide the greeting card out and turn it to face the camera, paper and flap moving with believable stiffness",
   },
 ];
 
 export const VIDEO_RESOLUTIONS = ["480p", "720p", "1080p", "4k"] as const;
 export const VIDEO_DURATIONS = ["auto", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15"] as const;
 
+/**
+ * The HeartStamp emblem is burned into the still before it reaches Seedance, so
+ * the model must treat it as a fixed overlay rather than an object in the scene.
+ */
+const LOGO_LOCK_CLAUSE = [
+  "There is a small HeartStamp heart logo in the bottom-right corner of the frame",
+  "it is a flat 2D overlay burned onto the footage, not an object inside the scene",
+  "keep it perfectly static, sharp, fully opaque and identical in every single frame — exactly the same size, the same position and the same colours",
+  "it must never move, drift, rotate, scale, fade, blur, catch the scene lighting, gain a shadow or reflection, or be occluded by anything in the scene",
+].join(". ");
+
 export function buildAnimatePrompt(opts: {
   motionId: string;
   surface: SurfaceKind;
   sceneId?: string;
+  hasLogo?: boolean;
   extraNotes?: string;
 }): string {
   const motion = byId(MOTIONS, opts.motionId);
@@ -621,7 +732,10 @@ export function buildAnimatePrompt(opts: {
     scene ? `Keep the environment consistent: ${scene.prompt}` : undefined,
     `Whatever artwork is already on ${surfaceNoun} must stay perfectly locked to that surface with correct perspective for the whole clip — it must never slide, flicker, warp or change`,
     "Preserve the exact identity, wardrobe, framing and lighting of the source photograph",
-    "Realistic physics and motion blur. No text overlays, no captions, no watermarks, no logos, no scene cuts",
+    opts.hasLogo ? LOGO_LOCK_CLAUSE : undefined,
+    opts.hasLogo
+      ? "Realistic physics and motion blur. No scene cuts, and no text overlays, captions or watermarks beyond the corner logo already present"
+      : "Realistic physics and motion blur. No text overlays, no captions, no watermarks, no logos, no scene cuts",
     opts.extraNotes?.trim(),
   ]);
 }
@@ -629,10 +743,11 @@ export function buildAnimatePrompt(opts: {
 export function buildScreenReplacePrompt(opts: {
   surface: SurfaceKind;
   motionId: string;
+  hasLogo?: boolean;
   extraNotes?: string;
 }): string {
   const motion = byId(MOTIONS, opts.motionId);
-  const surfaceNoun = opts.surface === "print" ? "the blank printed card panel" : "the blank device screen";
+  const surfaceNoun = opts.surface === "print" ? "the printed card panel" : "the device screen";
 
   return joinPrompts([
     `Recreate the scene in @Image1 as a live-action clip, and play the footage from @Video1 on ${surfaceNoun}`,
@@ -641,7 +756,10 @@ export function buildScreenReplacePrompt(opts: {
     "Match the scene's brightness, colour temperature and reflections so the footage looks natively displayed, not pasted on",
     motion?.prompt,
     "Preserve the exact subject, wardrobe, environment, framing and lighting of @Image1",
-    "Realistic physics and motion blur. No text overlays, no captions, no watermarks, no scene cuts",
+    opts.hasLogo ? LOGO_LOCK_CLAUSE : undefined,
+    opts.hasLogo
+      ? "Realistic physics and motion blur. No scene cuts, and no text overlays, captions or watermarks beyond the corner logo already present"
+      : "Realistic physics and motion blur. No text overlays, no captions, no watermarks, no scene cuts",
     opts.extraNotes?.trim(),
   ]);
 }

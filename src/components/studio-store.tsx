@@ -4,8 +4,7 @@ import { createContext, useCallback, useContext, useMemo, useState, type ReactNo
 import {
   ASPECTS,
   buildAnimatePrompt,
-  buildBasePrompt,
-  buildCompositePrompt,
+  buildScenePrompt,
   buildScreenReplacePrompt,
   byId,
   DEVICES,
@@ -24,6 +23,7 @@ import {
   type BaseConfig,
   type VideoConfig,
 } from "@/lib/persisted-store";
+import { stampLogo } from "@/lib/watermark";
 import { useToast } from "./ui";
 
 export type { BaseConfig, VideoConfig };
@@ -54,16 +54,13 @@ type StudioValue = {
   setCardVideoId: (id: string | null) => void;
   baseId: string | null;
   setBaseId: (id: string | null) => void;
-  compositeId: string | null;
-  setCompositeId: (id: string | null) => void;
 
   jobs: ReturnType<typeof useJobRunner>["jobs"];
   busy: boolean;
   cancelAll: () => void;
 
   basePlanCount: number;
-  generateBases: () => void;
-  generateComposites: () => void;
+  generateScenes: () => void;
   generateVideo: () => void;
 
   keyConnected: boolean;
@@ -97,7 +94,6 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const [cardArtId, setCardArtId] = useState<string | null>(null);
   const [cardVideoId, setCardVideoId] = useState<string | null>(null);
   const [baseId, setBaseId] = useState<string | null>(null);
-  const [compositeId, setCompositeId] = useState<string | null>(null);
 
   const [keyConnected, setKeyConnected] = useState(false);
   const [keyHint, setKeyHint] = useState<string | null>(null);
@@ -121,7 +117,6 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     setCardArtId((v) => (v === id ? null : v));
     setCardVideoId((v) => (v === id ? null : v));
     setBaseId((v) => (v === id ? null : v));
-    setCompositeId((v) => (v === id ? null : v));
   }, []);
 
   const clearAssets = useCallback(() => {
@@ -129,7 +124,6 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     setCardArtId(null);
     setCardVideoId(null);
     setBaseId(null);
-    setCompositeId(null);
   }, []);
 
   const setBase = useCallback(
@@ -183,11 +177,20 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     },
   });
 
-  /* -------------------------- step 2: base art ------------------------ */
+  /* ------------------- step 2: the finished scene --------------------- */
 
   const basePlanCount = base.angleIds.length * base.aspectIds.length * base.variations;
 
-  const generateBases = useCallback(() => {
+  /**
+   * One pass now does what used to take two. When card artwork is selected we
+   * hand it to GPT-Image-2's edit endpoint as a reference and ask for the whole
+   * lifestyle scene with the card already on the surface; with no artwork we
+   * fall back to text-to-image and leave the surface blank.
+   *
+   * The HeartStamp emblem is then burned into the corner on a canvas — see
+   * lib/watermark.ts for why that isn't left to the model.
+   */
+  const generateScenes = useCallback(() => {
     if (!keyConnected) {
       setKeyDialogOpen(true);
       return;
@@ -197,6 +200,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    const cardAsset = assets.find((a) => a.id === cardArtId && a.kind === "card-art");
+    const hasCard = Boolean(cardAsset);
     const scene = byId(SCENES, base.sceneId);
     const device = byId(DEVICES, base.deviceId);
     const specs: JobSpec[] = [];
@@ -205,7 +210,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       const aspect = ASPECTS.find((a) => a.id === aspectId)!;
       for (const angleId of base.angleIds) {
         for (let v = 1; v <= base.variations; v++) {
-          const prompt = buildBasePrompt({
+          const prompt = buildScenePrompt({
             surface,
             deviceId: base.deviceId,
             sceneId: base.sceneId,
@@ -215,41 +220,83 @@ export function StudioProvider({ children }: { children: ReactNode }) {
             presenceId: base.presenceId,
             audienceId: base.audienceId,
             aspect: aspectId,
-            blankScreen: base.blankScreen,
+            hasCard,
             // GPT-Image-2 has no seed input, so variation comes from separate
             // calls plus a light nudge in the prompt.
-            extraNotes: [base.notes, base.variations > 1 ? `Variation ${v}: change the exact composition, props and micro-details while keeping every requirement above.` : ""]
+            extraNotes: [
+              base.notes,
+              base.variations > 1
+                ? `Variation ${v}: change the exact composition, props and micro-details while keeping every requirement above.`
+                : "",
+            ]
               .filter(Boolean)
               .join(" "),
           });
 
+          const size = { width: aspect.width, height: aspect.height };
+
           specs.push({
-            label: `${device?.label ?? "Base"} · ${aspectId} · v${v}`,
+            label: `${device?.label ?? "Scene"} · ${aspectId} · v${v}`,
             kind: "base",
-            model: MODELS.baseImage,
-            input: {
-              prompt,
-              image_size: { width: aspect.width, height: aspect.height },
-              quality: base.quality,
-              num_images: 1,
-              output_format: "png",
-            },
-            toAssets: (data, jobId) => {
+            model: hasCard ? MODELS.compositeImage : MODELS.baseImage,
+            input: hasCard
+              ? {
+                  prompt,
+                  image_urls: [cardAsset!.url],
+                  image_size: size,
+                  quality: base.quality,
+                  num_images: 1,
+                  output_format: "png",
+                }
+              : {
+                  prompt,
+                  image_size: size,
+                  quality: base.quality,
+                  num_images: 1,
+                  output_format: "png",
+                },
+            toAssets: async (data, jobId) => {
               const images = (data as { images?: FalImage[] }).images ?? [];
-              return images.map((img, i) => ({
-                id: `${jobId}-${i}`,
-                kind: "base" as const,
-                url: img.url,
-                contentType: img.content_type,
-                width: img.width,
-                height: img.height,
-                label: `${device?.label ?? "Base"} · v${v}`,
-                tags: [aspectId, angleId, scene?.label ?? "scene"],
-                createdAt: Date.now(),
-                prompt,
-                aspect: aspectId,
-                surface,
-              }));
+              return Promise.all(
+                images.map(async (img, i) => {
+                  let url = img.url;
+                  let contentType = img.content_type;
+
+                  if (base.logo) {
+                    try {
+                      url = await stampLogo(img.url);
+                      contentType = "image/png";
+                    } catch (err) {
+                      // A failed overlay shouldn't cost the render — keep the
+                      // clean image and say so.
+                      toast(
+                        `Logo overlay failed, keeping the un-stamped image. ${(err as Error).message}`,
+                        "error",
+                      );
+                    }
+                  }
+
+                  return {
+                    id: `${jobId}-${i}`,
+                    kind: "base" as const,
+                    url,
+                    contentType,
+                    width: img.width,
+                    height: img.height,
+                    label: `${device?.label ?? "Scene"} · v${v}`,
+                    tags: [
+                      aspectId,
+                      angleId,
+                      hasCard ? "card placed" : "blank surface",
+                      scene?.label ?? "scene",
+                    ],
+                    createdAt: Date.now(),
+                    prompt,
+                    aspect: aspectId,
+                    surface,
+                  };
+                }),
+              );
             },
           });
         }
@@ -257,60 +304,9 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     }
 
     void runner.run(specs);
-  }, [base, keyConnected, runner, surface, toast]);
+  }, [assets, base, cardArtId, keyConnected, runner, surface, toast]);
 
-  /* ------------------------ step 3: composite ------------------------ */
-
-  const generateComposites = useCallback(() => {
-    if (!keyConnected) {
-      setKeyDialogOpen(true);
-      return;
-    }
-    const baseAsset = assets.find((a) => a.id === baseId);
-    const cardAsset = assets.find((a) => a.id === cardArtId);
-    if (!baseAsset || !cardAsset) {
-      toast("Pick a base image and a card artwork first.", "error");
-      return;
-    }
-
-    const prompt = buildCompositePrompt({ surface, hasBase: true, extraNotes: base.notes });
-
-    void runner.run([
-      {
-        label: `Card on ${baseAsset.label}`,
-        kind: "composite",
-        model: MODELS.compositeImage,
-        input: {
-          prompt,
-          image_urls: [baseAsset.url, cardAsset.url],
-          image_size: "auto",
-          quality: base.quality,
-          num_images: Math.min(4, Math.max(1, base.compositeVariations)),
-          output_format: "png",
-        },
-        toAssets: (data, jobId) => {
-          const images = (data as { images?: FalImage[] }).images ?? [];
-          return images.map((img, i) => ({
-            id: `${jobId}-${i}`,
-            kind: "composite" as const,
-            url: img.url,
-            contentType: img.content_type,
-            width: img.width,
-            height: img.height,
-            label: `Placed · ${baseAsset.label}`,
-            tags: [baseAsset.aspect ?? "auto", "composite", `v${i + 1}`],
-            createdAt: Date.now(),
-            parentId: baseAsset.id,
-            prompt,
-            aspect: baseAsset.aspect,
-            surface,
-          }));
-        },
-      },
-    ]);
-  }, [assets, base.notes, base.quality, base.compositeVariations, baseId, cardArtId, keyConnected, runner, surface, toast]);
-
-  /* -------------------------- step 4: video -------------------------- */
+  /* -------------------------- step 3: video -------------------------- */
 
   const generateVideo = useCallback(() => {
     if (!keyConnected) {
@@ -318,9 +314,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const still =
-      assets.find((a) => a.id === compositeId) ??
-      assets.find((a) => a.id === baseId);
+    const still = assets.find((a) => a.id === baseId);
     if (!still) {
       toast("Pick a still to animate first.", "error");
       return;
@@ -333,7 +327,12 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         toast("Screen-replace needs an uploaded card video from step 1.", "error");
         return;
       }
-      const prompt = buildScreenReplacePrompt({ surface, motionId: video.motionId, extraNotes: video.notes });
+      const prompt = buildScreenReplacePrompt({
+        surface,
+        motionId: video.motionId,
+        hasLogo: base.logo,
+        extraNotes: video.notes,
+      });
       void runner.run([
         {
           label: `Screen replace · ${still.label}`,
@@ -377,6 +376,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       motionId: video.motionId,
       surface,
       sceneId: base.sceneId,
+      hasLogo: base.logo,
       extraNotes: video.notes,
     });
 
@@ -415,7 +415,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         },
       },
     ]);
-  }, [assets, base.sceneId, baseId, cardVideoId, compositeId, keyConnected, runner, surface, toast, video]);
+  }, [assets, base.sceneId, base.logo, baseId, cardVideoId, keyConnected, runner, surface, toast, video]);
 
   const value = useMemo<StudioValue>(
     () => ({
@@ -437,14 +437,11 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       setCardVideoId,
       baseId,
       setBaseId,
-      compositeId,
-      setCompositeId,
       jobs: runner.jobs,
       busy: runner.busy,
       cancelAll: runner.cancelAll,
       basePlanCount,
-      generateBases,
-      generateComposites,
+      generateScenes,
       generateVideo,
       keyConnected,
       setKeyConnected,
@@ -457,9 +454,9 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     }),
     [
       step, setStep, surface, setSurface, assets, addAssets, removeAsset, clearAssets,
-      base, setBase, video, setVideo, cardArtId, cardVideoId, baseId, compositeId,
+      base, setBase, video, setVideo, cardArtId, cardVideoId, baseId,
       runner.jobs, runner.busy, runner.cancelAll, basePlanCount,
-      generateBases, generateComposites, generateVideo,
+      generateScenes, generateVideo,
       keyConnected, keyDialogOpen, keyHint, confettiKey,
     ],
   );

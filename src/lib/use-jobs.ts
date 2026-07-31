@@ -9,8 +9,11 @@ export type JobSpec = {
   kind: AssetKind;
   model: string;
   input: Record<string, unknown>;
-  /** Turns a fal payload into studio assets. */
-  toAssets: (data: unknown, jobId: string) => Asset[];
+  /**
+   * Turns a fal payload into studio assets. May be async — the scene step awaits
+   * a canvas watermark pass here, and the job stays "running" until it lands.
+   */
+  toAssets: (data: unknown, jobId: string) => Asset[] | Promise<Asset[]>;
 };
 
 const MAX_CONCURRENT = 3;
@@ -72,7 +75,7 @@ export function useJobRunner(opts: {
               signal: controller.signal,
               onUpdate: (u) => patch(job.id, { queuePosition: u.queuePosition }),
             });
-            const assets = spec.toAssets(data, job.id);
+            const assets = await spec.toAssets(data, job.id);
             produced += assets.length;
             optsRef.current.onAssets(assets);
             patch(job.id, { state: "done", finishedAt: Date.now() });

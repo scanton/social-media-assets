@@ -22,7 +22,7 @@ export function SectionHead({
           {step}
         </span>
         <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-stamp-600">
-          Step {step} of 4
+          Step {step} of 3
         </span>
       </div>
       <h2 className="mt-3 font-display text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">

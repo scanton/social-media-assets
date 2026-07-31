@@ -5,7 +5,7 @@ import {
   ANGLES,
   ASPECTS,
   AUDIENCES,
-  buildBasePrompt,
+  buildScenePrompt,
   DEVICES,
   LIGHTING,
   LOOKS,
@@ -17,7 +17,7 @@ import { useStudio } from "../studio-store";
 import { Button, Chip, Field, Select, Stepper, Switch, cx } from "../ui";
 import { Panel, ResultsGrid, SectionHead } from "./shared";
 
-export function Step2Base() {
+export function Step2Scene() {
   const s = useStudio();
   const { base } = s;
   const [showPrompt, setShowPrompt] = useState(false);
@@ -33,7 +33,10 @@ export function Step2Base() {
   const toggleIn = <T extends string>(list: T[], value: T): T[] =>
     list.includes(value) ? list.filter((x) => x !== value) : [...list, value];
 
-  const previewPrompt = buildBasePrompt({
+  const cardAsset = s.assets.find((a) => a.id === s.cardArtId && a.kind === "card-art");
+  const hasCard = Boolean(cardAsset);
+
+  const previewPrompt = buildScenePrompt({
     surface: s.surface,
     deviceId: base.deviceId,
     sceneId: base.sceneId,
@@ -43,7 +46,7 @@ export function Step2Base() {
     presenceId: base.presenceId,
     audienceId: base.audienceId,
     aspect: base.aspectIds[0] ?? "9:16",
-    blankScreen: base.blankScreen,
+    hasCard,
     extraNotes: base.notes,
   });
 
@@ -54,13 +57,26 @@ export function Step2Base() {
     <div className="space-y-8">
       <SectionHead
         step={2}
-        title="Build the base scene"
+        title="Build the scene"
         blurb={
-          s.surface === "print"
-            ? "Generate photoreal lifestyle shots with a blank printed card panel, ready for your artwork. Check multiple angles and orientations to batch a whole shoot at once."
-            : "Generate photoreal lifestyle shots with a perfectly blank device screen, ready for your card. Check multiple angles and orientations to batch a whole shoot at once."
+          hasCard
+            ? s.surface === "print"
+              ? "Photoreal lifestyle shots with your artwork already printed on the card, logo stamped in the corner. Check multiple angles and orientations to batch a whole shoot at once."
+              : "Photoreal lifestyle shots with your card already on the screen, logo stamped in the corner. Check multiple angles and orientations to batch a whole shoot at once."
+            : "No card artwork selected, so surfaces will render blank. Pick artwork in step 1 to have it placed straight into the scene."
         }
       />
+
+      {!hasCard && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <p className="text-sm font-medium text-amber-900">
+            ⚠️ No card artwork selected — screens and panels will come out blank.
+          </p>
+          <Button variant="outline" size="sm" onClick={() => s.setStep(1)}>
+            Add card artwork
+          </Button>
+        </div>
+      )}
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
         {/* ------------------------- controls ------------------------- */}
@@ -210,14 +226,10 @@ export function Step2Base() {
               </div>
 
               <Switch
-                checked={base.blankScreen}
-                onChange={(blankScreen) => s.setBase({ blankScreen })}
-                label={s.surface === "print" ? "Force a blank card panel" : "Force a blank screen"}
-                hint={
-                  s.surface === "print"
-                    ? "Keeps the printed panel pure white with all four corners in frame, so artwork can be composited in step 3. Turn off only if you want a finished scene."
-                    : "Keeps the screen pure white with all four corners in frame, so the card can be composited in step 3. Turn off only if you want a finished scene."
-                }
+                checked={base.logo}
+                onChange={(logo) => s.setBase({ logo })}
+                label="Stamp the HeartStamp logo"
+                hint="Burns the emblem into the bottom-right corner of every still, pixel-exact and always in the same spot. Step 3 then tells Seedance to hold it there for the whole clip."
               />
 
               <Field label="Extra direction" hint="Optional. Anything specific — props, wardrobe, a colour story.">
@@ -268,8 +280,8 @@ export function Step2Base() {
                       Stop
                     </Button>
                   ) : null}
-                  <Button size="lg" onClick={s.generateBases} loading={s.busy} disabled={s.basePlanCount === 0}>
-                    {s.busy ? "Rendering…" : "Generate base images"}
+                  <Button size="lg" onClick={s.generateScenes} loading={s.busy} disabled={s.basePlanCount === 0}>
+                    {s.busy ? "Rendering…" : "Generate scenes"}
                   </Button>
                 </div>
               </div>
@@ -301,7 +313,7 @@ export function Step2Base() {
             selectedId={s.baseId}
             onSelect={(id) => s.setBaseId(s.baseId === id ? null : id)}
             emptyEmoji="📸"
-            emptyText="Your base images land here. Pick the combos on the left, then hit generate."
+            emptyText="Your finished scenes land here. Pick the combos on the left, then hit generate."
             cols="sm:grid-cols-3"
           />
 
@@ -311,9 +323,9 @@ export function Step2Base() {
                 size="lg"
                 onClick={() => s.setStep(3)}
                 disabled={!s.baseId}
-                title={s.baseId ? undefined : "Select a base image first"}
+                title={s.baseId ? undefined : "Select a scene first"}
               >
-                Place the card on it
+                Make it move
                 <span aria-hidden>→</span>
               </Button>
             </div>

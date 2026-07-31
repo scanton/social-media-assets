@@ -13,37 +13,45 @@ import { AssetTile } from "../AssetTile";
 import { Button, Chip, Field, Select, Switch, cx } from "../ui";
 import { Panel, ResultsGrid, SectionHead } from "./shared";
 
-export function Step4Motion() {
+export function Step3Motion() {
   const s = useStudio();
   const [showPrompt, setShowPrompt] = useState(false);
 
-  const stills = s.assets.filter((a) => a.kind === "composite" || a.kind === "base");
+  const stills = s.assets.filter((a) => a.kind === "base");
   const videos = s.assets.filter((a) => a.kind === "video");
   const cardClip = s.assets.find((a) => a.id === s.cardVideoId);
 
-  const selectedStillId = s.compositeId ?? s.baseId;
+  const selectedStillId = s.baseId;
   const selectedStill = stills.find((a) => a.id === selectedStillId);
 
   const motions = MOTIONS.filter((m) => !m.surface || m.surface === s.surface);
+  const cameraMotions = motions.filter((m) => m.kind === "camera");
+  const actionMotions = motions.filter((m) => m.kind === "action");
   const screenReplaceReady = Boolean(cardClip);
   const ready = Boolean(selectedStill) && (s.video.engine === "animate" || screenReplaceReady);
 
   const prompt =
     s.video.engine === "screen-replace"
-      ? buildScreenReplacePrompt({ surface: s.surface, motionId: s.video.motionId, extraNotes: s.video.notes })
+      ? buildScreenReplacePrompt({
+          surface: s.surface,
+          motionId: s.video.motionId,
+          hasLogo: s.base.logo,
+          extraNotes: s.video.notes,
+        })
       : buildAnimatePrompt({
           motionId: s.video.motionId,
           surface: s.surface,
           sceneId: s.base.sceneId,
+          hasLogo: s.base.logo,
           extraNotes: s.video.notes,
         });
 
   return (
     <div className="space-y-8">
       <SectionHead
-        step={4}
+        step={3}
         title="Make it move"
-        blurb="Turn the still into a scroll-stopping clip with Seedance 2.0. Animate the composite, or play your uploaded card video directly on the device in the scene."
+        blurb="Turn the still into a scroll-stopping clip with Seedance 2.0. Animate the scene, or play your uploaded card video directly on the device in it."
       />
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
@@ -55,7 +63,7 @@ export function Step4Motion() {
                 onClick={() => s.setVideo({ engine: "animate" })}
                 emoji="🎞️"
                 title="Animate the still"
-                body="Brings your composite to life. The artwork already on the surface stays locked in place."
+                body="Brings your scene to life. The card already on the surface stays locked in place."
                 foot="Seedance 2.0 · image-to-video"
               />
               <EngineCard
@@ -74,18 +82,47 @@ export function Step4Motion() {
             </div>
           </Panel>
 
-          <Panel title="Camera motion" aside={<span className="sticker">{motions.length} options</span>}>
-            <div className="grid grid-cols-2 gap-2">
-              {motions.map((m) => (
-                <Chip
-                  key={m.id}
-                  emoji={m.emoji}
-                  active={s.video.motionId === m.id}
-                  onClick={() => s.setVideo({ motionId: m.id })}
-                >
-                  {m.label}
-                </Chip>
-              ))}
+          <Panel title="Motion" aside={<span className="sticker">{motions.length} options</span>}>
+            <div className="space-y-4">
+              <div>
+                <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.09em] text-ink-faint">
+                  Make the scene come alive
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {actionMotions.map((m) => (
+                    <Chip
+                      key={m.id}
+                      emoji={m.emoji}
+                      active={s.video.motionId === m.id}
+                      onClick={() => s.setVideo({ motionId: m.id })}
+                    >
+                      {m.label}
+                    </Chip>
+                  ))}
+                </div>
+                <p className="mt-2 text-xs leading-relaxed text-ink-faint">
+                  People do something and the world moves around them — reactions, background life,
+                  wind and weight. Stops the clip reading like a slow pan over a photo.
+                </p>
+              </div>
+
+              <div>
+                <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.09em] text-ink-faint">
+                  Camera only
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {cameraMotions.map((m) => (
+                    <Chip
+                      key={m.id}
+                      emoji={m.emoji}
+                      active={s.video.motionId === m.id}
+                      onClick={() => s.setVideo({ motionId: m.id })}
+                    >
+                      {m.label}
+                    </Chip>
+                  ))}
+                </div>
+              </div>
             </div>
           </Panel>
 
@@ -154,20 +191,13 @@ export function Step4Motion() {
                     asset={a}
                     selectable
                     selected={selectedStillId === a.id}
-                    onSelect={() => {
-                      if (a.kind === "composite") {
-                        s.setCompositeId(s.compositeId === a.id ? null : a.id);
-                      } else {
-                        s.setCompositeId(null);
-                        s.setBaseId(s.baseId === a.id ? null : a.id);
-                      }
-                    }}
+                    onSelect={() => s.setBaseId(s.baseId === a.id ? null : a.id)}
                   />
                 ))}
               </div>
             ) : (
               <p className="rounded-2xl border-2 border-dashed border-hairline bg-canvas-2/50 px-6 py-10 text-center text-sm text-ink-faint">
-                Generate a base image or composite first.
+                Generate a scene in step 2 first.
               </p>
             )}
           </Panel>

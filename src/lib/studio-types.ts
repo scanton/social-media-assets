@@ -3,8 +3,7 @@ import type { AspectId, SurfaceKind } from "@/lib/options";
 export type AssetKind =
   | "card-art" /* uploaded printed-card / digital-card artwork */
   | "card-video" /* uploaded 8–13s digital card clip */
-  | "base" /* generated blank-surface lifestyle photo */
-  | "composite" /* base + card artwork placed on the surface */
+  | "base" /* generated lifestyle scene, card already on the surface */
   | "video"; /* final motion asset */
 
 export type Asset = {

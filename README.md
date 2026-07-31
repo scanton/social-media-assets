@@ -3,14 +3,13 @@
 Generate social-media assets for HeartStamp printed (POD) and 3D digital greeting cards.
 Base lifestyle images → card composites → TikTok / Reels / Pinterest video.
 
-Built for the four-step workflow from Keith's brief:
+Three steps:
 
 | Step | What it does | Model |
 | --- | --- | --- |
 | **1 · Card** | Upload printed-card artwork and/or an 8–13s 3D card clip | direct-to-fal upload |
-| **2 · Base** | Batch photoreal lifestyle scenes with a **blank** screen or card panel | `openai/gpt-image-2` |
-| **3 · Place** | Composite the artwork onto that blank surface, perspective-matched | `openai/gpt-image-2/edit` |
-| **4 · Motion** | Animate the still, or play the card clip on the device in-scene | `bytedance/seedance-2.0/image-to-video` · `…/reference-to-video` |
+| **2 · Scene** | Batch photoreal lifestyle scenes **with the card already on the surface** and the logo stamped in the corner | `openai/gpt-image-2/edit` |
+| **3 · Motion** | Animate the scene, or play the card clip on the device in it | `bytedance/seedance-2.0/image-to-video` · `…/reference-to-video` |
 
 Everything is downloadable in-app. Nothing is stored server-side.
 
@@ -76,15 +75,27 @@ limits are irrelevant. Uploaded files expire from fal after 7 days.
 `request_id`; the client polls `GET /api/fal/status` with backoff (1.5s → 6s). Video renders that
 take minutes never hold a function open. Batches run 3-wide and are cancellable mid-flight.
 
-**Base assets are generated blank on purpose.** The prompt compiler in
-[`src/lib/options.ts`](src/lib/options.ts) appends a hard requirement that the screen (or printed
-panel) come back as pure flat white with all four corners in frame and no glare — that's what
-makes step 3's composite land cleanly. The toggle can be turned off if you just want a finished
-scene.
+**The card is placed during scene generation, not afterwards.** Step 2 hands the artwork to
+GPT-Image-2's *edit* endpoint as a reference image and asks for the whole lifestyle scene with the
+card already on the screen or printed on the panel. With no artwork selected it falls back to
+text-to-image and leaves the surface blank, so you can still batch scenes before the card exists.
+
+**The logo is composited on a canvas, not prompted.** A diffusion model asked to draw a brand mark
+returns an approximation, in a slightly different place every time. So
+[`src/lib/watermark.ts`](src/lib/watermark.ts) burns the real PNG into the bottom-right corner of
+every still — 11% of the short edge, 4.5% margin, pixel-exact and identical across the whole batch.
+The still is pulled through `/api/download` first so the canvas is never tainted by a cross-origin
+read. Step 3 then tells Seedance the mark is a flat overlay that must not move, scale or catch the
+scene lighting.
 
 **Variations are re-rolls.** GPT-Image-2 exposes no `seed` parameter, so N variations means N
 separate calls with a prompt nudge, not N seeds. Step 2's batch is
 `angles × orientations × variations` and the count is shown before you spend anything.
+
+**Motion comes in two flavours.** *Camera only* moves the lens over a still scene. *Make the scene
+come alive* drives the subject and the background — reactions, a friend leaning in, a thumb
+stopping mid-scroll, wind, crowds. The second group is what stops a clip reading as a slow pan over
+a photograph.
 
 **Nothing persists server-side.** Config and the session's asset URLs live in `localStorage`
 (via a `useSyncExternalStore` store, so there's no hydration mismatch). Media stays on fal's CDN.
@@ -114,7 +125,15 @@ Google OAuth client.
 
 ## Extending the taxonomy
 
-Devices, scenes, camera angles, orientations, lighting, film looks, presence and camera motions
-are all plain arrays in [`src/lib/options.ts`](src/lib/options.ts). Adding a new option is one
-object — the dropdowns, checkboxes and prompt compiler pick it up automatically. Scenes can be
-tagged with an `audience` list to filter them per persona.
+Devices, scenes, camera angles, orientations, lighting, film looks, presence and motions are all
+plain arrays in [`src/lib/options.ts`](src/lib/options.ts). Adding a new option is one object — the
+dropdowns, checkboxes and prompt compiler pick it up automatically. Scenes can be tagged with an
+`audience` list to filter them per persona; motions carry `kind: "camera" | "action"`, which is
+what splits the two groups in step 3.
+
+## Replacing the logo
+
+Drop a new PNG in `public/` and point `LOGO_SRC` in [`src/lib/watermark.ts`](src/lib/watermark.ts)
+at it. `LOGO_SCALE` and `LOGO_MARGIN` in the same file control size and inset. A transparent PNG at
+512px or larger is ideal — the current 85px emblem is upscaled about 2× on a 1536px-wide still,
+which is acceptable for a flat mark but not as crisp as it could be.

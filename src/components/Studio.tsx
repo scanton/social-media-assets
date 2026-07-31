@@ -9,16 +9,14 @@ import { StudioProvider, useStudio } from "./studio-store";
 import { KeyDialog } from "./KeyDialog";
 import { AssetTile } from "./AssetTile";
 import { Step1Card } from "./steps/Step1Card";
-import { Step2Base } from "./steps/Step2Base";
-import { Step3Place } from "./steps/Step3Place";
-import { Step4Motion } from "./steps/Step4Motion";
+import { Step2Scene } from "./steps/Step2Scene";
+import { Step3Motion } from "./steps/Step3Motion";
 import { Backdrop, Button, Confetti, StampMark, ToastProvider, cx } from "./ui";
 
 const STEPS = [
   { n: 1, label: "Card", emoji: "💌" },
-  { n: 2, label: "Base", emoji: "📸" },
-  { n: 3, label: "Place", emoji: "🪄" },
-  { n: 4, label: "Motion", emoji: "🎬" },
+  { n: 2, label: "Scene", emoji: "📸" },
+  { n: 3, label: "Motion", emoji: "🎬" },
 ];
 
 export function Studio({
@@ -64,8 +62,7 @@ function StudioShell({
   const done = {
     1: s.assets.some((a) => a.kind === "card-art" || a.kind === "card-video"),
     2: s.assets.some((a) => a.kind === "base"),
-    3: s.assets.some((a) => a.kind === "composite"),
-    4: s.assets.some((a) => a.kind === "video"),
+    3: s.assets.some((a) => a.kind === "video"),
   } as Record<number, boolean>;
 
   return (
@@ -83,7 +80,7 @@ function StudioShell({
               {BRAND.name} <span className="text-stamp-600">{BRAND.product}</span>
             </p>
             <p className="hidden text-[11px] font-medium text-ink-faint md:block">
-              Lifestyle base assets → card composites → social video
+              Card → lifestyle scene → social video
             </p>
           </div>
 
@@ -228,9 +225,8 @@ function StudioShell({
       <main className="mx-auto max-w-[110rem] px-4 py-8 sm:px-6 sm:py-10">
         <div key={s.step} className="animate-rise">
           {s.step === 1 && <Step1Card />}
-          {s.step === 2 && <Step2Base />}
-          {s.step === 3 && <Step3Place />}
-          {s.step === 4 && <Step4Motion />}
+          {s.step === 2 && <Step2Scene />}
+          {s.step === 3 && <Step3Motion />}
         </div>
       </main>
 
@@ -261,8 +257,7 @@ function StudioShell({
 
 const ROLL_FILTERS = [
   { id: "all", label: "Everything" },
-  { id: "base", label: "Base" },
-  { id: "composite", label: "Composites" },
+  { id: "base", label: "Scenes" },
   { id: "video", label: "Video" },
   { id: "card-art", label: "Uploads" },
 ] as const;
