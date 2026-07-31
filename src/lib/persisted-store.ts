@@ -11,6 +11,8 @@ export type BaseConfig = {
   lightingId: string;
   lookId: string;
   presenceId: string;
+  /** How much of the frame the product fills. */
+  framingId: string;
   angleIds: string[];
   aspectIds: AspectId[];
   /** Renders per angle × orientation combo. */
@@ -45,6 +47,7 @@ export const DEFAULT_BASE: BaseConfig = {
   lightingId: "window",
   lookId: "iphone",
   presenceId: "hands",
+  framingId: "hero",
   angleIds: ["pov"],
   aspectIds: ["9:16"],
   variations: 1,

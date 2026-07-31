@@ -366,17 +366,17 @@ export const ANGLES: Option[] = [
   },
   {
     id: "close-macro",
-    label: "Macro close-up",
+    label: "Macro lens",
     emoji: "🔍",
     prompt:
-      "an extreme close-up macro shot filling most of the frame with the display surface, shallow depth of field on the surrounding scene",
+      "a macro-lens viewpoint right up against the surface, depth of field falling off fast into the surrounding scene",
   },
   {
     id: "wide",
     label: "Wide establishing",
     emoji: "🌐",
     prompt:
-      "a wide establishing shot showing the full environment with the device smaller in frame but still crisply legible",
+      "an establishing viewpoint that takes in the surrounding environment around the subject",
   },
   {
     id: "handheld-tilt",
@@ -386,6 +386,79 @@ export const ANGLES: Option[] = [
       "a slightly tilted handheld snapshot framing, casual and imperfect, a few degrees of dutch angle",
   },
 ];
+
+/* --------------------------- FRAMING ----------------------------- */
+
+/**
+ * How much of the frame the product takes up. Kept separate from ANGLES: those
+ * say where the camera is, this says how close it is.
+ */
+export const FRAMINGS: Option[] = [
+  {
+    id: "hero",
+    label: "Hero close-up",
+    emoji: "🎯",
+    hint: "Card is the whole point",
+    prompt: "hero",
+  },
+  {
+    id: "extreme",
+    label: "Fills the frame",
+    emoji: "🔍",
+    hint: "Maximum card real estate",
+    prompt: "extreme",
+  },
+  {
+    id: "balanced",
+    label: "Balanced",
+    emoji: "⚖️",
+    hint: "Card leads, scene supports",
+    prompt: "balanced",
+  },
+  {
+    id: "context",
+    label: "Environmental",
+    emoji: "🌐",
+    hint: "Scene tells the story",
+    prompt: "context",
+  },
+];
+
+/** Concrete area targets read better than adjectives like "close" or "tight". */
+function framingClause(framingId: string, surface: SurfaceKind): string {
+  const subject = surface === "print" ? "greeting card" : "device";
+  const face = surface === "print" ? "printed front panel" : "screen";
+
+  const spec: Record<string, { area: string; tail: string }> = {
+    extreme: {
+      area: "65-80%",
+      tail:
+        "Fill the frame with it. The surrounding environment survives only as soft, blurred context at the very edges",
+    },
+    hero: {
+      area: "45-60%",
+      tail:
+        "Crop in tight and let the environment read only around the edges of frame and in the background",
+    },
+    balanced: {
+      area: "25-35%",
+      tail: "The environment is clearly visible around it but never competes with it for attention",
+    },
+    context: {
+      area: "12-20%",
+      tail: "The environment does the storytelling, but the artwork must still be sharp and readable",
+    },
+  };
+  const { area, tail } = spec[framingId] ?? spec.hero;
+
+  return [
+    `FRAMING — this matters as much as anything else: get in close on the ${subject}. It is unmistakably the hero of the shot, positioned near the centre of frame`,
+    `its ${face} alone must occupy roughly ${area} of the total image area`,
+    `the artwork on that ${face} has to be large, sharp and completely legible at a glance while someone is scrolling — that artwork is the entire point of the photograph`,
+    tail,
+    `do not shoot this from across the room and do not let the ${subject} become a small detail in a wider scene`,
+  ].join(". ");
+}
 
 /* ------------------------- ORIENTATIONS -------------------------- */
 
@@ -456,6 +529,7 @@ export type SceneSelection = {
   lookId: string;
   presenceId: string;
   audienceId: string;
+  framingId: string;
   aspect: AspectId;
   /** True when card artwork is supplied as a reference image. */
   hasCard: boolean;
@@ -527,6 +601,7 @@ export function buildScenePrompt(sel: SceneSelection): string {
     scene?.prompt,
     presence?.prompt,
     angle?.prompt,
+    framingClause(sel.framingId, sel.surface),
     light?.prompt,
     look?.prompt,
     audience ? `the styling, wardrobe and props should read as authentically ${audience.prompt}` : undefined,

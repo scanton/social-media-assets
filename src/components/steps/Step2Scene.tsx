@@ -9,6 +9,7 @@ import {
   DEVICES,
   LIGHTING,
   LOOKS,
+  FRAMINGS,
   PRESENCE,
   SCENES,
   type AspectId,
@@ -45,6 +46,7 @@ export function Step2Scene() {
     lookId: base.lookId,
     presenceId: base.presenceId,
     audienceId: base.audienceId,
+    framingId: base.framingId,
     aspect: base.aspectIds[0] ?? "9:16",
     hasCard,
     extraNotes: base.notes,
@@ -149,13 +151,30 @@ export function Step2Scene() {
                 </Field>
               </div>
 
-              <Field label="Who's in frame">
-                <Select
-                  value={base.presenceId}
-                  onChange={(presenceId) => s.setBase({ presenceId })}
-                  options={PRESENCE.map((p) => ({ id: p.id, label: p.label, emoji: p.emoji }))}
-                />
-              </Field>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Who's in frame">
+                  <Select
+                    value={base.presenceId}
+                    onChange={(presenceId) => s.setBase({ presenceId })}
+                    options={PRESENCE.map((p) => ({ id: p.id, label: p.label, emoji: p.emoji }))}
+                  />
+                </Field>
+                <Field
+                  label="How close"
+                  hint="How much of the frame the card takes up."
+                >
+                  <Select
+                    value={base.framingId}
+                    onChange={(framingId) => s.setBase({ framingId })}
+                    options={FRAMINGS.map((f) => ({
+                      id: f.id,
+                      label: f.label,
+                      emoji: f.emoji,
+                      hint: f.hint,
+                    }))}
+                  />
+                </Field>
+              </div>
             </div>
           </Panel>
 

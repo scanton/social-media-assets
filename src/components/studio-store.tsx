@@ -219,6 +219,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
             lookId: base.lookId,
             presenceId: base.presenceId,
             audienceId: base.audienceId,
+            framingId: base.framingId,
             aspect: aspectId,
             hasCard,
             // GPT-Image-2 has no seed input, so variation comes from separate

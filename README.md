@@ -88,9 +88,20 @@ The still is pulled through `/api/download` first so the canvas is never tainted
 read. Step 3 then tells Seedance the mark is a flat overlay that must not move, scale or catch the
 scene lighting.
 
+The emblem is auto-trimmed to its opaque bounds before scaling, so transparent padding around the
+artwork can't shrink it. The two supplied PNGs disagreed on this — the 3959px master carries ~30%
+padding, the old 85px export had none — and trimming is what makes `LOGO_SCALE` mean "how wide the
+heart is" regardless of which file is dropped in.
+
 **Variations are re-rolls.** GPT-Image-2 exposes no `seed` parameter, so N variations means N
 separate calls with a prompt nudge, not N seeds. Step 2's batch is
 `angles × orientations × variations` and the count is shown before you spend anything.
+
+**Framing is its own control, separate from camera angle.** `ANGLES` says where the camera is;
+`FRAMINGS` says how close. The prompt gives the model a concrete area target — hero close-up asks
+for the screen alone to fill 45–60% of the image — because "close up" on its own gets interpreted
+very loosely. Default is hero: the card is the point of the shot, so it should be readable while
+someone is scrolling past.
 
 **Motion comes in two flavours.** *Camera only* moves the lens over a still scene. *Make the scene
 come alive* drives the subject and the background — reactions, a friend leaning in, a thumb
@@ -134,6 +145,6 @@ what splits the two groups in step 3.
 ## Replacing the logo
 
 Drop a new PNG in `public/` and point `LOGO_SRC` in [`src/lib/watermark.ts`](src/lib/watermark.ts)
-at it. `LOGO_SCALE` and `LOGO_MARGIN` in the same file control size and inset. A transparent PNG at
-512px or larger is ideal — the current 85px emblem is upscaled about 2× on a 1536px-wide still,
-which is acceptable for a flat mark but not as crisp as it could be.
+at it. `LOGO_SCALE` and `LOGO_MARGIN` in the same file control size and inset. Transparent padding
+around the mark is handled automatically, so the new file doesn't have to be cropped to match the
+old one.
