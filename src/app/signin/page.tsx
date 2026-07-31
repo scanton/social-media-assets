@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { authConfigured, currentUser, signIn } from "@/auth";
+import { AUTH_ENABLED, authConfigured, currentUser, signIn } from "@/auth";
 import { BRAND } from "@/lib/brand";
 import { Backdrop, StampMark } from "@/components/ui";
 
@@ -21,6 +21,8 @@ export default async function SignInPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
+  // Sign-in is a dead end while auth is switched off — send people to the studio.
+  if (!AUTH_ENABLED) redirect("/");
   if (await currentUser()) redirect("/");
   const { error } = await searchParams;
 

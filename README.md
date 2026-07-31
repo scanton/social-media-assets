@@ -22,45 +22,35 @@ Everything is downloadable in-app. Nothing is stored server-side.
 pnpm install
 ```
 
-Create `.env.local` from the template:
-
-```bash
-cp .env.example .env.local
-```
-
-Generate a session secret:
-
-```bash
-openssl rand -base64 32
-```
-
-Then run:
-
 ```bash
 pnpm dev
 ```
 
-Open http://localhost:3000 and paste your fal.ai key when prompted.
+Open http://localhost:3000 and paste your fal.ai key when prompted. No `.env` file, no accounts,
+no setup — that's it.
 
-> Without `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`, the studio runs unauthenticated **in local
-> development only** and shows a warning banner. A production build (`NODE_ENV=production`,
-> which Vercel always sets) hard-fails closed and requires Google sign-in.
+## Authentication is off
 
-## Google sign-in
+The studio currently runs as an **open demo**. There is no sign-in.
 
-Google Cloud Console → APIs & Services → Credentials → **Create OAuth client ID** → Web application.
+That's a deliberate trade: every user supplies their own fal.ai key, so there's no spend on a
+shared account, no secret of ours stored anywhere, and no data to leak. The key is the real gate.
+The app is also `noindex`, so it won't turn up in search.
 
-Authorised redirect URI:
+The Google / `@heartstamp.com` implementation is **still in the repo, intact and type-checked** —
+nothing was deleted. To turn it back on:
 
-```
-https://<your-domain>/api/auth/callback/google
-```
+1. Set `AUTH_ENABLED = true` in [`src/auth.ts`](src/auth.ts).
+2. Fill in `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` (see `.env.example`;
+   generate the secret with `openssl rand -base64 32`).
+3. Google Cloud Console → APIs & Services → Credentials → **Create OAuth client ID** →
+   Web application, with redirect URI `https://<your-domain>/api/auth/callback/google`
+   (add `http://localhost:3000/api/auth/callback/google` for local testing).
 
-For local testing add `http://localhost:3000/api/auth/callback/google` too.
-
-Access is restricted to **@heartstamp.com** accounts. The `hd` parameter only biases Google's
-account chooser — the actual gate is the `signIn` callback in [`src/auth.ts`](src/auth.ts), which
-verifies the Workspace domain (`hd` claim) or a verified `@heartstamp.com` address.
+That one flag restores the sign-in page, the per-route API guards, and the account UI in the
+header. Access is restricted to **@heartstamp.com**: the `hd` parameter only biases Google's
+account chooser — the actual gate is the `signIn` callback, which verifies the Workspace domain
+(`hd` claim) or a verified `@heartstamp.com` address.
 
 ## The fal.ai key
 
@@ -116,8 +106,11 @@ pnpm lint
 
 ## Deploying to Vercel
 
-Set `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, and `AUTH_URL` (your canonical origin)
-in project environment variables, then add the production callback URL to the Google OAuth client.
+No environment variables are needed while authentication is off — just deploy.
+
+If you re-enable auth, add `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` and `AUTH_URL`
+(your canonical origin) to the project environment, then add the production callback URL to the
+Google OAuth client.
 
 ## Extending the taxonomy
 

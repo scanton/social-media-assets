@@ -21,17 +21,33 @@ const STEPS = [
   { n: 4, label: "Motion", emoji: "🎬" },
 ];
 
-export function Studio({ user, devMode }: { user: StudioUser; devMode: boolean }) {
+export function Studio({
+  user,
+  authEnabled,
+  devMode,
+}: {
+  user: StudioUser;
+  authEnabled: boolean;
+  devMode: boolean;
+}) {
   return (
     <ToastProvider>
       <StudioProvider>
-        <StudioShell user={user} devMode={devMode} />
+        <StudioShell user={user} authEnabled={authEnabled} devMode={devMode} />
       </StudioProvider>
     </ToastProvider>
   );
 }
 
-function StudioShell({ user, devMode }: { user: StudioUser; devMode: boolean }) {
+function StudioShell({
+  user,
+  authEnabled,
+  devMode,
+}: {
+  user: StudioUser;
+  authEnabled: boolean;
+  devMode: boolean;
+}) {
   const s = useStudio();
   const [rollOpen, setRollOpen] = useState(false);
 
@@ -123,26 +139,29 @@ function StudioShell({ user, devMode }: { user: StudioUser; devMode: boolean }) 
               <span className="sm:hidden">fal</span>
             </button>
 
-            <div className="flex items-center gap-2 border-l border-hairline pl-2">
-              {user.image ? (
-                /* eslint-disable-next-line @next/next/no-img-element */
-                <img src={user.image} alt="" className="h-8 w-8 rounded-full" />
-              ) : (
-                <span className="grid h-8 w-8 place-items-center rounded-full bg-canvas-2 text-xs font-bold text-ink-soft">
-                  {user.name.slice(0, 1).toUpperCase()}
-                </span>
-              )}
-              {!devMode && (
-                <form action={signOutAction}>
-                  <button
-                    type="submit"
-                    className="focus-stamp hidden rounded-full px-2 py-1 text-[11px] font-bold text-ink-faint transition-colors hover:text-stamp-600 sm:block"
-                  >
-                    Sign out
-                  </button>
-                </form>
-              )}
-            </div>
+{/* No account UI while AUTH_ENABLED is false — see src/auth.ts */}
+            {authEnabled && (
+              <div className="flex items-center gap-2 border-l border-hairline pl-2">
+                {user.image ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img src={user.image} alt="" className="h-8 w-8 rounded-full" />
+                ) : (
+                  <span className="grid h-8 w-8 place-items-center rounded-full bg-canvas-2 text-xs font-bold text-ink-soft">
+                    {user.name.slice(0, 1).toUpperCase()}
+                  </span>
+                )}
+                {!devMode && (
+                  <form action={signOutAction}>
+                    <button
+                      type="submit"
+                      className="focus-stamp hidden rounded-full px-2 py-1 text-[11px] font-bold text-ink-faint transition-colors hover:text-stamp-600 sm:block"
+                    >
+                      Sign out
+                    </button>
+                  </form>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
