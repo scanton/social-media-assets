@@ -25,6 +25,7 @@ import {
   type VideoConfig,
 } from "@/lib/persisted-store";
 import { composeScene } from "@/lib/compose";
+import { stampVideoLogo } from "@/lib/video-logo";
 import { useToast } from "./ui";
 
 export type { BaseConfig, VideoConfig };
@@ -528,21 +529,46 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           generate_audio: video.generateAudio,
           bitrate_mode: "high",
         },
-        toAssets: (data, jobId) => {
+        toAssets: async (data, jobId) => {
           const v = (data as { video?: { url: string; content_type?: string } }).video;
           if (!v) return [];
+
+          /*
+           * Flow 1 inherits the logo from the still it animates. Flow 2 has no
+           * still, so the emblem is burned in afterwards with ffmpeg compose.
+           */
+          let url = v.url;
+          let stamped = false;
+          if (base.logo) {
+            try {
+              url = await stampVideoLogo(v.url);
+              stamped = true;
+            } catch (err) {
+              toast(
+                `Logo stamp failed, keeping the un-stamped clip. ${(err as Error).message}`,
+                "error",
+              );
+            }
+          }
+
           return [
             {
               id: `${jobId}-0`,
               kind: "video" as const,
-              url: v.url,
+              url,
               contentType: v.content_type ?? "video/mp4",
               label: `One-shot · ${device?.label ?? "scene"}`,
-              tags: ["flow 2", video.resolution, byId(MOTIONS, video.motionId)?.label ?? "motion"],
+              tags: [
+                "flow 2",
+                video.resolution,
+                base.logo ? (stamped ? "logo" : "no logo") : "no logo",
+                byId(MOTIONS, video.motionId)?.label ?? "motion",
+              ],
               createdAt: Date.now(),
               parentId: clip.id,
               prompt,
               surface,
+              rawUrl: stamped ? v.url : undefined,
             },
           ];
         },

@@ -68,7 +68,8 @@ export function Flow2() {
         <p className="mt-2.5 max-w-2xl text-sm leading-relaxed text-ink-soft">
           Describe the scene and hand Seedance your card clip in a single pass — no still image in
           between. Faster and simpler, but the artwork is whatever Seedance renders rather than a
-          pixel-exact composite, and there&apos;s no still to stamp the logo onto.
+          pixel-exact composite. The logo is burned in afterwards with ffmpeg, so it still lands in
+          the same corner as Flow 1.
         </p>
       </header>
 
@@ -224,6 +225,13 @@ export function Flow2() {
               </div>
 
               <Switch
+                checked={base.logo}
+                onChange={(logo) => s.setBase({ logo })}
+                label="Stamp the HeartStamp logo"
+                hint="Burns the emblem into the bottom-right corner of the finished clip with ffmpeg, in the same spot Flow 1 puts it. Adds a few seconds and about a third of a cent."
+              />
+
+              <Switch
                 checked={video.generateAudio}
                 onChange={(generateAudio) => s.setVideo({ generateAudio })}
                 label="Generate audio"
@@ -273,8 +281,9 @@ export function Flow2() {
               </div>
 
               <p className="mt-3 rounded-xl bg-canvas-2 px-3 py-2 text-xs leading-relaxed text-ink-soft">
-                🕐 One Seedance call, a few minutes. No still, so no logo stamp and no exact-card
-                guarantee — that&apos;s the thing being tested.
+                🕐 One Seedance call, a few minutes{base.logo ? ", then a quick ffmpeg pass for the logo" : ""}.
+                No still, so the card on screen is whatever Seedance renders rather than a pixel-exact
+                composite.
               </p>
 
               <button

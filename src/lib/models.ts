@@ -11,6 +11,8 @@ export const MODELS = {
   animate: "bytedance/seedance-2.0/image-to-video",
   /** Seedance 2.0 reference-to-video — plays an uploaded card clip on the surface. */
   screenReplace: "bytedance/seedance-2.0/reference-to-video",
+  /** ffmpeg timeline compose — used to burn the logo overlay into a finished clip. */
+  videoCompose: "fal-ai/ffmpeg-api/compose",
 } as const;
 
 export type ModelId = (typeof MODELS)[keyof typeof MODELS];
@@ -23,4 +25,5 @@ export const COST_HINTS: Record<string, string> = {
   [MODELS.compositeImage]: "~$0.02–0.19 / image",
   [MODELS.animate]: "video pricing by resolution × duration",
   [MODELS.screenReplace]: "video pricing by resolution × duration",
+  [MODELS.videoCompose]: "~$0.0002 / second",
 };

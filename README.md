@@ -14,8 +14,13 @@ Two workflows, switchable from the tabs in the header.
 | **3 · Motion** | Animate the scene, or play the card clip on the device in it | `bytedance/seedance-2.0/image-to-video` · `…/reference-to-video` |
 
 **Flow 2 — straight to video.** One page, one Seedance call, no still. Needs an uploaded clip.
-Faster, but the artwork is whatever Seedance renders rather than a pixel-exact composite, and with
-no still there is nothing to stamp the logo onto. It exists to be measured against flow 1.
+Faster, but the artwork on screen is whatever Seedance renders rather than a pixel-exact composite.
+
+The logo still lands: flow 1 inherits it from the still it animates, and flow 2 burns it in
+afterwards via `fal-ai/ffmpeg-api/compose`. That endpoint has no position or scale controls for an
+image track, so [`src/lib/video-logo.ts`](src/lib/video-logo.ts) generates a transparent PNG at the
+clip's exact dimensions with the emblem already in the corner — a full-frame overlay needs no
+positioning, and it reuses the same `paintLogo()` the stills use, so placement matches exactly.
 
 Everything is downloadable in-app. Nothing is stored server-side.
 
