@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useMemo, useState, type ReactNo
 import {
   ASPECTS,
   buildAnimatePrompt,
+  buildOneShotPrompt,
   buildScenePrompt,
   buildScreenReplacePrompt,
   byId,
@@ -60,9 +61,13 @@ type StudioValue = {
   busy: boolean;
   cancelAll: () => void;
 
+  flow: 1 | 2;
+  setFlow: (f: 1 | 2) => void;
+
   basePlanCount: number;
   generateScenes: () => void;
   generateVideo: () => void;
+  generateOneShot: () => void;
 
   keyConnected: boolean;
   setKeyConnected: (v: boolean) => void;
@@ -89,7 +94,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
 
   // assets / base / video / surface live in an external store so they survive a
   // reload without a hydration-mismatch dance. See lib/persisted-store.ts.
-  const { assets, base, video, surface, cardArtId, cardVideoId, baseId } = usePersisted();
+  const { assets, base, video, surface, cardArtId, cardVideoId, baseId, flow } = usePersisted();
+  const setFlow = useCallback((f: 1 | 2) => updatePersisted({ flow: f }), []);
 
   const [step, setStepRaw] = useState(1);
 
@@ -480,6 +486,70 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     ]);
   }, [assets, base.sceneId, base.logo, baseId, cardVideoId, keyConnected, runner, surface, toast, video]);
 
+  /* --------------------- flow 2: straight to video -------------------- */
+
+  const generateOneShot = useCallback(() => {
+    if (!keyConnected) {
+      setKeyDialogOpen(true);
+      return;
+    }
+    const clip = assets.find((a) => a.id === cardVideoId && a.kind === "card-video");
+    if (!clip) {
+      toast("Flow 2 needs an uploaded card clip — add one in step 1.", "error");
+      return;
+    }
+
+    const prompt = buildOneShotPrompt({
+      deviceId: base.deviceId,
+      sceneId: base.sceneId,
+      angleId: base.angleIds[0] ?? "pov",
+      lightingId: base.lightingId,
+      lookId: base.lookId,
+      presenceId: base.presenceId,
+      audienceId: base.audienceId,
+      framingId: base.framingId,
+      motionId: video.motionId,
+      extraNotes: [base.notes, video.notes].filter(Boolean).join(" "),
+    });
+
+    const device = byId(DEVICES, base.deviceId);
+
+    void runner.run([
+      {
+        label: `One-shot · ${device?.label ?? "scene"}`,
+        kind: "video",
+        model: MODELS.screenReplace,
+        input: {
+          prompt,
+          video_urls: [clip.url],
+          resolution: video.resolution,
+          duration: video.duration,
+          aspect_ratio: video.aspectRatio === "auto" ? "9:16" : video.aspectRatio,
+          generate_audio: video.generateAudio,
+          bitrate_mode: "high",
+        },
+        toAssets: (data, jobId) => {
+          const v = (data as { video?: { url: string; content_type?: string } }).video;
+          if (!v) return [];
+          return [
+            {
+              id: `${jobId}-0`,
+              kind: "video" as const,
+              url: v.url,
+              contentType: v.content_type ?? "video/mp4",
+              label: `One-shot · ${device?.label ?? "scene"}`,
+              tags: ["flow 2", video.resolution, byId(MOTIONS, video.motionId)?.label ?? "motion"],
+              createdAt: Date.now(),
+              parentId: clip.id,
+              prompt,
+              surface,
+            },
+          ];
+        },
+      },
+    ]);
+  }, [assets, base, cardVideoId, keyConnected, runner, surface, toast, video]);
+
   const value = useMemo<StudioValue>(
     () => ({
       step,
@@ -504,9 +574,12 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       jobs: runner.jobs,
       busy: runner.busy,
       cancelAll: runner.cancelAll,
+      flow,
+      setFlow,
       basePlanCount,
       generateScenes,
       generateVideo,
+      generateOneShot,
       keyConnected,
       setKeyConnected,
       openKeyDialog: () => setKeyDialogOpen(true),
@@ -521,7 +594,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       base, setBase, video, setVideo,
       cardArtId, setCardArtId, cardVideoId, setCardVideoId, baseId, setBaseId,
       runner.jobs, runner.busy, runner.cancelAll, basePlanCount,
-      generateScenes, generateVideo,
+      generateScenes, generateVideo, generateOneShot, flow, setFlow,
       keyConnected, keyDialogOpen, keyHint, confettiKey,
     ],
   );

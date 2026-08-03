@@ -3,13 +3,19 @@
 Generate social-media assets for HeartStamp printed (POD) and 3D digital greeting cards.
 Base lifestyle images → card composites → TikTok / Reels / Pinterest video.
 
-Three steps:
+Two workflows, switchable from the tabs in the header.
+
+**Flow 1 — still, then video.** Three steps:
 
 | Step | What it does | Model |
 | --- | --- | --- |
 | **1 · Card** | Upload printed-card artwork and/or an 8–13s 3D card clip | direct-to-fal upload |
-| **2 · Scene** | Batch photoreal lifestyle scenes **with the card already on the surface** and the logo stamped in the corner | `openai/gpt-image-2/edit` |
+| **2 · Scene** | Batch photoreal lifestyle scenes, artwork composited exactly onto the screen, logo stamped | `openai/gpt-image-2` (+ browser canvas) |
 | **3 · Motion** | Animate the scene, or play the card clip on the device in it | `bytedance/seedance-2.0/image-to-video` · `…/reference-to-video` |
+
+**Flow 2 — straight to video.** One page, one Seedance call, no still. Needs an uploaded clip.
+Faster, but the artwork is whatever Seedance renders rather than a pixel-exact composite, and with
+no still there is nothing to stamp the logo onto. It exists to be measured against flow 1.
 
 Everything is downloadable in-app. Nothing is stored server-side.
 
@@ -87,6 +93,15 @@ low-saturation blob whose corner-quad it actually fills — which is what reject
 affine-only, so the projective map is applied by subdividing into a 32×32 mesh and drawing each cell
 affinely; the error inside a cell is well under a pixel. The detected quad is pushed outward a few
 pixels on purpose — overhang onto the black bezel is invisible, a bright rim of bare screen is not.
+
+Corners come from fitting a line to each straight edge and intersecting neighbours, not from extreme
+points. Phone screens are rounded, and an extreme point sits on the corner *arc* — about 0.29r inside
+the true corner, which is ~20px on a phone screen and showed up as a white rim of bare screen around
+the artwork.
+
+The artwork is centre-cropped to the screen's aspect rather than stretched to it (a 9:16 card on a
+~19.5:9 screen loses ~7% from each side instead of being squashed), with a little overscan, and is
+clipped to a rounded outline so it never squares off over the bezel's corners.
 
 Detection can miss, so every scene keeps its pre-composite render and can be re-aligned by dragging
 four handles ([`ScreenAligner`](src/components/ScreenAligner.tsx)); tiles that need it are flagged.

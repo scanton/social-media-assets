@@ -101,8 +101,8 @@ function largestBlob({ data, w, h }: Mask): number[] | null {
   return best;
 }
 
-/** Corner extraction for a convex, roughly upright quad. */
-function cornersOf(blob: number[], w: number): Quad {
+/** Rough corners from extreme points — good enough to seed the edge fit. */
+function roughCorners(blob: number[], w: number): Quad {
   let tl = 0, tr = 0, br = 0, bl = 0;
   let tlV = Infinity, trV = -Infinity, brV = -Infinity, blV = Infinity;
 
@@ -120,6 +120,101 @@ function cornersOf(blob: number[], w: number): Quad {
   return [pt(tl), pt(tr), pt(br), pt(bl)];
 }
 
+type Line = { a: number; b: number; c: number }; // ax + by + c = 0, (a,b) unit
+
+/** Total-least-squares line through a point cloud. */
+function fitLine(pts: Pt[]): Line | null {
+  const n = pts.length;
+  if (n < 8) return null;
+  let mx = 0, my = 0;
+  for (const p of pts) { mx += p.x; my += p.y; }
+  mx /= n; my /= n;
+
+  let sxx = 0, syy = 0, sxy = 0;
+  for (const p of pts) {
+    const dx = p.x - mx;
+    const dy = p.y - my;
+    sxx += dx * dx; syy += dy * dy; sxy += dx * dy;
+  }
+  // Smallest-eigenvector of the scatter matrix is the line normal.
+  const theta = 0.5 * Math.atan2(2 * sxy, sxx - syy);
+  const dirX = Math.cos(theta);
+  const dirY = Math.sin(theta);
+  const a = -dirY;
+  const b = dirX;
+  return { a, b, c: -(a * mx + b * my) };
+}
+
+function intersect(l1: Line, l2: Line): Pt | null {
+  const det = l1.a * l2.b - l2.a * l1.b;
+  if (Math.abs(det) < 1e-6) return null; // parallel — no usable corner
+  return {
+    x: (l1.b * l2.c - l2.b * l1.c) / det,
+    y: (l2.a * l1.c - l1.a * l2.c) / det,
+  };
+}
+
+/**
+ * Refines the corners by fitting a line to each straight edge and intersecting
+ * neighbours.
+ *
+ * Extreme points sit on the corner *arc* of a rounded screen, not at the corner,
+ * which pulls every corner inward by roughly 0.29r — around 20px on a phone
+ * screen. That is what left a white rim of bare screen around the artwork.
+ * Extrapolating the straight edges recovers the true corner.
+ */
+function refineCorners(blob: number[], mask: Mask, rough: Quad): Quad | null {
+  const inBlob = new Uint8Array(mask.w * mask.h);
+  for (const i of blob) inBlob[i] = 1;
+
+  // Boundary pixels only.
+  const edge: Pt[] = [];
+  for (const i of blob) {
+    const x = i % mask.w;
+    const y = (i / mask.w) | 0;
+    if (
+      x === 0 || y === 0 || x === mask.w - 1 || y === mask.h - 1 ||
+      !inBlob[i - 1] || !inBlob[i + 1] || !inBlob[i - mask.w] || !inBlob[i + mask.w]
+    ) {
+      edge.push({ x, y });
+    }
+  }
+  if (edge.length < 40) return null;
+
+  const buckets: Pt[][] = [[], [], [], []];
+  for (const p of edge) {
+    let best = -1;
+    let bestD = Infinity;
+    for (let k = 0; k < 4; k++) {
+      const A = rough[k];
+      const B = rough[(k + 1) % 4];
+      const vx = B.x - A.x;
+      const vy = B.y - A.y;
+      const len2 = vx * vx + vy * vy || 1;
+      // Skip the corner arcs at either end of the edge.
+      const t = ((p.x - A.x) * vx + (p.y - A.y) * vy) / len2;
+      if (t < 0.2 || t > 0.8) continue;
+      const d = Math.abs(vx * (p.y - A.y) - vy * (p.x - A.x)) / Math.sqrt(len2);
+      if (d < bestD) { bestD = d; best = k; }
+    }
+    if (best >= 0 && bestD < Math.sqrt(mask.w * mask.h) * 0.06) buckets[best].push(p);
+  }
+
+  const lines = buckets.map(fitLine);
+  if (lines.some((l) => !l)) return null;
+
+  const corners: Pt[] = [];
+  for (let k = 0; k < 4; k++) {
+    // Corner k is where edge k-1 meets edge k.
+    const p = intersect(lines[(k + 3) % 4]!, lines[k]!);
+    if (!p) return null;
+    // Reject a wild extrapolation — better to fall back than invent a corner.
+    if (Math.hypot(p.x - rough[k].x, p.y - rough[k].y) > Math.sqrt(mask.w * mask.h) * 0.12) return null;
+    corners.push(p);
+  }
+  return corners as Quad;
+}
+
 export type Detection = { quad: Quad; confidence: number };
 
 export function detectScreenQuad(bitmap: ImageBitmap): Detection | null {
@@ -134,7 +229,7 @@ export function detectScreenQuad(bitmap: ImageBitmap): Detection | null {
   if (blob.length < frameArea * 0.015) return null; // too small to be the screen
   if (blob.length > frameArea * 0.85) return null; // that's the whole picture
 
-  const quad = cornersOf(blob, mask.w);
+  const quad = roughCorners(blob, mask.w);
   const area = quadArea(quad);
   if (area <= 0) return null;
 
@@ -158,14 +253,17 @@ export function detectScreenQuad(bitmap: ImageBitmap): Detection | null {
    * bezel is invisible, whereas falling short leaves a bright sliver of bare
    * screen around the card.
    */
+  const refined = refineCorners(blob, mask, quad) ?? quad;
+
   const inv = 1 / scale;
-  const full = quad.map((p) => ({ x: p.x * inv, y: p.y * inv }));
+  const full = refined.map((p) => ({ x: p.x * inv, y: p.y * inv }));
 
   const cx = (full[0].x + full[1].x + full[2].x + full[3].x) / 4;
   const cy = (full[0].y + full[1].y + full[2].y + full[3].y) / 4;
-  /* Overhang onto the dark bezel is invisible at social sizes; falling short
-     leaves a bright rim of bare screen around the card, which is not. */
-  const OUTSET = 13; // source pixels
+  /* Small now that the edge fit recovers true corners — just covers the 1px
+     erode and threshold slack. Still biased outward: overhang onto the dark
+     bezel is invisible, a bright rim of bare screen is not. */
+  const OUTSET = 5; // source pixels
   const grown = full.map(({ x, y }) => {
     const dx = x - cx;
     const dy = y - cy;

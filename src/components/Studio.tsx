@@ -11,13 +11,20 @@ import { AssetTile } from "./AssetTile";
 import { Step1Card } from "./steps/Step1Card";
 import { Step2Scene } from "./steps/Step2Scene";
 import { Step3Motion } from "./steps/Step3Motion";
+import { Flow2 } from "./Flow2";
 import { Backdrop, Button, Confetti, StampMark, ToastProvider, cx } from "./ui";
 
-const STEPS = [
-  { n: 1, label: "Card", emoji: "💌" },
-  { n: 2, label: "Scene", emoji: "📸" },
-  { n: 3, label: "Motion", emoji: "🎬" },
-];
+const FLOW_STEPS = {
+  1: [
+    { n: 1, label: "Card", emoji: "💌" },
+    { n: 2, label: "Scene", emoji: "📸" },
+    { n: 3, label: "Motion", emoji: "🎬" },
+  ],
+  2: [
+    { n: 1, label: "Card", emoji: "💌" },
+    { n: 2, label: "Video", emoji: "🎬" },
+  ],
+} as const;
 
 export function Studio({
   user,
@@ -59,11 +66,18 @@ function StudioShell({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const done = {
-    1: s.assets.some((a) => a.kind === "card-art" || a.kind === "card-video"),
-    2: s.assets.some((a) => a.kind === "base"),
-    3: s.assets.some((a) => a.kind === "video"),
-  } as Record<number, boolean>;
+  const steps = FLOW_STEPS[s.flow];
+  const done: Record<number, boolean> =
+    s.flow === 2
+      ? {
+          1: s.assets.some((a) => a.kind === "card-video"),
+          2: s.assets.some((a) => a.kind === "video"),
+        }
+      : {
+          1: s.assets.some((a) => a.kind === "card-art" || a.kind === "card-video"),
+          2: s.assets.some((a) => a.kind === "base"),
+          3: s.assets.some((a) => a.kind === "video"),
+        };
 
   return (
     <div className="relative min-h-dvh">
@@ -162,10 +176,44 @@ function StudioShell({
           </div>
         </div>
 
+        {/* ------------------------------ flows ------------------------------ */}
+        <div className="mx-auto max-w-[110rem] px-4 pb-2 sm:px-6">
+          <div
+            role="tablist"
+            aria-label="Workflow"
+            className="inline-flex gap-1 rounded-full border border-hairline bg-canvas-2 p-1"
+          >
+            {(
+              [
+                { id: 1, label: "Flow 1", hint: "Still → video" },
+                { id: 2, label: "Flow 2", hint: "Straight to video" },
+              ] as const
+            ).map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                role="tab"
+                aria-selected={s.flow === f.id}
+                onClick={() => s.setFlow(f.id)}
+                title={f.hint}
+                className={cx(
+                  "focus-stamp rounded-full px-3.5 py-1.5 text-xs font-bold transition-all duration-200",
+                  s.flow === f.id
+                    ? "bg-white text-ink shadow-sm"
+                    : "text-ink-faint hover:text-ink",
+                )}
+              >
+                {f.label}
+                <span className="ml-1.5 hidden font-medium text-ink-faint sm:inline">{f.hint}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* ----------------------------- step rail ---------------------------- */}
         <nav className="mx-auto max-w-[110rem] px-4 pb-3 sm:px-6" aria-label="Workflow steps">
           <ol className="flex items-center gap-1.5 overflow-x-auto pb-1">
-            {STEPS.map((st, i) => {
+            {steps.map((st, i) => {
               const active = s.step === st.n;
               return (
                 <li key={st.n} className="flex shrink-0 items-center gap-1.5">
@@ -197,7 +245,7 @@ function StudioShell({
                     </span>
                     {st.label}
                   </button>
-                  {i < STEPS.length - 1 && (
+                  {i < steps.length - 1 && (
                     <span
                       className={cx(
                         "h-px w-4 transition-colors duration-500 sm:w-6",
@@ -223,10 +271,16 @@ function StudioShell({
 
       {/* ------------------------------- main ------------------------------- */}
       <main className="mx-auto max-w-[110rem] px-4 py-8 sm:px-6 sm:py-10">
-        <div key={s.step} className="animate-rise">
-          {s.step === 1 && <Step1Card />}
-          {s.step === 2 && <Step2Scene />}
-          {s.step === 3 && <Step3Motion />}
+        <div key={`${s.flow}-${s.step}`} className="animate-rise">
+          {s.flow === 2 ? (
+            s.step === 1 ? <Step1Card /> : <Flow2 />
+          ) : (
+            <>
+              {s.step === 1 && <Step1Card />}
+              {s.step === 2 && <Step2Scene />}
+              {s.step === 3 && <Step3Motion />}
+            </>
+          )}
         </div>
       </main>
 

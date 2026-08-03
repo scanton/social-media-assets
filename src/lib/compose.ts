@@ -1,7 +1,13 @@
 "use client";
 
 import { downloadUrl, uploadToFal } from "@/lib/client-api";
-import { drawImageInQuad, type Quad } from "@/lib/perspective";
+import {
+  coverCrop,
+  drawImageInQuad,
+  quadSize,
+  roundedQuadPath,
+  type Quad,
+} from "@/lib/perspective";
 import { detectScreenQuad } from "@/lib/screen-detect";
 import { heartStampLogo, paintLogo } from "@/lib/watermark";
 
@@ -58,7 +64,24 @@ export async function composeScene(opts: {
   if (card) {
     quad = opts.quad ?? detectScreenQuad(render)?.quad ?? null;
     if (quad) {
-      drawImageInQuad(ctx, card, quad);
+      /*
+       * Clip to a rounded outline so artwork never squares off over the bezel's
+       * corners. The radius is a little under a real phone's (~5% of screen
+       * width) so the screen's own rounding stays fully covered.
+       */
+      const { w, h } = quadSize(quad);
+      const path = roundedQuadPath(quad, Math.min(w, h) * 0.038);
+
+      ctx.save();
+      ctx.beginPath();
+      path.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+      ctx.closePath();
+      ctx.clip();
+      // Centre-crop to the screen's aspect instead of stretching to it, with a
+      // little overscan so the artwork's outermost edge never sits on the rim.
+      drawImageInQuad(ctx, card, quad, { srcRect: coverCrop(card, quad, 0.012) });
+      ctx.restore();
+
       placed = true;
     }
   }

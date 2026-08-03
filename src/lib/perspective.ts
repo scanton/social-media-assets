@@ -102,11 +102,11 @@ export function drawImageInQuad(
   ctx: CanvasRenderingContext2D,
   img: ImageBitmap,
   quad: Quad,
-  steps = 32,
+  opts: { srcRect?: { x: number; y: number; w: number; h: number }; steps?: number } = {},
 ) {
+  const steps = opts.steps ?? 32;
   const m = unitSquareToQuad(quad);
-  const sw = img.width;
-  const sh = img.height;
+  const src = opts.srcRect ?? { x: 0, y: 0, w: img.width, h: img.height };
 
   for (let i = 0; i < steps; i++) {
     for (let j = 0; j < steps; j++) {
@@ -115,10 +115,10 @@ export function drawImageInQuad(
       const v0 = j / steps;
       const v1 = (j + 1) / steps;
 
-      const s00 = { x: u0 * sw, y: v0 * sh };
-      const s10 = { x: u1 * sw, y: v0 * sh };
-      const s11 = { x: u1 * sw, y: v1 * sh };
-      const s01 = { x: u0 * sw, y: v1 * sh };
+      const s00 = { x: src.x + u0 * src.w, y: src.y + v0 * src.h };
+      const s10 = { x: src.x + u1 * src.w, y: src.y + v0 * src.h };
+      const s11 = { x: src.x + u1 * src.w, y: src.y + v1 * src.h };
+      const s01 = { x: src.x + u0 * src.w, y: src.y + v1 * src.h };
 
       const d00 = project(m, u0, v0);
       const d10 = project(m, u1, v0);
@@ -129,6 +129,75 @@ export function drawImageInQuad(
       drawTriangle(ctx, img, [s00, s11, s01], [d00, d11, d01]);
     }
   }
+}
+
+/** Average pixel width and height of a quad's opposing edges. */
+export function quadSize(q: Quad) {
+  const d = (a: Pt, b: Pt) => Math.hypot(a.x - b.x, a.y - b.y);
+  return {
+    w: (d(q[0], q[1]) + d(q[3], q[2])) / 2,
+    h: (d(q[0], q[3]) + d(q[1], q[2])) / 2,
+  };
+}
+
+/**
+ * Centre-crops a source image to the quad's aspect ratio, so artwork covers the
+ * screen without being stretched. A 9:16 card on a ~19.5:9 phone screen loses a
+ * sliver from each side rather than being squashed.
+ *
+ * `overscan` pushes the crop slightly tighter still, so the very edge of the
+ * artwork — which may be a soft or off-colour margin — never lands right on the
+ * screen boundary.
+ */
+export function coverCrop(
+  img: { width: number; height: number },
+  quad: Quad,
+  overscan = 0,
+) {
+  const { w: qw, h: qh } = quadSize(quad);
+  const target = qw / qh;
+  const source = img.width / img.height;
+
+  let w = img.width;
+  let h = img.height;
+  if (source > target) w = img.height * target;
+  else h = img.width / target;
+
+  w *= 1 - overscan;
+  h *= 1 - overscan;
+
+  return { x: (img.width - w) / 2, y: (img.height - h) / 2, w, h };
+}
+
+/**
+ * Outline of the quad with rounded corners, as a projected polyline.
+ *
+ * Device screens are rounded, so filling the sharp-cornered quad would paint
+ * artwork over the bezel's corners. The radius is deliberately a little smaller
+ * than a real phone's, which keeps the corners fully covered.
+ */
+export function roundedQuadPath(quad: Quad, radiusPx: number, perCorner = 10): Pt[] {
+  const m = unitSquareToQuad(quad);
+  const { w, h } = quadSize(quad);
+  const ru = Math.min(0.45, radiusPx / Math.max(w, 1));
+  const rv = Math.min(0.45, radiusPx / Math.max(h, 1));
+
+  // Corner centres in unit space, walking TL -> TR -> BR -> BL.
+  const arcs: { cu: number; cv: number; from: number }[] = [
+    { cu: ru, cv: rv, from: Math.PI },
+    { cu: 1 - ru, cv: rv, from: -Math.PI / 2 },
+    { cu: 1 - ru, cv: 1 - rv, from: 0 },
+    { cu: ru, cv: 1 - rv, from: Math.PI / 2 },
+  ];
+
+  const out: Pt[] = [];
+  for (const arc of arcs) {
+    for (let i = 0; i <= perCorner; i++) {
+      const a = arc.from + (Math.PI / 2) * (i / perCorner);
+      out.push(project(m, arc.cu + ru * Math.cos(a), arc.cv + rv * Math.sin(a)));
+    }
+  }
+  return out;
 }
 
 export const quadArea = (q: Quad) => {

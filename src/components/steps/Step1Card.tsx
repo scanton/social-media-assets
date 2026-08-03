@@ -293,7 +293,7 @@ export function Step1Card() {
 
       <div className="flex justify-end">
         <Button size="lg" onClick={() => s.setStep(2)}>
-          Build the base scene
+          {s.flow === 2 ? "Set up the video" : "Build the scene"}
           <span aria-hidden>→</span>
         </Button>
       </div>

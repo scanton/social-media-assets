@@ -47,6 +47,8 @@ export type Persisted = {
   cardArtId: string | null;
   cardVideoId: string | null;
   baseId: string | null;
+  /** 1 = still then animate. 2 = straight to Seedance, no still. */
+  flow: 1 | 2;
 };
 
 export const DEFAULT_BASE: BaseConfig = {
@@ -83,6 +85,7 @@ const DEFAULTS: Persisted = {
   cardArtId: null,
   cardVideoId: null,
   baseId: null,
+  flow: 1,
 };
 
 const has = (list: { id: string }[], id: string) => list.some((o) => o.id === id);
@@ -164,6 +167,7 @@ function readStorage(): Persisted {
       cardArtId: saved.cardArtId,
       cardVideoId: saved.cardVideoId,
       baseId: saved.baseId,
+      flow: saved.flow === 2 ? 2 : 1,
     });
   } catch {
     return DEFAULTS;

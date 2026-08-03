@@ -1093,3 +1093,56 @@ export function buildScreenReplacePrompt(opts: {
     opts.extraNotes?.trim(),
   ]);
 }
+
+/* ------------------------- ONE-SHOT (FLOW 2) ------------------------ */
+
+/**
+ * Flow 2 skips the still entirely and asks Seedance for the finished clip in a
+ * single pass: the scene is described in words, and the uploaded card animation
+ * is supplied as @Video1 to play on the device.
+ *
+ * The trade is exactness for simplicity — there is no composite step, so the
+ * artwork is whatever Seedance renders on the screen, and the logo can't be
+ * burned in. Worth measuring against flow 1 rather than assuming.
+ */
+export function buildOneShotPrompt(sel: {
+  deviceId: string;
+  sceneId: string;
+  angleId: string;
+  lightingId: string;
+  lookId: string;
+  presenceId: string;
+  audienceId: string;
+  framingId: string;
+  motionId: string;
+  extraNotes?: string;
+}): string {
+  const device = byId(DEVICES, sel.deviceId);
+  const scene = byId(SCENES, sel.sceneId);
+  const angle = byId(ANGLES, sel.angleId);
+  const light = byId(LIGHTING, sel.lightingId);
+  const look = byId(LOOKS, sel.lookId);
+  const presence = byId(PRESENCE, sel.presenceId);
+  const audience = byId(AUDIENCES, sel.audienceId);
+  const motion = byId(MOTIONS, sel.motionId);
+
+  return joinPrompts([
+    `A photorealistic live-action clip of ${device?.prompt ?? "a smartphone"}`,
+    scene?.prompt,
+    presence?.prompt,
+    angle?.prompt,
+    framingClause(sel.framingId, "screen"),
+    light?.prompt,
+    look?.prompt,
+    audience ? `the styling, wardrobe and props should read as authentically ${audience.prompt}` : undefined,
+    "@Video1 is a HeartStamp greeting-card animation playing full-screen on that device. It must appear genuinely displayed on the screen, filling it edge to edge, from the very first frame of the clip",
+    "Lock it to the screen with correct perspective and keystone for the whole clip — it must never slide, drift, detach or change",
+    "Give it believable emissive screen brightness plus the scene's own reflections, so it reads as displayed rather than pasted on",
+    "@Video1 is screen content, not a scene to stage. Never recreate, re-enact or reposition its subjects in the physical environment — its imagery exists only as pixels inside the screen and nowhere else in the shot",
+    SCREEN_CONTAINMENT_CLAUSE,
+    NO_TOUCH_CLAUSE,
+    motion?.prompt,
+    "Realistic physics and motion blur. No text overlays, no captions, no watermarks, no logos, no scene cuts",
+    sel.extraNotes?.trim(),
+  ]);
+}
