@@ -42,6 +42,7 @@ export function ResultsGrid({
   emptyEmoji = "🖼️",
   emptyText,
   cols = "sm:grid-cols-3 lg:grid-cols-4",
+  onAlign,
 }: {
   assets: Asset[];
   /** Only show in-flight tiles belonging to this step. */
@@ -51,6 +52,7 @@ export function ResultsGrid({
   emptyEmoji?: string;
   emptyText: string;
   cols?: string;
+  onAlign?: (asset: Asset) => void;
 }) {
   const s = useStudio();
   const live = s.jobs.filter(
@@ -85,6 +87,7 @@ export function ResultsGrid({
           selected={selectedId === a.id}
           onSelect={() => onSelect?.(a.id)}
           onRemove={() => s.removeAsset(a.id)}
+          onAlign={onAlign ? () => onAlign(a) : undefined}
         />
       ))}
     </div>

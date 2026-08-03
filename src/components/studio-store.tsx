@@ -23,7 +23,7 @@ import {
   type BaseConfig,
   type VideoConfig,
 } from "@/lib/persisted-store";
-import { stampLogo } from "@/lib/watermark";
+import { composeScene } from "@/lib/compose";
 import { useToast } from "./ui";
 
 export type { BaseConfig, VideoConfig };
@@ -41,6 +41,7 @@ type StudioValue = {
   assets: Asset[];
   addAssets: (a: Asset[]) => void;
   removeAsset: (id: string) => void;
+  updateAsset: (id: string, patch: Partial<Asset>) => void;
   clearAssets: () => void;
 
   base: BaseConfig;
@@ -141,6 +142,12 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const updateAsset = useCallback((id: string, patch: Partial<Asset>) => {
+    updatePersisted({
+      assets: getPersisted().assets.map((a) => (a.id === id ? { ...a, ...patch } : a)),
+    });
+  }, []);
+
   const clearAssets = useCallback(() => {
     const current = getPersisted();
     updatePersisted({
@@ -228,6 +235,19 @@ export function StudioProvider({ children }: { children: ReactNode }) {
 
     const cardAsset = assets.find((a) => a.id === cardArtId && a.kind === "card-art");
     const hasCard = Boolean(cardAsset);
+
+    /*
+     * Screens get the artwork composited in the browser, so the model is asked
+     * for a clean blank screen and nothing else. GPT-Image-2 re-typesets a
+     * reference image and crops away its background, and an approximate first
+     * frame is what makes Seedance stop believing the clip lives on the screen.
+     *
+     * Printed cards still go through the edit endpoint — paper curls and folds,
+     * so a flat perspective warp isn't the right tool there.
+     */
+    const compositeHere = hasCard && surface === "screen";
+    const modelPlacesCard = hasCard && surface === "print";
+
     const scene = byId(SCENES, base.sceneId);
     const device = byId(DEVICES, base.deviceId);
     const specs: JobSpec[] = [];
@@ -247,7 +267,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
             audienceId: base.audienceId,
             framingId: base.framingId,
             aspect: aspectId,
-            hasCard,
+            hasCard: modelPlacesCard,
             // GPT-Image-2 has no seed input, so variation comes from separate
             // calls plus a light nudge in the prompt.
             extraNotes: [
@@ -265,8 +285,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           specs.push({
             label: `${device?.label ?? "Scene"} · ${aspectId} · v${v}`,
             kind: "base",
-            model: hasCard ? MODELS.compositeImage : MODELS.baseImage,
-            input: hasCard
+            model: modelPlacesCard ? MODELS.compositeImage : MODELS.baseImage,
+            input: modelPlacesCard
               ? {
                   prompt,
                   image_urls: [cardAsset!.url],
@@ -286,28 +306,11 @@ export function StudioProvider({ children }: { children: ReactNode }) {
               const images = (data as { images?: FalImage[] }).images ?? [];
               return Promise.all(
                 images.map(async (img, i) => {
-                  let url = img.url;
-                  let contentType = img.content_type;
-
-                  if (base.logo) {
-                    try {
-                      url = await stampLogo(img.url);
-                      contentType = "image/png";
-                    } catch (err) {
-                      // A failed overlay shouldn't cost the render — keep the
-                      // clean image and say so.
-                      toast(
-                        `Logo overlay failed, keeping the un-stamped image. ${(err as Error).message}`,
-                        "error",
-                      );
-                    }
-                  }
-
-                  return {
+                  const asset: Asset = {
                     id: `${jobId}-${i}`,
                     kind: "base" as const,
-                    url,
-                    contentType,
+                    url: img.url,
+                    contentType: img.content_type,
                     width: img.width,
                     height: img.height,
                     label: `${device?.label ?? "Scene"} · v${v}`,
@@ -322,6 +325,39 @@ export function StudioProvider({ children }: { children: ReactNode }) {
                     aspect: aspectId,
                     surface,
                   };
+
+                  if (!compositeHere && !base.logo) return asset;
+
+                  try {
+                    const composed = await composeScene({
+                      renderUrl: img.url,
+                      cardUrl: compositeHere ? cardAsset!.url : null,
+                      withLogo: base.logo,
+                    });
+                    return {
+                      ...asset,
+                      url: composed.url,
+                      contentType: "image/png",
+                      rawUrl: img.url,
+                      cardUrl: compositeHere ? cardAsset!.url : undefined,
+                      quad: composed.quad ?? undefined,
+                      needsAlign: compositeHere && !composed.placed,
+                      tags: compositeHere
+                        ? [
+                            aspectId,
+                            angleId,
+                            composed.placed ? "exact card" : "screen not found",
+                            scene?.label ?? "scene",
+                          ]
+                        : asset.tags,
+                    };
+                  } catch (err) {
+                    toast(
+                      `Finishing pass failed, keeping the raw render. ${(err as Error).message}`,
+                      "error",
+                    );
+                    return asset;
+                  }
                 }),
               );
             },
@@ -453,6 +489,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       assets,
       addAssets,
       removeAsset,
+      updateAsset,
       clearAssets,
       base,
       setBase,
@@ -480,7 +517,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       confettiKey,
     }),
     [
-      step, setStep, surface, setSurface, assets, addAssets, removeAsset, clearAssets,
+      step, setStep, surface, setSurface, assets, addAssets, removeAsset, updateAsset, clearAssets,
       base, setBase, video, setVideo,
       cardArtId, setCardArtId, cardVideoId, setCardVideoId, baseId, setBaseId,
       runner.jobs, runner.busy, runner.cancelAll, basePlanCount,

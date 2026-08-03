@@ -75,10 +75,24 @@ limits are irrelevant. Uploaded files expire from fal after 7 days.
 `request_id`; the client polls `GET /api/fal/status` with backoff (1.5s → 6s). Video renders that
 take minutes never hold a function open. Batches run 3-wide and are cancellable mid-flight.
 
-**The card is placed during scene generation, not afterwards.** Step 2 hands the artwork to
-GPT-Image-2's *edit* endpoint as a reference image and asks for the whole lifestyle scene with the
-card already on the screen or printed on the panel. With no artwork selected it falls back to
-text-to-image and leaves the surface blank, so you can still batch scenes before the card exists.
+**The card is composited onto the screen in the browser, not drawn by the model.** GPT-Image-2
+treats a reference image as inspiration: given a card frame it re-typeset the text and cropped away
+the dark background. An approximate first frame is also what makes Seedance stop believing the clip
+belongs on the screen — it starts staging the clip's contents in the room instead.
+
+So for the screen surface the model is asked only for a clean blank white screen, and then
+[`src/lib/screen-detect.ts`](src/lib/screen-detect.ts) finds that screen (largest near-white,
+low-saturation blob whose corner-quad it actually fills — which is what rejects plates and cups) and
+[`src/lib/perspective.ts`](src/lib/perspective.ts) warps the artwork onto it. Canvas 2D is
+affine-only, so the projective map is applied by subdividing into a 32×32 mesh and drawing each cell
+affinely; the error inside a cell is well under a pixel. The detected quad is pushed outward a few
+pixels on purpose — overhang onto the black bezel is invisible, a bright rim of bare screen is not.
+
+Detection can miss, so every scene keeps its pre-composite render and can be re-aligned by dragging
+four handles ([`ScreenAligner`](src/components/ScreenAligner.tsx)); tiles that need it are flagged.
+
+Printed cards still go through the *edit* endpoint — paper curls and folds, so a flat perspective
+warp is the wrong tool. With no artwork selected the surface is simply left blank.
 
 **Uploading a clip also registers its first frame as card artwork.** Otherwise step 2 has nothing
 to put on the screen, the scene renders blank, and step 3's video has to invent its way out of a

@@ -742,10 +742,12 @@ function blankSurfaceClause(surface: SurfaceKind): string {
     ].join(". ");
   }
   return [
-    "The device screen must be COMPLETELY BLANK — a pure flat white rectangle with no user interface, no icons, no status bar, no wallpaper, no text and no imagery of any kind",
+    "CRITICAL REQUIREMENT: the device screen must be COMPLETELY BLANK — one pure flat white rectangle with no user interface, no icons, no status bar, no wallpaper, no text and no imagery of any kind",
+    "it must read as a single clean quadrilateral of uniform white with sharp unambiguous corners and edges, clearly separated from the rest of the scene by the device's dark bezel",
     "the entire screen area must be fully visible and unobstructed, never cropped by the frame edge and never covered by fingers, hair, props or glare",
-    "all four corners of the screen must be inside the frame with clean sharp edges and correct perspective",
-    "keep the screen evenly lit and matte with no strong specular reflections, no hotspots and no moiré",
+    "all four corners of the screen must be inside the frame with correct perspective",
+    "keep the screen evenly lit and matte with no gradient, no strong specular reflections, no hotspots and no moiré",
+    "nothing else in the photograph may be a large flat white rectangle — keep tables, plates, paper and walls clearly off-white, textured or shadowed so the screen is the only clean white panel",
   ].join(". ");
 }
 
@@ -1076,7 +1078,8 @@ export function buildScreenReplacePrompt(opts: {
   return joinPrompts([
     `Recreate the scene in @Image1 as a live-action clip, and play the footage from @Video1 on ${surfaceNoun}`,
     `@Video1 is a HeartStamp greeting-card animation. It should appear to be genuinely playing on ${surfaceNoun} in @Image1, filling it edge to edge`,
-    `@Image1 already shows the opening frame of @Video1 on ${surfaceNoun}. Continue straight on from exactly that frame — no cut, no flash, no white or blank screen, no fade in and no restart. Frame one of this clip must match @Image1 exactly`,
+    `@Image1 already shows the exact opening frame of @Video1 on ${surfaceNoun} — it is a pixel-accurate composite, not an approximation. Continue straight on from precisely that frame: no cut, no flash, no white or blank screen, no fade in, no restart, no re-framing. Frame one of this clip must be identical to @Image1`,
+    `@Video1 is screen content, not a scene to stage. Never recreate, re-enact or reposition its subjects in the physical environment — its imagery exists only as pixels inside ${surfaceNoun} and nowhere else in the shot`,
     "Lock the played footage to the surface with correct perspective and keystone for the entire clip — it must never slide, drift or detach",
     "Match the scene's brightness, colour temperature and reflections so the footage looks natively displayed, not pasted on",
     opts.surface === "print" ? PRINT_CONTAINMENT_CLAUSE : SCREEN_CONTAINMENT_CLAUSE,

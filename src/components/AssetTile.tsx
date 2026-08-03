@@ -25,12 +25,15 @@ export function AssetTile({
   selected,
   onSelect,
   onRemove,
+  onAlign,
   selectable = false,
 }: {
   asset: Asset;
   selected?: boolean;
   onSelect?: () => void;
   onRemove?: () => void;
+  /** Opens the screen aligner. Only passed where re-compositing makes sense. */
+  onAlign?: () => void;
   selectable?: boolean;
 }) {
   const [zoom, setZoom] = useState(false);
@@ -77,6 +80,12 @@ export function AssetTile({
             </span>
           )}
 
+          {asset.needsAlign && (
+            <span className="pointer-events-none absolute left-2 top-2 rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white shadow-sm">
+              ⚠ align screen
+            </span>
+          )}
+
           {selectable && (
             <button
               type="button"
@@ -113,6 +122,19 @@ export function AssetTile({
             >
               Preview
             </button>
+            {onAlign && asset.cardUrl && (
+              <button
+                type="button"
+                onClick={onAlign}
+                title="Drag the screen corners and re-composite"
+                className={cx(
+                  "pointer-events-auto rounded-full px-2.5 py-1 text-[11px] font-bold shadow-sm transition-transform hover:scale-105",
+                  asset.needsAlign ? "bg-amber-500 text-white" : "bg-white/95 text-ink",
+                )}
+              >
+                Align
+              </button>
+            )}
             <a
               href={downloadUrl(asset.url, filenameFor(asset))}
               className="pointer-events-auto rounded-full bg-stamp-600 px-2.5 py-1 text-[11px] font-bold text-white shadow-sm transition-transform hover:scale-105"

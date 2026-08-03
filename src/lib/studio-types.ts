@@ -1,4 +1,5 @@
 import type { AspectId, SurfaceKind } from "@/lib/options";
+import type { Quad } from "@/lib/perspective";
 
 export type AssetKind =
   | "card-art" /* uploaded printed-card / digital-card artwork */
@@ -21,6 +22,16 @@ export type Asset = {
   prompt?: string;
   aspect?: AspectId;
   surface?: SurfaceKind;
+
+  /* Set on scenes finished in the browser, so the screen can be re-aligned. */
+  /** The render before compositing. */
+  rawUrl?: string;
+  /** Artwork warped onto the screen. */
+  cardUrl?: string;
+  /** Screen corners in rawUrl pixels. */
+  quad?: Quad;
+  /** True when artwork was supplied but the screen couldn't be located. */
+  needsAlign?: boolean;
 };
 
 export type JobState = "queued" | "running" | "done" | "error" | "cancelled";

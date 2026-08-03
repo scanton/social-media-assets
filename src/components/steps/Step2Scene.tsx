@@ -18,6 +18,7 @@ import {
 } from "@/lib/options";
 import { useStudio, uid } from "../studio-store";
 import { Uploader } from "../Uploader";
+import { ScreenAligner } from "../ScreenAligner";
 import { Button, Chip, Field, Select, Stepper, Switch, cx, useToast } from "../ui";
 import { Panel, ResultsGrid, SectionHead } from "./shared";
 
@@ -26,6 +27,7 @@ export function Step2Scene() {
   const toast = useToast();
   const { base } = s;
   const [showPrompt, setShowPrompt] = useState(false);
+  const [aligning, setAligning] = useState<Asset | null>(null);
 
   /**
    * Scenes rendered in an earlier session (or shot elsewhere) can be dropped
@@ -434,6 +436,7 @@ export function Step2Scene() {
             emptyEmoji="📸"
             emptyText="Your finished scenes land here. Pick the combos on the left, then hit generate."
             cols="sm:grid-cols-3"
+            onAlign={setAligning}
           />
 
           {baseAssets.length > 0 && (
@@ -451,6 +454,8 @@ export function Step2Scene() {
           )}
         </div>
       </div>
+
+      {aligning && <ScreenAligner asset={aligning} onClose={() => setAligning(null)} />}
     </div>
   );
 }
