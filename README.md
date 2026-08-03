@@ -89,9 +89,16 @@ Uploading a clip also pre-selects the *Play the card clip* engine in step 3.
 **Two prompt rules exist because real renders broke without them.** The screen is declared a hard
 clipping boundary — content that leaves the card animation's frame disappears at the screen edge
 rather than falling out of the phone into the room. And nobody touches the screen: hands support
-the device from its edges only, since taps never line up with what's playing. Motions that
-legitimately involve a finger (*Scroll & stop*) carry `touchesScreen` and swap in a controlled-touch
-clause instead, so the prompt never contradicts itself.
+the device from its edges only, since taps never line up with what's playing. Motions are written to
+match, so no option asks for a finger on the glass.
+
+**Selections are persisted, and self-heal on load.** `cardArtId` / `cardVideoId` / `baseId` used to
+live in component state, so any reload left the assets in the roll with nothing wired up and step 2
+quietly rendered a blank screen. They now sit in the store, and a restored session drops ids whose
+asset is gone, falls back to the newest asset of the right kind, and resets taxonomy ids that no
+longer exist. An explicit `null` is respected — that means "deliberately cleared", not "unset".
+Step 2 also shows a thumbnail of exactly what is going onto the surface, so a blank render can't
+happen unnoticed.
 
 **The logo is composited on a canvas, not prompted.** A diffusion model asked to draw a brand mark
 returns an approximation, in a slightly different place every time. So
@@ -109,6 +116,10 @@ heart is" regardless of which file is dropped in.
 **Variations are re-rolls.** GPT-Image-2 exposes no `seed` parameter, so N variations means N
 separate calls with a prompt nudge, not N seeds. Step 2's batch is
 `angles × orientations × variations` and the count is shown before you spend anything.
+
+**Scenes can be uploaded, not just generated.** Step 2 takes a finished still as a `base` asset so
+work from an earlier session goes straight into step 3. Uploads are not stamped — anything saved out
+of this tool already carries the logo.
 
 **Framing is its own control, separate from camera angle.** `ANGLES` says where the camera is;
 `FRAMINGS` says how close. The prompt gives the model a concrete area target — hero close-up asks

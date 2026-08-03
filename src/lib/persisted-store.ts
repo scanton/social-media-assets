@@ -1,8 +1,8 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import type { AspectId, SurfaceKind } from "@/lib/options";
-import type { Asset } from "@/lib/studio-types";
+import { ANGLES, ASPECTS, DEVICES, FRAMINGS, MOTIONS, SCENES, type AspectId, type SurfaceKind } from "@/lib/options";
+import type { Asset, AssetKind } from "@/lib/studio-types";
 
 export type BaseConfig = {
   deviceId: string;
@@ -38,6 +38,15 @@ export type Persisted = {
   base: BaseConfig;
   video: VideoConfig;
   surface: SurfaceKind;
+  /*
+   * Which assets are currently wired into the pipeline. These live here rather
+   * than in component state because they used to reset on every reload — the
+   * artwork was still in the roll, nothing was selected, and step 2 quietly
+   * rendered a blank screen.
+   */
+  cardArtId: string | null;
+  cardVideoId: string | null;
+  baseId: string | null;
 };
 
 export const DEFAULT_BASE: BaseConfig = {
@@ -71,7 +80,62 @@ const DEFAULTS: Persisted = {
   base: DEFAULT_BASE,
   video: DEFAULT_VIDEO,
   surface: "screen",
+  cardArtId: null,
+  cardVideoId: null,
+  baseId: null,
 };
+
+const has = (list: { id: string }[], id: string) => list.some((o) => o.id === id);
+
+/** Shape as it comes off disk: selection ids may be absent on older sessions. */
+type RawPersisted = Omit<Persisted, "cardArtId" | "cardVideoId" | "baseId"> & {
+  cardArtId?: string | null;
+  cardVideoId?: string | null;
+  baseId?: string | null;
+};
+
+/**
+ * Repairs a restored session: drops selections whose asset is gone, falls back
+ * to the newest asset of the right kind when nothing is selected, and resets any
+ * taxonomy id that no longer exists (the option lists change between releases).
+ */
+function sanitize(p: RawPersisted): Persisted {
+  const newestOf = (kind: AssetKind) =>
+    p.assets.filter((a) => a.kind === kind).sort((a, b) => b.createdAt - a.createdAt)[0]?.id ?? null;
+
+  /*
+   * `null` means the user deliberately cleared the slot, so leave it cleared.
+   * `undefined` means this session predates selection persistence, and a stale
+   * id means the asset is gone — both fall back to the newest of that kind.
+   */
+  const resolve = (id: string | null | undefined, kind: AssetKind): string | null => {
+    if (id === null) return null;
+    if (id && p.assets.some((a) => a.id === id && a.kind === kind)) return id;
+    return newestOf(kind);
+  };
+
+  const angleIds = p.base.angleIds.filter((id) => has(ANGLES, id));
+  const aspectIds = p.base.aspectIds.filter((id) => has(ASPECTS, id));
+
+  return {
+    ...p,
+    cardArtId: resolve(p.cardArtId, "card-art"),
+    cardVideoId: resolve(p.cardVideoId, "card-video"),
+    baseId: resolve(p.baseId, "base"),
+    base: {
+      ...p.base,
+      deviceId: has(DEVICES, p.base.deviceId) ? p.base.deviceId : DEFAULT_BASE.deviceId,
+      sceneId: has(SCENES, p.base.sceneId) ? p.base.sceneId : DEFAULT_BASE.sceneId,
+      framingId: has(FRAMINGS, p.base.framingId) ? p.base.framingId : DEFAULT_BASE.framingId,
+      angleIds: angleIds.length ? angleIds : DEFAULT_BASE.angleIds,
+      aspectIds: aspectIds.length ? aspectIds : DEFAULT_BASE.aspectIds,
+    },
+    video: {
+      ...p.video,
+      motionId: has(MOTIONS, p.video.motionId) ? p.video.motionId : DEFAULT_VIDEO.motionId,
+    },
+  };
+}
 
 const STORAGE_KEY = "heartstamp-studio-v2";
 
@@ -92,12 +156,15 @@ function readStorage(): Persisted {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULTS;
     const saved = JSON.parse(raw) as Partial<Persisted>;
-    return {
+    return sanitize({
       assets: Array.isArray(saved.assets) ? saved.assets : DEFAULTS.assets,
       base: { ...DEFAULT_BASE, ...(saved.base ?? {}) },
       video: { ...DEFAULT_VIDEO, ...(saved.video ?? {}) },
       surface: saved.surface === "print" ? "print" : "screen",
-    };
+      cardArtId: saved.cardArtId,
+      cardVideoId: saved.cardVideoId,
+      baseId: saved.baseId,
+    });
   } catch {
     return DEFAULTS;
   }

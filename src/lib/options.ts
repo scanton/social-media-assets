@@ -317,6 +317,198 @@ export const SCENES: (Option & { audience?: string[] })[] = [
     prompt:
       "on a beach at golden hour, sand and a towel in frame, warm rim light, ocean softly out of focus behind",
   },
+  {
+    id: "boba-shop",
+    label: "Boba tea shop",
+    emoji: "🧋",
+    audience: ["genz", "college"],
+    prompt:
+      "at the counter of a bright boba tea shop, a sweating cup of brown-sugar milk tea with a fat straw, pastel tiled wall, menu boards glowing softly out of focus",
+  },
+  {
+    id: "bookstore",
+    label: "Bookstore nook",
+    emoji: "📚",
+    audience: ["genz", "college", "pro"],
+    prompt:
+      "tucked into a corner of an independent bookstore, warm shelves of spines receding behind, a stack of paperbacks and a takeaway cup on the arm of a worn reading chair",
+  },
+  {
+    id: "record-shop",
+    label: "Record shop",
+    emoji: "🎧",
+    audience: ["genz", "college"],
+    prompt:
+      "flipping through crates in a record shop, sleeves fanned out under the fingers, band posters and neon on the wall behind, dust in a shaft of window light",
+  },
+  {
+    id: "thrift-store",
+    label: "Thrift store",
+    emoji: "🧥",
+    audience: ["genz", "college"],
+    prompt:
+      "between packed racks in a vintage thrift store, denim and printed shirts crowding the frame, hand-lettered signs and fluorescent light overhead",
+  },
+  {
+    id: "nail-salon",
+    label: "Nail salon",
+    emoji: "💅",
+    audience: ["genz", "pro"],
+    prompt:
+      "at a nail salon station, fresh glossy manicure catching the light, polish bottles lined up on white marble, soft pink interior blurred behind",
+  },
+  {
+    id: "pilates-studio",
+    label: "Pilates / gym",
+    emoji: "🧘",
+    audience: ["genz", "pro"],
+    prompt:
+      "sitting on a reformer bed in a bright pilates studio, water bottle and folded towel beside, blonde wood and big windows, other equipment softly out of focus",
+  },
+  {
+    id: "farmers-market",
+    label: "Farmers market",
+    emoji: "🥕",
+    audience: ["genz", "millennial-mom", "pro"],
+    prompt:
+      "walking a farmers market on a bright morning, canvas tote of produce on the shoulder, stall awnings and crates of flowers and fruit crowding the background",
+  },
+  {
+    id: "rooftop-bar",
+    label: "Rooftop bar",
+    emoji: "🍸",
+    audience: ["genz", "pro"],
+    prompt:
+      "at a rooftop bar as the sun drops, spritz glass sweating on the rail, string lights just coming on, hazy city skyline stretching out behind",
+  },
+  {
+    id: "diner-booth",
+    label: "Diner booth",
+    emoji: "🍟",
+    audience: ["genz", "college"],
+    prompt:
+      "in a vinyl diner booth, chrome edging and a laminate table, milkshake and a basket of fries, warm pendant light overhead, window reflections behind",
+  },
+  {
+    id: "brunch-table",
+    label: "Brunch table",
+    emoji: "🥞",
+    audience: ["genz", "millennial-mom", "pro"],
+    prompt:
+      "at a busy brunch table from above the plates, pancakes and a mimosa, linen napkins, friends' hands and cutlery moving at the edges of frame",
+  },
+  {
+    id: "train-window",
+    label: "Train window seat",
+    emoji: "🚆",
+    audience: ["genz", "pro"],
+    prompt:
+      "in a train window seat, landscape streaking past the glass, tray table down with a coffee cup, cool daylight raking across the seat fabric",
+  },
+  {
+    id: "airport-gate",
+    label: "Airport gate",
+    emoji: "✈️",
+    audience: ["genz", "pro"],
+    prompt:
+      "waiting at an airport gate, carry-on at the feet, huge window with a plane on the apron behind, rows of empty seats receding out of focus",
+  },
+  {
+    id: "rainy-window",
+    label: "Rainy window at home",
+    emoji: "🌧️",
+    audience: ["genz", "millennial-mom"],
+    prompt:
+      "curled up by a rain-streaked window at home, blanket over the knees, mug of tea on the sill, grey soft light and bokeh raindrops on the glass",
+  },
+  {
+    id: "movie-night",
+    label: "Couch movie night",
+    emoji: "🍿",
+    audience: ["genz", "millennial-mom"],
+    prompt:
+      "on the couch under a heavy throw at night, bowl of popcorn, TV glow flickering cool across the room, warm lamp in the corner",
+  },
+  {
+    id: "bathtub-selfcare",
+    label: "Self-care evening",
+    emoji: "🛁",
+    audience: ["genz", "millennial-mom"],
+    prompt:
+      "a candlelit self-care evening, bath tray with a candle and a glass, steam and warm low light, tiled wall softly out of focus",
+  },
+  {
+    id: "school-pickup",
+    label: "School pickup line",
+    emoji: "🎒",
+    audience: ["millennial-mom"],
+    prompt:
+      "in the driver's seat waiting in the school pickup line, backpack on the passenger seat, windshield light, other cars queued blurry ahead",
+  },
+  {
+    id: "soccer-sideline",
+    label: "Sideline at practice",
+    emoji: "⚽",
+    audience: ["millennial-mom"],
+    prompt:
+      "on a folding chair at the sideline of a kids' sports practice, travel mug in hand, green field and small figures running out of focus behind",
+  },
+  {
+    id: "nursery",
+    label: "Nursery / new baby",
+    emoji: "🍼",
+    audience: ["millennial-mom"],
+    prompt:
+      "in a soft pastel nursery, rocking chair and muslin blankets, mobile turning slowly, gentle daylight through sheer curtains",
+  },
+  {
+    id: "craft-table",
+    label: "Craft table",
+    emoji: "✂️",
+    audience: ["millennial-mom", "genz"],
+    prompt:
+      "at a craft table mid-project, washi tape, stickers and paper offcuts spread out, warm task lamp, scissors and glue within reach",
+  },
+  {
+    id: "plant-repotting",
+    label: "Plant corner",
+    emoji: "🪴",
+    audience: ["genz", "millennial-mom"],
+    prompt:
+      "in a sunny plant corner surrounded by monstera and trailing pothos, terracotta pots and scattered soil on newspaper, bright dappled light",
+  },
+  {
+    id: "wedding-reception",
+    label: "Wedding reception",
+    emoji: "💒",
+    audience: ["genz", "millennial-mom", "pro"],
+    prompt:
+      "at a wedding reception table after dark, candles and florals down the centre, champagne flutes, warm bistro lights strung above the dance floor behind",
+  },
+  {
+    id: "game-day",
+    label: "Game day / tailgate",
+    emoji: "🏟️",
+    audience: ["genz", "college"],
+    prompt:
+      "at a tailgate before a game, team colours everywhere, cooler and folding chairs, stadium lights rising over the parking lot in the background",
+  },
+  {
+    id: "coworking",
+    label: "Coworking space",
+    emoji: "🖇️",
+    audience: ["pro", "genz"],
+    prompt:
+      "at a shared desk in a bright coworking space, laptop and notebook, plants and glass partitions, people moving softly out of focus behind",
+  },
+  {
+    id: "campfire",
+    label: "Campfire at dusk",
+    emoji: "🔥",
+    audience: ["genz", "college", "millennial-mom"],
+    prompt:
+      "beside a campfire at dusk, camp chairs and a blanket, warm orange firelight flickering on the subject, deep blue treeline behind",
+  },
 ];
 
 /* ------------------------- CAMERA ANGLES ------------------------- */
@@ -625,12 +817,7 @@ export type MotionKind = "camera" | "action";
  * "camera" moves the lens across an otherwise still scene.
  * "action" makes the world move — people do things, the background lives.
  */
-export const MOTIONS: (Option & {
-  surface?: SurfaceKind;
-  kind: MotionKind;
-  /** Set when the motion inherently involves a finger on the screen. */
-  touchesScreen?: boolean;
-})[] = [
+export const MOTIONS: (Option & { surface?: SurfaceKind; kind: MotionKind })[] = [
   /* ------------------------------ camera ----------------------------- */
   {
     id: "hold-steady",
@@ -695,13 +882,36 @@ export const MOTIONS: (Option & {
       "the subject turns and tilts the card toward a friend beside them; the friend leans into frame, eyes widen, they both start laughing and the friend grabs their arm. Two people genuinely reacting to each other, natural overlapping movement",
   },
   {
-    id: "scroll-and-stop",
+    id: "lean-in-together",
     kind: "action",
-    touchesScreen: true,
-    label: "Scroll & stop",
-    emoji: "👆",
+    label: "Lean in together",
+    emoji: "🫂",
     prompt:
-      "a thumb swipes up the screen a couple of times with quick flicks, then stops dead on the card; the hand goes still, the head tilts in, the whole body pauses. The scroll-stopping moment",
+      "a second person leans in from the side until their heads are almost touching, both watching the screen; they exchange a glance, one of them laughs and nudges the other. Warm, close, unposed",
+  },
+  {
+    id: "read-and-linger",
+    kind: "action",
+    label: "Read & linger",
+    emoji: "🥰",
+    prompt:
+      "the subject's eyes track slowly across the card, they go completely still for a beat, a smile creeps in, then they look up and away off-camera as if remembering the person who sent it. Small, honest, unhurried",
+  },
+  {
+    id: "prop-and-watch",
+    kind: "action",
+    label: "Prop it up & watch",
+    emoji: "🪑",
+    prompt:
+      "the subject props the device up against something on the table, lets go, sits back and folds their arms to watch it from a comfortable distance, sipping their drink. Hands leave the device entirely",
+  },
+  {
+    id: "double-take",
+    kind: "action",
+    label: "Double take",
+    emoji: "😳",
+    prompt:
+      "the subject glances away, starts to turn from the device, then snaps their head straight back to it with wide eyes and an open-mouthed grin. A proper caught-off-guard double take",
   },
   {
     id: "pass-it-over",
@@ -801,12 +1011,6 @@ const NO_TOUCH_CLAUSE = [
   "the person watches what is playing — they never operate the device",
 ].join(". ");
 
-/** For motions where a deliberate touch is the whole point. */
-const CONTROLLED_TOUCH_CLAUSE = [
-  "The thumb swipes only along the very bottom edge of the screen and lifts clear before the card is fully revealed",
-  "once the card is on screen no finger touches, covers, taps or interacts with it again, and the hand settles on the device's outer edge",
-].join(". ");
-
 /**
  * The screen is a window, not a portal. Without this, objects that exit the
  * bottom of a card animation get rendered as though they fall out of the phone
@@ -850,11 +1054,7 @@ export function buildAnimatePrompt(opts: {
     scene ? `Keep the environment consistent: ${scene.prompt}` : undefined,
     `Whatever artwork is already on ${surfaceNoun} must stay perfectly locked to that surface with correct perspective for the whole clip — it must never slide, flicker, warp or change`,
     opts.surface === "print" ? PRINT_CONTAINMENT_CLAUSE : SCREEN_CONTAINMENT_CLAUSE,
-    opts.surface === "print"
-      ? undefined
-      : motion?.touchesScreen
-        ? CONTROLLED_TOUCH_CLAUSE
-        : NO_TOUCH_CLAUSE,
+    opts.surface === "print" ? undefined : NO_TOUCH_CLAUSE,
     "Preserve the exact identity, wardrobe, framing and lighting of the source photograph",
     opts.hasLogo ? LOGO_LOCK_CLAUSE : undefined,
     opts.hasLogo
@@ -880,11 +1080,7 @@ export function buildScreenReplacePrompt(opts: {
     "Lock the played footage to the surface with correct perspective and keystone for the entire clip — it must never slide, drift or detach",
     "Match the scene's brightness, colour temperature and reflections so the footage looks natively displayed, not pasted on",
     opts.surface === "print" ? PRINT_CONTAINMENT_CLAUSE : SCREEN_CONTAINMENT_CLAUSE,
-    opts.surface === "print"
-      ? undefined
-      : motion?.touchesScreen
-        ? CONTROLLED_TOUCH_CLAUSE
-        : NO_TOUCH_CLAUSE,
+    opts.surface === "print" ? undefined : NO_TOUCH_CLAUSE,
     motion?.prompt,
     "Preserve the exact subject, wardrobe, environment, framing and lighting of @Image1",
     opts.hasLogo ? LOGO_LOCK_CLAUSE : undefined,

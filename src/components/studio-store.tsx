@@ -88,12 +88,16 @@ export function StudioProvider({ children }: { children: ReactNode }) {
 
   // assets / base / video / surface live in an external store so they survive a
   // reload without a hydration-mismatch dance. See lib/persisted-store.ts.
-  const { assets, base, video, surface } = usePersisted();
+  const { assets, base, video, surface, cardArtId, cardVideoId, baseId } = usePersisted();
 
   const [step, setStepRaw] = useState(1);
-  const [cardArtId, setCardArtId] = useState<string | null>(null);
-  const [cardVideoId, setCardVideoId] = useState<string | null>(null);
-  const [baseId, setBaseId] = useState<string | null>(null);
+
+  const setCardArtId = useCallback((cardArtId: string | null) => updatePersisted({ cardArtId }), []);
+  const setCardVideoId = useCallback(
+    (cardVideoId: string | null) => updatePersisted({ cardVideoId }),
+    [],
+  );
+  const setBaseId = useCallback((baseId: string | null) => updatePersisted({ baseId }), []);
 
   const [keyConnected, setKeyConnected] = useState(false);
   const [keyHint, setKeyHint] = useState<string | null>(null);
@@ -121,16 +125,20 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     const lostLastClip =
       removed?.kind === "card-video" && !assets.some((a) => a.kind === "card-video");
 
+    // Fall back to the next asset of the same kind rather than clearing the
+    // slot — an empty slot is how step 2 silently went back to blank screens.
+    const nextOf = (kind: Asset["kind"]) =>
+      assets.filter((a) => a.kind === kind).sort((a, b) => b.createdAt - a.createdAt)[0]?.id ?? null;
+
     updatePersisted({
       assets,
+      ...(current.cardArtId === id ? { cardArtId: nextOf("card-art") } : {}),
+      ...(current.cardVideoId === id ? { cardVideoId: nextOf("card-video") } : {}),
+      ...(current.baseId === id ? { baseId: nextOf("base") } : {}),
       ...(lostLastClip && current.video.engine === "screen-replace"
         ? { video: { ...current.video, engine: "animate" as const } }
         : {}),
     });
-
-    setCardArtId((v) => (v === id ? null : v));
-    setCardVideoId((v) => (v === id ? null : v));
-    setBaseId((v) => (v === id ? null : v));
   }, []);
 
   const clearAssets = useCallback(() => {
@@ -138,10 +146,10 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     updatePersisted({
       assets: [],
       video: { ...current.video, engine: "animate" },
+      cardArtId: null,
+      cardVideoId: null,
+      baseId: null,
     });
-    setCardArtId(null);
-    setCardVideoId(null);
-    setBaseId(null);
   }, []);
 
   const setBase = useCallback(
@@ -473,7 +481,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     }),
     [
       step, setStep, surface, setSurface, assets, addAssets, removeAsset, clearAssets,
-      base, setBase, video, setVideo, cardArtId, cardVideoId, baseId,
+      base, setBase, video, setVideo,
+      cardArtId, setCardArtId, cardVideoId, setCardVideoId, baseId, setBaseId,
       runner.jobs, runner.busy, runner.cancelAll, basePlanCount,
       generateScenes, generateVideo,
       keyConnected, keyDialogOpen, keyHint, confettiKey,

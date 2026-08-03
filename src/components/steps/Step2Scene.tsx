@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { uploadToFal } from "@/lib/client-api";
+import type { Asset } from "@/lib/studio-types";
 import {
   ANGLES,
   ASPECTS,
@@ -14,14 +16,52 @@ import {
   SCENES,
   type AspectId,
 } from "@/lib/options";
-import { useStudio } from "../studio-store";
-import { Button, Chip, Field, Select, Stepper, Switch, cx } from "../ui";
+import { useStudio, uid } from "../studio-store";
+import { Uploader } from "../Uploader";
+import { Button, Chip, Field, Select, Stepper, Switch, cx, useToast } from "../ui";
 import { Panel, ResultsGrid, SectionHead } from "./shared";
 
 export function Step2Scene() {
   const s = useStudio();
+  const toast = useToast();
   const { base } = s;
   const [showPrompt, setShowPrompt] = useState(false);
+
+  /**
+   * Scenes rendered in an earlier session (or shot elsewhere) can be dropped
+   * straight in — they become normal `base` assets and go through step 3 the
+   * same way. Uploaded as-is: anything saved out of this tool already carries
+   * the logo, and re-stamping would double it up.
+   */
+  const uploadScene = async (file: File, onProgress: (pct: number) => void) => {
+    if (!s.keyConnected) {
+      s.openKeyDialog();
+      return;
+    }
+    try {
+      const url = await uploadToFal(file, onProgress);
+      const asset: Asset = {
+        id: uid(),
+        kind: "base",
+        url,
+        contentType: file.type,
+        label: file.name.replace(/\.\w+$/, ""),
+        tags: [
+          "uploaded",
+          file.size < 1024 * 1024
+            ? `${Math.max(1, Math.round(file.size / 1024))}KB`
+            : `${(file.size / 1024 / 1024).toFixed(1)}MB`,
+        ],
+        createdAt: Date.now(),
+        surface: s.surface,
+      };
+      s.addAssets([asset]);
+      s.setBaseId(asset.id);
+      toast("Scene added. Head to step 3 to animate it.", "success");
+    } catch (err) {
+      toast((err as Error).message, "error");
+    }
+  };
 
   const devices = DEVICES.filter((d) => d.surface === s.surface);
   const scenes = useMemo(
@@ -291,6 +331,41 @@ export function Step2Scene() {
                     {base.aspectIds.length} orientation{base.aspectIds.length === 1 ? "" : "s"} ×{" "}
                     {base.variations} variation{base.variations === 1 ? "" : "s"}
                   </p>
+
+                  {/* Exactly what will land on the screen — a blank render used
+                      to be silently possible with no way to see it coming. */}
+                  <div
+                    className={cx(
+                      "mt-3 flex items-center gap-2 rounded-2xl border px-2.5 py-2",
+                      hasCard ? "border-hairline bg-white" : "border-amber-200 bg-amber-50",
+                    )}
+                  >
+                    {hasCard ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img
+                        src={cardAsset!.url}
+                        alt=""
+                        className="h-9 w-9 shrink-0 rounded-lg object-cover ring-1 ring-hairline"
+                      />
+                    ) : (
+                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white text-base ring-1 ring-amber-200">
+                        ⬜
+                      </span>
+                    )}
+                    <span className="min-w-0">
+                      <span className="block text-[10px] font-bold uppercase tracking-[0.09em] text-ink-faint">
+                        {s.surface === "print" ? "On the card" : "On the screen"}
+                      </span>
+                      <span
+                        className={cx(
+                          "block truncate text-xs font-semibold",
+                          hasCard ? "text-ink" : "text-amber-900",
+                        )}
+                      >
+                        {hasCard ? cardAsset!.label : "Blank — no artwork selected"}
+                      </span>
+                    </span>
+                  </div>
                 </div>
 
                 <div className="flex gap-2">
@@ -325,6 +400,31 @@ export function Step2Scene() {
               )}
             </div>
           </div>
+
+          <details className="group rounded-3xl border border-hairline bg-white p-4">
+            <summary className="focus-stamp flex cursor-pointer list-none items-center justify-between gap-3">
+              <span>
+                <span className="font-display text-sm font-bold text-ink">
+                  Already have a scene?
+                </span>
+                <span className="mt-0.5 block text-xs text-ink-faint">
+                  Drop in a still you rendered earlier and skip straight to step 3.
+                </span>
+              </span>
+              <span className="shrink-0 text-xs font-bold text-stamp-600 transition-transform duration-300 group-open:rotate-180">
+                ▾
+              </span>
+            </summary>
+            <div className="mt-4">
+              <Uploader
+                emoji="🖼️"
+                accept="image/png,image/jpeg,image/webp"
+                title="Drop a finished scene"
+                subtitle="Uploaded as-is — no logo is added, since a scene saved from here already has one."
+                onFile={uploadScene}
+              />
+            </div>
+          </details>
 
           <ResultsGrid
             assets={baseAssets}
