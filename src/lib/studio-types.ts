@@ -43,6 +43,8 @@ export type Job = {
   model: string;
   state: JobState;
   queuePosition?: number;
+  /** Free-text sub-stage, e.g. the browser-side logo pass. */
+  stage?: string;
   error?: string;
   startedAt: number;
   finishedAt?: number;

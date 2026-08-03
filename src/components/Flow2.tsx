@@ -15,6 +15,7 @@ import {
   VIDEO_DURATIONS,
   VIDEO_RESOLUTIONS,
 } from "@/lib/options";
+import { canStampVideo } from "@/lib/video-logo";
 import { useStudio } from "./studio-store";
 import { Button, Chip, Field, Select, Switch, cx } from "./ui";
 import { Panel, ResultsGrid } from "./steps/shared";
@@ -28,6 +29,9 @@ export function Flow2() {
   const s = useStudio();
   const { base, video } = s;
   const [showPrompt, setShowPrompt] = useState(false);
+  // Re-encoding needs MediaRecorder + canvas capture; every current browser has
+  // them, but fail visibly rather than silently dropping the logo.
+  const stampable = canStampVideo();
 
   const clip = s.assets.find((a) => a.id === s.cardVideoId && a.kind === "card-video");
   const videos = s.assets.filter((a) => a.kind === "video");
@@ -68,8 +72,8 @@ export function Flow2() {
         <p className="mt-2.5 max-w-2xl text-sm leading-relaxed text-ink-soft">
           Describe the scene and hand Seedance your card clip in a single pass — no still image in
           between. Faster and simpler, but the artwork is whatever Seedance renders rather than a
-          pixel-exact composite. The logo is burned in afterwards with ffmpeg, so it still lands in
-          the same corner as Flow 1.
+          pixel-exact composite. The logo is burned into the finished clip afterwards, so it still
+          lands in the same corner as Flow 1.
         </p>
       </header>
 
@@ -225,10 +229,14 @@ export function Flow2() {
               </div>
 
               <Switch
-                checked={base.logo}
+                checked={base.logo && stampable}
                 onChange={(logo) => s.setBase({ logo })}
                 label="Stamp the HeartStamp logo"
-                hint="Burns the emblem into the bottom-right corner of the finished clip with ffmpeg, in the same spot Flow 1 puts it. Adds a few seconds and about a third of a cent."
+                hint={
+                  stampable
+                    ? "Redraws the finished clip through a canvas with the emblem burned into the bottom-right corner, exactly where Flow 1 puts it. Runs in this tab and takes about as long as the clip."
+                    : "Unavailable — this browser can't re-encode video. Try Chrome, Edge or Safari."
+                }
               />
 
               <Switch
@@ -281,7 +289,7 @@ export function Flow2() {
               </div>
 
               <p className="mt-3 rounded-xl bg-canvas-2 px-3 py-2 text-xs leading-relaxed text-ink-soft">
-                🕐 One Seedance call, a few minutes{base.logo ? ", then a quick ffmpeg pass for the logo" : ""}.
+                🕐 One Seedance call, a few minutes{base.logo && stampable ? ", then a logo pass in this tab that runs about as long as the clip" : ""}.
                 No still, so the card on screen is whatever Seedance renders rather than a pixel-exact
                 composite.
               </p>

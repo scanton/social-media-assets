@@ -213,11 +213,12 @@ export function AssetTile({
 }
 
 /** Placeholder shown while a job is in flight. */
-export function PendingTile({ label, state, queuePosition, error }: {
+export function PendingTile({ label, state, queuePosition, error, stage }: {
   label: string;
   state: string;
   queuePosition?: number;
   error?: string;
+  stage?: string;
 }) {
   const failed = state === "error";
   return (
@@ -240,7 +241,13 @@ export function PendingTile({ label, state, queuePosition, error }: {
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center">
               <span className="h-6 w-6 animate-spin rounded-full border-2 border-stamp-600 border-t-transparent" />
               <p className="text-[11px] font-bold uppercase tracking-wider text-stamp-700">
-                {state === "queued" ? (queuePosition != null ? `#${queuePosition} in queue` : "Queued") : "Rendering"}
+                {stage
+                  ? stage
+                  : state === "queued"
+                    ? queuePosition != null
+                      ? `#${queuePosition} in queue`
+                      : "Queued"
+                    : "Rendering"}
               </p>
             </div>
           </>

@@ -529,7 +529,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           generate_audio: video.generateAudio,
           bitrate_mode: "high",
         },
-        toAssets: async (data, jobId) => {
+        toAssets: async (data, jobId, setStage) => {
           const v = (data as { video?: { url: string; content_type?: string } }).video;
           if (!v) return [];
 
@@ -541,13 +541,17 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           let stamped = false;
           if (base.logo) {
             try {
-              url = await stampVideoLogo(v.url);
+              url = await stampVideoLogo(v.url, (p) =>
+                setStage(p.pct != null ? `Logo ${p.pct}%` : p.stage),
+              );
               stamped = true;
             } catch (err) {
               toast(
                 `Logo stamp failed, keeping the un-stamped clip. ${(err as Error).message}`,
                 "error",
               );
+            } finally {
+              setStage(undefined);
             }
           }
 

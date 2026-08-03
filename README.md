@@ -16,11 +16,22 @@ Two workflows, switchable from the tabs in the header.
 **Flow 2 — straight to video.** One page, one Seedance call, no still. Needs an uploaded clip.
 Faster, but the artwork on screen is whatever Seedance renders rather than a pixel-exact composite.
 
-The logo still lands: flow 1 inherits it from the still it animates, and flow 2 burns it in
-afterwards via `fal-ai/ffmpeg-api/compose`. That endpoint has no position or scale controls for an
-image track, so [`src/lib/video-logo.ts`](src/lib/video-logo.ts) generates a transparent PNG at the
-clip's exact dimensions with the emblem already in the corner — a full-frame overlay needs no
-positioning, and it reuses the same `paintLogo()` the stills use, so placement matches exactly.
+The logo still lands: flow 1 inherits it from the still it animates, and flow 2 burns it into the
+finished clip in the browser — [`src/lib/video-logo.ts`](src/lib/video-logo.ts) plays the clip
+through a canvas, paints the emblem on every frame with the same `paintLogo()` the stills use, and
+records the canvas straight back out to MP4 via MediaRecorder. Real time, no dependencies, no extra
+API cost.
+
+Three things about that file are load-bearing and were each found by testing, not reasoning:
+
+- The `<video>` is attached to the DOM off-screen. A detached element is never composited, and the
+  first version recorded 21 KB of black because of it.
+- Frames are driven by a **worker timer**, not `requestAnimationFrame` or
+  `requestVideoFrameCallback` — both stop when the tab is hidden, which would stall an encode the
+  moment someone switches tabs.
+- Audio is taken from the element's own `captureStream()`, which still carries signal while the
+  element is muted. A Web Audio tap looks tidier but records silence from a muted element, and the
+  element has to stay muted to satisfy autoplay policy.
 
 Everything is downloadable in-app. Nothing is stored server-side.
 

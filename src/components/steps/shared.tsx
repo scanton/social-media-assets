@@ -77,6 +77,7 @@ export function ResultsGrid({
           state={j.state}
           queuePosition={j.queuePosition}
           error={j.error}
+          stage={j.stage}
         />
       ))}
       {assets.map((a) => (
