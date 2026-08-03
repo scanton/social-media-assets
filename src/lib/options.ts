@@ -576,7 +576,7 @@ function cardOnSurfaceClause(surface: SurfaceKind): string {
     "reproduce that artwork exactly as provided — same composition, same colours, same typography; do not redesign it, recolour it, restyle it, add text to it or invent new elements",
     "fit it to the screen edge to edge with the correct perspective and keystone for the device's angle, with no status bar, no browser chrome, no app UI and no letterboxing",
     "give it believable emissive screen brightness plus the scene's own reflections and glare, so it reads as genuinely displayed rather than pasted on",
-    "the whole screen must be inside the frame, in focus and legible; fingers or hair may overlap its edges naturally but must not cover the artwork",
+    "the whole screen must be inside the frame, in focus and legible; fingers may grip the device's outer edges but no finger, thumb or hand ever rests on, touches or covers any part of the screen itself",
   ].join(". ");
 }
 
@@ -625,7 +625,12 @@ export type MotionKind = "camera" | "action";
  * "camera" moves the lens across an otherwise still scene.
  * "action" makes the world move — people do things, the background lives.
  */
-export const MOTIONS: (Option & { surface?: SurfaceKind; kind: MotionKind })[] = [
+export const MOTIONS: (Option & {
+  surface?: SurfaceKind;
+  kind: MotionKind;
+  /** Set when the motion inherently involves a finger on the screen. */
+  touchesScreen?: boolean;
+})[] = [
   /* ------------------------------ camera ----------------------------- */
   {
     id: "hold-steady",
@@ -692,6 +697,7 @@ export const MOTIONS: (Option & { surface?: SurfaceKind; kind: MotionKind })[] =
   {
     id: "scroll-and-stop",
     kind: "action",
+    touchesScreen: true,
     label: "Scroll & stop",
     emoji: "👆",
     prompt:
@@ -783,6 +789,43 @@ export const VIDEO_DURATIONS = ["auto", "4", "5", "6", "7", "8", "9", "10", "11"
  * The HeartStamp emblem is burned into the still before it reaches Seedance, so
  * the model must treat it as a fixed overlay rather than an object in the scene.
  */
+/**
+ * Seedance will happily let a person poke at the screen while a card animation
+ * plays, which instantly breaks the illusion — the taps never line up with what
+ * is on screen.
+ */
+const NO_TOUCH_CLAUSE = [
+  "CRITICAL: nobody touches, taps, swipes, pinches, scrolls, points at or otherwise interacts with the screen at any moment",
+  "hands only support the device from its outer edges, back or frame and stay settled there",
+  "no finger, thumb or stylus ever enters, hovers over or passes across the screen area",
+  "the person watches what is playing — they never operate the device",
+].join(". ");
+
+/** For motions where a deliberate touch is the whole point. */
+const CONTROLLED_TOUCH_CLAUSE = [
+  "The thumb swipes only along the very bottom edge of the screen and lifts clear before the card is fully revealed",
+  "once the card is on screen no finger touches, covers, taps or interacts with it again, and the hand settles on the device's outer edge",
+].join(". ");
+
+/**
+ * The screen is a window, not a portal. Without this, objects that exit the
+ * bottom of a card animation get rendered as though they fall out of the phone
+ * and into the room.
+ */
+const SCREEN_CONTAINMENT_CLAUSE = [
+  "ABSOLUTE RULE — the edges of the screen are a hard clipping boundary",
+  "everything shown on the screen exists only inside that rectangle and is flat imagery displayed on a panel, not physical objects in the room",
+  "no element, object, character, hand, card, envelope, particle, confetti or effect from the on-screen content may ever cross, overflow, spill past or extend beyond the screen's edges",
+  "if something moves out of the on-screen frame it simply disappears at the screen edge — it must never fall out of the device, land on a surface, drift into the room, overlap the device's bezel or become a physical object in the scene",
+  "nothing on screen casts a shadow, reflection, light spill or depth into the real environment",
+].join(". ");
+
+/** Print equivalent: ink stays ink. */
+const PRINT_CONTAINMENT_CLAUSE = [
+  "The artwork on the card is flat printed ink and stays completely within the card's printed panel",
+  "no element of the design may lift off the paper, extend past the card's edges, gain depth or become a physical object in the scene",
+].join(". ");
+
 const LOGO_LOCK_CLAUSE = [
   "There is a small HeartStamp heart logo in the bottom-right corner of the frame",
   "it is a flat 2D overlay burned onto the footage, not an object inside the scene",
@@ -806,6 +849,12 @@ export function buildAnimatePrompt(opts: {
     motion?.prompt,
     scene ? `Keep the environment consistent: ${scene.prompt}` : undefined,
     `Whatever artwork is already on ${surfaceNoun} must stay perfectly locked to that surface with correct perspective for the whole clip — it must never slide, flicker, warp or change`,
+    opts.surface === "print" ? PRINT_CONTAINMENT_CLAUSE : SCREEN_CONTAINMENT_CLAUSE,
+    opts.surface === "print"
+      ? undefined
+      : motion?.touchesScreen
+        ? CONTROLLED_TOUCH_CLAUSE
+        : NO_TOUCH_CLAUSE,
     "Preserve the exact identity, wardrobe, framing and lighting of the source photograph",
     opts.hasLogo ? LOGO_LOCK_CLAUSE : undefined,
     opts.hasLogo
@@ -827,8 +876,15 @@ export function buildScreenReplacePrompt(opts: {
   return joinPrompts([
     `Recreate the scene in @Image1 as a live-action clip, and play the footage from @Video1 on ${surfaceNoun}`,
     `@Video1 is a HeartStamp greeting-card animation. It should appear to be genuinely playing on ${surfaceNoun} in @Image1, filling it edge to edge`,
+    `@Image1 already shows the opening frame of @Video1 on ${surfaceNoun}. Continue straight on from exactly that frame — no cut, no flash, no white or blank screen, no fade in and no restart. Frame one of this clip must match @Image1 exactly`,
     "Lock the played footage to the surface with correct perspective and keystone for the entire clip — it must never slide, drift or detach",
     "Match the scene's brightness, colour temperature and reflections so the footage looks natively displayed, not pasted on",
+    opts.surface === "print" ? PRINT_CONTAINMENT_CLAUSE : SCREEN_CONTAINMENT_CLAUSE,
+    opts.surface === "print"
+      ? undefined
+      : motion?.touchesScreen
+        ? CONTROLLED_TOUCH_CLAUSE
+        : NO_TOUCH_CLAUSE,
     motion?.prompt,
     "Preserve the exact subject, wardrobe, environment, framing and lighting of @Image1",
     opts.hasLogo ? LOGO_LOCK_CLAUSE : undefined,

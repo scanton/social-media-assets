@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { readVideoDuration, uploadToFal } from "@/lib/client-api";
+import { extractVideoFrame, readVideoDuration, uploadToFal } from "@/lib/client-api";
 import { SURFACES } from "@/lib/options";
 import type { Asset } from "@/lib/studio-types";
 import { useStudio, uid } from "../studio-store";
@@ -27,11 +27,11 @@ export function Step1Card() {
     file: File,
     kind: "card-art" | "card-video",
     onProgress: (pct: number) => void,
-    opts: { label?: string; extraTags?: string[] } = {},
-  ) => {
+    opts: { label?: string; extraTags?: string[]; parentId?: string; quiet?: boolean } = {},
+  ): Promise<Asset | null> => {
     if (!s.keyConnected) {
       s.openKeyDialog();
-      return;
+      return null;
     }
     setUploading(kind === "card-art" ? "art" : "video");
     try {
@@ -42,7 +42,7 @@ export function Step1Card() {
             `That clip is ${seconds.toFixed(1)}s. Seedance reference clips must be 2–15s — trim it and retry.`,
             "error",
           );
-          return;
+          return null;
         }
       }
       const url = await uploadToFal(file, onProgress);
@@ -55,19 +55,56 @@ export function Step1Card() {
         tags: [
           kind === "card-art" ? "artwork" : "clip",
           ...(opts.extraTags ?? []),
-          `${(file.size / 1024 / 1024).toFixed(1)}MB`,
+          file.size < 1024 * 1024
+            ? `${Math.max(1, Math.round(file.size / 1024))}KB`
+            : `${(file.size / 1024 / 1024).toFixed(1)}MB`,
         ],
         createdAt: Date.now(),
+        parentId: opts.parentId,
       };
       s.addAssets([asset]);
       if (kind === "card-art") s.setCardArtId(asset.id);
       else s.setCardVideoId(asset.id);
-      toast("Uploaded to fal. Ready to use.", "success");
+      if (!opts.quiet) toast("Uploaded to fal. Ready to use.", "success");
+      return asset;
     } catch (err) {
       toast((err as Error).message, "error");
+      return null;
     } finally {
       setUploading(null);
     }
+  };
+
+  /**
+   * A clip on its own leaves step 2 with nothing to put on the screen, so the
+   * scene renders blank and the video has to invent its way out of a white
+   * screen. Grabbing frame one and registering it as card artwork means the
+   * still already shows exactly what the clip opens on.
+   */
+  const uploadClip = async (file: File, onProgress: (pct: number) => void) => {
+    const clip = await upload(file, "card-video", (p) => onProgress(Math.round(p * 0.8)), {
+      quiet: true,
+    });
+    if (!clip) return;
+
+    try {
+      const frame = await extractVideoFrame(file, 0.04);
+      await upload(frame, "card-art", (p) => onProgress(80 + Math.round(p * 0.2)), {
+        label: `First frame · ${clip.label}`,
+        extraTags: ["from clip"],
+        parentId: clip.id,
+        quiet: true,
+      });
+      toast("Clip uploaded, and its first frame is ready for the scene.", "success");
+    } catch (err) {
+      toast(
+        `Clip uploaded, but the first frame couldn't be read (${(err as Error).message}) — add card artwork manually so step 2 isn't blank.`,
+        "error",
+      );
+    }
+
+    // Uploading a clip is a clear statement of intent for step 3.
+    if (s.surface === "screen") s.setVideo({ engine: "screen-replace" });
   };
 
   /* ------------------------------ paste ------------------------------ */
@@ -144,7 +181,7 @@ export function Step1Card() {
       <SectionHead
         step={1}
         title="Bring your card"
-        blurb="Start with what you're selling. Upload the printed card artwork, the digital 3D card clip, or both — they get placed into the scene in steps 3 and 4."
+        blurb="Start with what you're selling. Upload the printed card artwork, the digital 3D card clip, or both — they get placed into the scene in step 2 and brought to life in step 3."
       />
 
       <div>
@@ -177,7 +214,7 @@ export function Step1Card() {
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
               <span className="sticker border-stamp-200 bg-stamp-50 text-stamp-700">{pasteKey}V ready</span>
-              <span className="sticker">Step 3</span>
+              <span className="sticker">Step 2</span>
             </div>
           </div>
 
@@ -189,7 +226,9 @@ export function Step1Card() {
             disabled={uploading !== null}
             pasteable
             externalProgress={pasteProgress}
-            onFile={(f, p) => upload(f, "card-art", p)}
+            onFile={async (f, p) => {
+              await upload(f, "card-art", p);
+            }}
           />
 
           {cardArt.length > 0 && (
@@ -213,10 +252,10 @@ export function Step1Card() {
             <div>
               <h3 className="font-display text-base font-bold text-ink">3D card clip</h3>
               <p className="mt-0.5 text-xs text-ink-faint">
-                MP4 or MOV, 2–15 seconds, up to 720p. Plays on the device screen in step 4.
+                MP4 or MOV, 2–15 seconds, up to 720p. Its first frame goes on the device in step 2, then the clip plays there in step 3.
               </p>
             </div>
-            <span className="sticker shrink-0">Step 4</span>
+            <span className="sticker shrink-0">Steps 2 &amp; 3</span>
           </div>
 
           <Uploader
@@ -225,7 +264,7 @@ export function Step1Card() {
             title="Drop the card animation"
             subtitle="Opening animation, envelope reveal, interaction — 8–13s is the sweet spot"
             disabled={uploading !== null}
-            onFile={(f, p) => upload(f, "card-video", p)}
+            onFile={(f, p) => uploadClip(f, p)}
           />
 
           {cardVideos.length > 0 && (

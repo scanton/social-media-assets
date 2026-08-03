@@ -113,14 +113,32 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const removeAsset = useCallback((id: string) => {
-    updatePersisted({ assets: getPersisted().assets.filter((a) => a.id !== id) });
+    const current = getPersisted();
+    const removed = current.assets.find((a) => a.id === id);
+    const assets = current.assets.filter((a) => a.id !== id);
+
+    // Screen-replace needs a clip; without one it would just fail at render time.
+    const lostLastClip =
+      removed?.kind === "card-video" && !assets.some((a) => a.kind === "card-video");
+
+    updatePersisted({
+      assets,
+      ...(lostLastClip && current.video.engine === "screen-replace"
+        ? { video: { ...current.video, engine: "animate" as const } }
+        : {}),
+    });
+
     setCardArtId((v) => (v === id ? null : v));
     setCardVideoId((v) => (v === id ? null : v));
     setBaseId((v) => (v === id ? null : v));
   }, []);
 
   const clearAssets = useCallback(() => {
-    updatePersisted({ assets: [] });
+    const current = getPersisted();
+    updatePersisted({
+      assets: [],
+      video: { ...current.video, engine: "animate" },
+    });
     setCardArtId(null);
     setCardVideoId(null);
     setBaseId(null);

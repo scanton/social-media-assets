@@ -80,6 +80,19 @@ GPT-Image-2's *edit* endpoint as a reference image and asks for the whole lifest
 card already on the screen or printed on the panel. With no artwork selected it falls back to
 text-to-image and leaves the surface blank, so you can still batch scenes before the card exists.
 
+**Uploading a clip also registers its first frame as card artwork.** Otherwise step 2 has nothing
+to put on the screen, the scene renders blank, and step 3's video has to invent its way out of a
+white screen. Grabbing frame one means the still already shows exactly what the clip opens on, and
+the screen-replace prompt tells Seedance to continue straight from that frame with no cut or flash.
+Uploading a clip also pre-selects the *Play the card clip* engine in step 3.
+
+**Two prompt rules exist because real renders broke without them.** The screen is declared a hard
+clipping boundary — content that leaves the card animation's frame disappears at the screen edge
+rather than falling out of the phone into the room. And nobody touches the screen: hands support
+the device from its edges only, since taps never line up with what's playing. Motions that
+legitimately involve a finger (*Scroll & stop*) carry `touchesScreen` and swap in a controlled-touch
+clause instead, so the prompt never contradicts itself.
+
 **The logo is composited on a canvas, not prompted.** A diffusion model asked to draw a brand mark
 returns an approximation, in a slightly different place every time. So
 [`src/lib/watermark.ts`](src/lib/watermark.ts) burns the real PNG into the bottom-right corner of
