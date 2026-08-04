@@ -60,6 +60,12 @@ export function OneShot() {
 
   const selectedMotion = MOTIONS.find((m) => m.id === video.motionId);
   const opensCard = Boolean(isPrint && selectedMotion?.requiresInside && inside);
+  // "Card held — opened" shows the inside without an animated open, so it sends
+  // the spread too. Mirrors the rule in studio-store's generateOneShot.
+  const heldOpen = Boolean(
+    isPrint && DEVICES.find((d) => d.id === base.deviceId)?.showsInside && inside && !opensCard,
+  );
+  const insideAttached = opensCard || heldOpen;
   const ready = isPrint ? Boolean(front) : Boolean(clip);
 
   const prompt = buildOneShotPrompt({
@@ -111,18 +117,30 @@ export function OneShot() {
           </span>
           {isPrint ? (
             <>
-              <RefChip label="Front" asset={front!} />
-              {inside &&
-                (opensCard ? (
-                  <RefChip label="Inside spread" asset={inside} />
-                ) : (
-                  <span className="text-xs text-ink-faint">
-                    Inside spread uploaded — pick an opening motion to use it.
-                  </span>
-                ))}
+              <RefChip label="Front" sub="@Image1" asset={front!} active />
+              {inside ? (
+                <>
+                  <RefChip
+                    label="Inside spread"
+                    sub={insideAttached ? "@Image2" : "not sent"}
+                    asset={inside}
+                    active={insideAttached}
+                  />
+                  {!insideAttached && (
+                    <span className="text-xs leading-snug text-ink-faint">
+                      Pick an opening motion — or the &ldquo;Card held — opened&rdquo; framing — to
+                      send it.
+                    </span>
+                  )}
+                </>
+              ) : (
+                <span className="text-xs leading-snug text-ink-faint">
+                  No inside spread — the card stays closed.
+                </span>
+              )}
             </>
           ) : (
-            <span className="truncate text-xs font-semibold text-ink">🎞️ {clip!.label}</span>
+            <RefChip label={clip!.label} sub="@Video1" asset={clip!} active video />
           )}
         </div>
       )}
@@ -386,12 +404,56 @@ export function OneShot() {
   );
 }
 
-function RefChip({ label, asset }: { label: string; asset: { url: string; label: string } }) {
+/**
+ * One reference that will be handed to Seedance. `active` is the honest bit:
+ * an uploaded inside spread is only sent when the shot actually shows it, so a
+ * greyed chip means "we have it, we're not sending it this time".
+ */
+function RefChip({
+  label,
+  sub,
+  asset,
+  active,
+  video,
+}: {
+  label: string;
+  sub: string;
+  asset: { url: string; label: string };
+  active: boolean;
+  video?: boolean;
+}) {
   return (
-    <span className="flex items-center gap-2 rounded-xl border border-hairline bg-canvas-2 py-1 pl-1 pr-2.5">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={asset.url} alt="" className="h-8 w-8 rounded-lg object-cover" />
-      <span className="text-[11px] font-bold text-ink">{label}</span>
+    <span
+      className={cx(
+        "flex items-center gap-2 rounded-xl border py-1 pl-1 pr-2.5 transition-opacity",
+        active ? "border-stamp-200 bg-stamp-50" : "border-hairline bg-canvas-2 opacity-55",
+      )}
+    >
+      {video ? (
+        <video
+          src={asset.url}
+          className="h-9 w-9 rounded-lg object-cover"
+          muted
+          playsInline
+          preload="metadata"
+        />
+      ) : (
+        /* eslint-disable-next-line @next/next/no-img-element */
+        <img src={asset.url} alt="" className="h-9 w-9 rounded-lg object-cover" />
+      )}
+      <span className="min-w-0">
+        <span className={cx("block max-w-40 truncate text-[11px] font-bold", active ? "text-stamp-800" : "text-ink")}>
+          {label}
+        </span>
+        <span
+          className={cx(
+            "block font-mono text-[10px] leading-tight",
+            active ? "text-stamp-600" : "text-ink-faint",
+          )}
+        >
+          {sub}
+        </span>
+      </span>
     </span>
   );
 }
