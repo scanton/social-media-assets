@@ -565,20 +565,48 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     keyConnected, runner, surface, toast, video,
   ]);
 
-  /* --------------------- flow 2: straight to video -------------------- */
+  /* ------------------- straight to video (both products) -------------- */
 
+  /**
+   * One Seedance call, no still in between.
+   *
+   * Digital cards hand over the animation clip as @Video1. Printed cards hand
+   * over the artwork itself — front as @Image1, inside spread as @Image2 when an
+   * opening motion is picked — which also keeps the model from animating people
+   * that a generated still had already invented.
+   */
   const generateOneShot = useCallback(() => {
     if (!keyConnected) {
       setKeyDialogOpen(true);
       return;
     }
+
+    const isPrint = surface === "print";
     const clip = assets.find((a) => a.id === cardVideoId && a.kind === "card-video");
-    if (!clip) {
-      toast("Flow 2 needs an uploaded card clip — add one in step 1.", "error");
+    const front = assets.find((a) => a.id === cardFrontId && a.kind === "card-art");
+    const inside = assets.find((a) => a.id === cardInsideId && a.kind === "card-art");
+    const motion = byId(MOTIONS, video.motionId);
+    const opensCard = Boolean(isPrint && motion?.requiresInside && inside);
+    // "Card held — opened" already shows the inside, so it needs the spread too.
+    const heldOpen = Boolean(
+      isPrint && byId(DEVICES, base.deviceId)?.showsInside && inside && !opensCard,
+    );
+
+    if (isPrint && !front) {
+      toast("Add the printed front panel in step 1 first.", "error");
+      return;
+    }
+    if (isPrint && motion?.requiresInside && !inside) {
+      toast("That motion opens the card — add an inside spread in step 1 first.", "error");
+      return;
+    }
+    if (!isPrint && !clip) {
+      toast("Add the card animation clip in step 1 first.", "error");
       return;
     }
 
     const prompt = buildOneShotPrompt({
+      surface,
       deviceId: base.deviceId,
       sceneId: base.sceneId,
       angleId: base.angleIds[0] ?? "pov",
@@ -588,19 +616,23 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       audienceId: base.audienceId,
       framingId: base.framingId,
       motionId: video.motionId,
+      hasInside: Boolean(inside),
       extraNotes: [base.notes, video.notes].filter(Boolean).join(" "),
     });
 
     const device = byId(DEVICES, base.deviceId);
+    const references = isPrint
+      ? { image_urls: opensCard || heldOpen ? [front!.url, inside!.url] : [front!.url] }
+      : { video_urls: [clip!.url] };
 
     void runner.run([
       {
-        label: `One-shot · ${device?.label ?? "scene"}`,
+        label: `${device?.label ?? "Scene"} · ${motion?.label ?? "motion"}`,
         kind: "video",
         model: MODELS.screenReplace,
         input: {
           prompt,
-          video_urls: [clip.url],
+          ...references,
           resolution: video.resolution,
           duration: video.duration,
           aspect_ratio: video.aspectRatio === "auto" ? "9:16" : video.aspectRatio,
@@ -611,10 +643,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           const v = (data as { video?: { url: string; content_type?: string } }).video;
           if (!v) return [];
 
-          /*
-           * Flow 1 inherits the logo from the still it animates. Flow 2 has no
-           * still, so the emblem is burned in afterwards with ffmpeg compose.
-           */
+          // No still to inherit the emblem from, so it's burned into the clip.
           let url = v.url;
           let stamped = false;
           if (base.logo) {
@@ -639,15 +668,15 @@ export function StudioProvider({ children }: { children: ReactNode }) {
               kind: "video" as const,
               url,
               contentType: v.content_type ?? "video/mp4",
-              label: `One-shot · ${device?.label ?? "scene"}`,
+              label: `${device?.label ?? "Scene"} · ${motion?.label ?? "motion"}`,
               tags: [
-                "flow 2",
+                isPrint ? "printed card" : "digital card",
                 video.resolution,
+                ...(opensCard ? ["opens"] : heldOpen ? ["inside"] : []),
                 base.logo ? (stamped ? "logo" : "no logo") : "no logo",
-                byId(MOTIONS, video.motionId)?.label ?? "motion",
               ],
               createdAt: Date.now(),
-              parentId: clip.id,
+              parentId: isPrint ? front!.id : clip!.id,
               prompt,
               surface,
               rawUrl: stamped ? v.url : undefined,
@@ -656,7 +685,10 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         },
       },
     ]);
-  }, [assets, base, cardVideoId, keyConnected, runner, surface, toast, video]);
+  }, [
+    assets, base, cardFrontId, cardInsideId, cardVideoId,
+    keyConnected, runner, surface, toast, video,
+  ]);
 
   const value = useMemo<StudioValue>(
     () => ({

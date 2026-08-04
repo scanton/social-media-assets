@@ -32,14 +32,19 @@ export const SURFACES: (Option & { kind: SurfaceKind })[] = [
     kind: "print",
     label: "Printed Card",
     emoji: "💌",
-    hint: "Physical POD card in a scene — still, then video",
+    hint: "Your printed card artwork in a scene — straight to video",
     prompt: "",
   },
 ];
 
 /* ---------------------------- DEVICES ---------------------------- */
 
-export const DEVICES: (Option & { surface: SurfaceKind; defaultAspect?: string })[] = [
+export const DEVICES: (Option & {
+  surface: SurfaceKind;
+  defaultAspect?: string;
+  /** Printed cards: this framing shows the inside spread rather than the front. */
+  showsInside?: boolean;
+})[] = [
   {
     id: "iphone-portrait",
     surface: "screen",
@@ -144,6 +149,7 @@ export const DEVICES: (Option & { surface: SurfaceKind; defaultAspect?: string }
   {
     id: "card-held-open",
     surface: "print",
+    showsInside: true,
     label: "Card held — opened",
     emoji: "💌",
     defaultAspect: "4:5",
@@ -1155,6 +1161,7 @@ export function buildScreenReplacePrompt(opts: {
  * burned in. Worth measuring against flow 1 rather than assuming.
  */
 export function buildOneShotPrompt(sel: {
+  surface: SurfaceKind;
   deviceId: string;
   sceneId: string;
   angleId: string;
@@ -1164,6 +1171,8 @@ export function buildOneShotPrompt(sel: {
   audienceId: string;
   framingId: string;
   motionId: string;
+  /** Printed cards only: an inside spread is available as @Image2. */
+  hasInside?: boolean;
   extraNotes?: string;
 }): string {
   const device = byId(DEVICES, sel.deviceId);
@@ -1174,16 +1183,46 @@ export function buildOneShotPrompt(sel: {
   const presence = byId(PRESENCE, sel.presenceId);
   const audience = byId(AUDIENCES, sel.audienceId);
   const motion = byId(MOTIONS, sel.motionId);
+  // Two different ways the inside can be on screen: the card is opened during
+  // the clip, or it was already being held open to begin with.
+  const opensCard = Boolean(motion?.requiresInside && sel.hasInside);
+  const heldOpen = Boolean(device?.showsInside && sel.hasInside && !opensCard);
 
-  return joinPrompts([
-    `A photorealistic live-action clip of ${device?.prompt ?? "a smartphone"}`,
+  const setting = [
     scene?.prompt,
     presence?.prompt,
     angle?.prompt,
-    framingClause(sel.framingId, "screen"),
+    framingClause(sel.framingId, sel.surface),
     light?.prompt,
     look?.prompt,
     audience ? `the styling, wardrobe and props should read as authentically ${audience.prompt}` : undefined,
+  ];
+
+  if (sel.surface === "print") {
+    return joinPrompts([
+      `A photorealistic live-action clip of ${
+        device?.showsInside && !sel.hasInside
+          ? "a printed A6 folded greeting card held upright in one hand, front panel facing the camera square-on, crisp paper edges"
+          : (device?.prompt ?? "a printed greeting card")
+      }`,
+      ...setting,
+      "@Image1 is the artwork printed on the front panel of that card. Reproduce it exactly — same composition, same colours, same typography, same layout. Do not redesign it, re-letter it, recolour it, crop it or invent any printed content of your own",
+      "Fit it to the front panel edge to edge with correct perspective for the card's angle, following any curl or flex in the paper, and let the scene's own light fall across it so it reads as genuinely printed on card stock",
+      opensCard
+        ? "@Image2 is the artwork printed across the full inside spread — the left and right inside panels together. The card starts closed showing @Image1; as it opens, the inside must show exactly @Image2, mapped across both panels with the centre fold running down the middle of it. Reproduce it just as faithfully, and hold the open card steady and readable at the end"
+        : heldOpen
+          ? "@Image2 is the artwork printed across the full inside spread — the left and right inside panels together. The card is already held open for the whole clip and it is @Image2 that faces the camera, mapped across both panels with the centre fold down the middle. Reproduce it exactly and never close the card"
+          : "The card stays closed for the whole clip — only the printed front from @Image1 is ever shown. Never open it, never show an inside, and never invent a back or an interior",
+      PRINT_CONTAINMENT_CLAUSE,
+      motion?.prompt,
+      "Realistic physics and paper motion, with believable card stock weight and stiffness. No text overlays, no captions, no watermarks, no logos, no scene cuts",
+      sel.extraNotes?.trim(),
+    ]);
+  }
+
+  return joinPrompts([
+    `A photorealistic live-action clip of ${device?.prompt ?? "a smartphone"}`,
+    ...setting,
     "@Video1 is a HeartStamp greeting-card animation playing full-screen on that device. It must appear genuinely displayed on the screen, filling it edge to edge, from the very first frame of the clip",
     "Lock it to the screen with correct perspective and keystone for the whole clip — it must never slide, drift, detach or change",
     "Give it believable emissive screen brightness plus the scene's own reflections, so it reads as displayed rather than pasted on",

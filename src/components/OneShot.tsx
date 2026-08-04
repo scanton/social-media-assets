@@ -18,14 +18,18 @@ import {
 import { canStampVideo } from "@/lib/video-logo";
 import { useStudio } from "./studio-store";
 import { Button, Chip, Field, Select, Switch, cx } from "./ui";
-import { Panel, ResultsGrid } from "./steps/shared";
+import { Panel, ResultsGrid, SectionHead } from "./steps/shared";
 
 /**
- * The experiment: describe the scene in words and hand Seedance the card clip,
- * with no still in between. Everything flow 1 spreads across steps 2 and 3 lives
- * on this one page.
+ * Scene, motion and output on one page, rendered straight through Seedance with
+ * no still in between.
+ *
+ * Both products land here. A generated still turned out to cost more than it
+ * gave: the digital flow fought it, and on printed cards it invented people
+ * whose faces then had to be animated. Handing the model the artwork itself and
+ * describing the scene in words avoids both.
  */
-export function Flow2() {
+export function OneShot() {
   const s = useStudio();
   const { base, video } = s;
   const [showPrompt, setShowPrompt] = useState(false);
@@ -33,18 +37,33 @@ export function Flow2() {
   // them, but fail visibly rather than silently dropping the logo.
   const stampable = canStampVideo();
 
+  const isPrint = s.surface === "print";
   const clip = s.assets.find((a) => a.id === s.cardVideoId && a.kind === "card-video");
+  const front = s.assets.find((a) => a.id === s.cardFrontId && a.kind === "card-art");
+  const inside = s.assets.find((a) => a.id === s.cardInsideId && a.kind === "card-art");
   const videos = s.assets.filter((a) => a.kind === "video");
 
-  const devices = DEVICES.filter((d) => d.surface === "screen");
+  const devices = DEVICES.filter((d) => d.surface === s.surface);
   const scenes = useMemo(
     () => SCENES.filter((sc) => !sc.audience || sc.audience.includes(base.audienceId)),
     [base.audienceId],
   );
   const sceneMissing = !scenes.some((sc) => sc.id === base.sceneId);
-  const motions = MOTIONS.filter((m) => !m.surface || m.surface === "screen");
+
+  // Opening motions have nothing truthful to reveal without the inside spread.
+  const motions = MOTIONS.filter(
+    (m) => (!m.surface || m.surface === s.surface) && (!m.requiresInside || Boolean(inside)),
+  );
+  const lockedOpeners = MOTIONS.filter(
+    (m) => m.requiresInside && m.surface === s.surface && !inside,
+  );
+
+  const selectedMotion = MOTIONS.find((m) => m.id === video.motionId);
+  const opensCard = Boolean(isPrint && selectedMotion?.requiresInside && inside);
+  const ready = isPrint ? Boolean(front) : Boolean(clip);
 
   const prompt = buildOneShotPrompt({
+    surface: s.surface,
     deviceId: base.deviceId,
     sceneId: base.sceneId,
     angleId: base.angleIds[0] ?? "pov",
@@ -54,37 +73,57 @@ export function Flow2() {
     audienceId: base.audienceId,
     framingId: base.framingId,
     motionId: video.motionId,
+    hasInside: Boolean(inside),
     extraNotes: [base.notes, video.notes].filter(Boolean).join(" "),
   });
 
   return (
     <div className="space-y-8">
-      <header className="animate-rise">
-        <div className="flex items-center gap-2.5">
-          <span className="sticker border-stamp-200 bg-stamp-50 text-stamp-700">Experiment</span>
-          <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-stamp-600">
-            One shot · no still
-          </span>
-        </div>
-        <h2 className="mt-3 font-display text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">
-          Straight to video
-        </h2>
-        <p className="mt-2.5 max-w-2xl text-sm leading-relaxed text-ink-soft">
-          Describe the scene and hand Seedance your card clip in a single pass — no still image in
-          between. Faster and simpler, but the artwork is whatever Seedance renders rather than a
-          pixel-exact composite. The logo is burned into the finished clip afterwards, so it still
-          lands in the same corner as Flow 1.
-        </p>
-      </header>
+      <SectionHead
+        step={2}
+        title="Build the video"
+        blurb={
+          isPrint
+            ? "Describe the scene and hand Seedance your card artwork in a single pass. It builds the whole shot around the real printed panels, so nothing has to be animated from an invented still. The logo is burned into the finished clip afterwards."
+            : "Describe the scene and hand Seedance your card animation in a single pass. It plays on the device in the shot it builds. The logo is burned into the finished clip afterwards."
+        }
+      />
 
-      {!clip && (
+      {!ready && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
           <p className="text-sm font-medium text-amber-900">
-            ⚠️ Flow 2 needs an uploaded card clip — it&apos;s the only thing that goes on the screen.
+            ⚠️{" "}
+            {isPrint
+              ? "Add the printed front panel — it's what the whole shot is built around."
+              : "Add the card animation clip — it's the only thing that goes on the screen."}
           </p>
           <Button variant="outline" size="sm" onClick={() => s.setStep(1)}>
             Go to step 1
           </Button>
+        </div>
+      )}
+
+      {/* What actually goes into the render. */}
+      {ready && (
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-hairline bg-white px-4 py-3">
+          <span className="text-[10px] font-bold uppercase tracking-[0.09em] text-ink-faint">
+            References
+          </span>
+          {isPrint ? (
+            <>
+              <RefChip label="Front" asset={front!} />
+              {inside &&
+                (opensCard ? (
+                  <RefChip label="Inside spread" asset={inside} />
+                ) : (
+                  <span className="text-xs text-ink-faint">
+                    Inside spread uploaded — pick an opening motion to use it.
+                  </span>
+                ))}
+            </>
+          ) : (
+            <span className="truncate text-xs font-semibold text-ink">🎞️ {clip!.label}</span>
+          )}
         </div>
       )}
 
@@ -190,6 +229,26 @@ export function Flow2() {
                 </Chip>
               ))}
             </div>
+
+            {lockedOpeners.length > 0 && (
+              <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2.5">
+                <p className="text-xs font-semibold text-amber-900">
+                  🔒 {lockedOpeners.map((m) => m.label).join(", ")}
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-amber-900/80">
+                  Opening the card needs the inside spread, otherwise the model invents what&apos;s
+                  printed inside.{" "}
+                  <button
+                    type="button"
+                    onClick={() => s.setStep(1)}
+                    className="focus-stamp font-bold underline underline-offset-2"
+                  >
+                    Add it in step 1
+                  </button>
+                  .
+                </p>
+              </div>
+            )}
           </Panel>
 
           <Panel title="Output">
@@ -273,7 +332,13 @@ export function Flow2() {
                     Render
                   </p>
                   <p className="mt-0.5 truncate text-sm font-medium text-ink-soft">
-                    {clip ? clip.label : "No card clip selected"}
+                    {opensCard
+                      ? "Card opens to the inside spread"
+                      : isPrint
+                        ? "Front panel only"
+                        : clip
+                          ? clip.label
+                          : "No card clip selected"}
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -282,7 +347,7 @@ export function Flow2() {
                       Stop
                     </Button>
                   )}
-                  <Button size="lg" onClick={s.generateOneShot} loading={s.busy} disabled={!clip}>
+                  <Button size="lg" onClick={s.generateOneShot} loading={s.busy} disabled={!ready}>
                     {s.busy ? "Rendering…" : "Render video"}
                   </Button>
                 </div>
@@ -290,8 +355,7 @@ export function Flow2() {
 
               <p className="mt-3 rounded-xl bg-canvas-2 px-3 py-2 text-xs leading-relaxed text-ink-soft">
                 🕐 One Seedance call, a few minutes{base.logo && stampable ? ", then a logo pass in this tab that runs about as long as the clip" : ""}.
-                No still, so the card on screen is whatever Seedance renders rather than a pixel-exact
-                composite.
+                Keep this tab open.
               </p>
 
               <button
@@ -313,11 +377,21 @@ export function Flow2() {
             assets={videos}
             kind="video"
             emptyEmoji="🎬"
-            emptyText="One-shot clips land here. Compare them against flow 1 before picking a winner."
+            emptyText="Finished clips land here, ready to download for TikTok, Reels and Pinterest."
             cols="sm:grid-cols-2"
           />
         </div>
       </div>
     </div>
+  );
+}
+
+function RefChip({ label, asset }: { label: string; asset: { url: string; label: string } }) {
+  return (
+    <span className="flex items-center gap-2 rounded-xl border border-hairline bg-canvas-2 py-1 pl-1 pr-2.5">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={asset.url} alt="" className="h-8 w-8 rounded-lg object-cover" />
+      <span className="text-[11px] font-bold text-ink">{label}</span>
+    </span>
   );
 }

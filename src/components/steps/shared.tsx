@@ -15,10 +15,6 @@ export function SectionHead({
   title: string;
   blurb: string;
 }) {
-  // The two products have different step counts, so the total follows the surface.
-  const { surface } = useStudio();
-  const total = surface === "screen" ? 2 : 3;
-
   return (
     <header className="animate-rise">
       <div className="flex items-center gap-2.5">
@@ -26,7 +22,7 @@ export function SectionHead({
           {step}
         </span>
         <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-stamp-600">
-          Step {step} of {total}
+          Step {step} of 2
         </span>
       </div>
       <h2 className="mt-3 font-display text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">

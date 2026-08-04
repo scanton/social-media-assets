@@ -3,39 +3,38 @@
 Generate social-media assets for HeartStamp printed (POD) and 3D digital greeting cards.
 Base lifestyle images → card composites → TikTok / Reels / Pinterest video.
 
-What you're selling picks the pipeline — the tabs in the header are the choice.
+What you're selling picks the pipeline — the buttons in the header are the choice. Both products
+run the same two steps and the same single Seedance call; only the references differ.
 
-**Digital 3D Card.** One page, one Seedance call, no still. Upload the card animation and it plays
-on a device in a generated scene. This is the one that works well, so it stays deliberately simple:
-no artwork upload, no compositing step, no printed-card options.
-
-| Step | What it does | Model |
+| | Step 1 | Step 2 |
 | --- | --- | --- |
-| **1 · Clip** | Upload the 2–15s card animation | direct-to-fal upload |
-| **2 · Video** | Scene + motion + output, straight through | `bytedance/seedance-2.0/reference-to-video` |
+| **Digital 3D Card** | Upload the 2–15s card animation | Scene + motion + output → the clip plays on a device |
+| **Printed Card** | Upload the front panel, optionally the inside spread | Scene + motion + output → the card is the subject |
 
-**Printed Card.** Still first, then animate it.
+Digital hands the clip over as `@Video1`. Print hands over the artwork itself — front as `@Image1`,
+inside spread as `@Image2` when the card opens. Everything goes through
+`bytedance/seedance-2.0/reference-to-video`.
 
-| Step | What it does | Model |
-| --- | --- | --- |
-| **1 · Artwork** | Front panel, plus an optional inside spread | direct-to-fal upload |
-| **2 · Scene** | Batch lifestyle scenes with the front printed on the card, logo stamped | `openai/gpt-image-2/edit` |
-| **3 · Motion** | Animate the scene — or open the card and reveal the inside | `…/image-to-video` · `…/reference-to-video` |
+**There is no generated still in either path.** There used to be: a GPT-Image-2 scene that artwork
+was composited onto, then animated. It cost more than it gave. The digital flow fought it — an
+approximate first frame made Seedance stop believing the clip belonged on the screen — and on
+printed cards it invented people whose faces then had to be animated. Describing the scene in words
+and handing over the real artwork avoids both.
 
-The inside spread is what unlocks the opening motions. It rides along as a second reference image so
-Seedance reveals the artwork the customer actually bought; without it the model invents an inside,
-which is the one thing a greeting-card asset can't get wrong. Opening motions are hidden until a
-spread exists, and a stored one is reset if the spread is later removed.
+The inside spread is what unlocks the opening motions. Without it the model invents an interior,
+which is the one thing a greeting-card asset can't get wrong, so those motions stay hidden until a
+spread exists and a stored one resets if the spread is removed. The "Card held — opened" framing
+shows the inside without an animated open, and the prompt accounts for that rather than telling the
+model to keep the card shut while holding it open.
 
 Which panel an upload is gets guessed from its aspect ratio — fronts are portrait, inside spreads
 are two panels side by side and so land as landscape. Dropping onto a named slot overrides the
-guess, and every tile has a front/inside toggle.
+guess but warns if the two disagree, and every tile has a front/inside toggle.
 
-The logo lands on both paths: the printed flow inherits it from the still it animates, and the
-digital flow burns it into the finished clip in the browser —
-[`src/lib/video-logo.ts`](src/lib/video-logo.ts) plays the clip through a canvas, paints the emblem
-on every frame with the same `paintLogo()` the stills use, and records the canvas back out to MP4
-via MediaRecorder. Real time, no dependencies, no extra API cost.
+The logo is burned into the finished clip in the browser —
+[`src/lib/video-logo.ts`](src/lib/video-logo.ts) plays it through a canvas, paints the emblem on
+every frame with `paintLogo()`, and records the canvas back out to MP4 via MediaRecorder. Real time,
+no dependencies, no extra API cost.
 
 Three things about that file are load-bearing and were each found by testing, not reasoning:
 
@@ -47,6 +46,12 @@ Three things about that file are load-bearing and were each found by testing, no
 - Audio is taken from the element's own `captureStream()`, which still carries signal while the
   element is muted. A Web Audio tap looks tidier but records silence from a muted element, and the
   element has to stay muted to satisfy autoplay policy.
+
+**Unreachable as of this change:** `Step2Scene`, `Step3Motion`, `ScreenAligner`, `lib/compose.ts`,
+`lib/screen-detect.ts`, `lib/perspective.ts`, and the `generateScenes` / `generateVideo` actions in
+the store. They implement the old still pipeline, including the perspective compositing that put
+artwork on a device screen pixel-exactly. Kept for now because the one-shot printed path hasn't been
+through a real render yet; delete once it has.
 
 Everything is downloadable in-app. Nothing is stored server-side.
 
