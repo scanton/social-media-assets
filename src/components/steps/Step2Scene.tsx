@@ -19,7 +19,7 @@ import {
 import { useStudio, uid } from "../studio-store";
 import { Uploader } from "../Uploader";
 import { ScreenAligner } from "../ScreenAligner";
-import { Button, Chip, Field, Select, Stepper, Switch, cx, useToast } from "../ui";
+import { Button, Chip, Field, Select, Stepper, cx, useToast } from "../ui";
 import { Panel, ResultsGrid, SectionHead } from "./shared";
 
 export function Step2Scene() {
@@ -104,7 +104,7 @@ export function Step2Scene() {
         title="Build the scene"
         blurb={
           hasCard
-            ? "Photoreal lifestyle shots with your front panel already printed on the card, logo stamped in the corner. Check multiple angles and orientations to batch a whole shoot at once."
+            ? "Photoreal lifestyle shots with your front panel already printed on the card. Check multiple angles and orientations to batch a whole shoot at once — the logo goes on in step 3."
             : "No front panel selected, so the card will render blank. Pick artwork in step 1 to have it printed straight into the scene."
         }
       />
@@ -284,13 +284,6 @@ export function Step2Scene() {
                 </Field>
               </div>
 
-              <Switch
-                checked={base.logo}
-                onChange={(logo) => s.setBase({ logo })}
-                label="Stamp the HeartStamp logo"
-                hint="Burns the emblem into the bottom-right corner of every still, pixel-exact and always in the same spot. Step 3 then tells Seedance to hold it there for the whole clip."
-              />
-
               <Field label="Extra direction" hint="Optional. Anything specific — props, wardrobe, a colour story.">
                 <textarea
                   value={base.notes}
@@ -420,7 +413,7 @@ export function Step2Scene() {
                 emoji="🖼️"
                 accept="image/png,image/jpeg,image/webp"
                 title="Drop a finished scene"
-                subtitle="Uploaded as-is — no logo is added, since a scene saved from here already has one."
+                subtitle="Uploaded as-is. The logo is added to the video in step 3, not to the still."
                 onFile={uploadScene}
               />
             </div>

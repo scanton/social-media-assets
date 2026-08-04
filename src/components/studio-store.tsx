@@ -363,13 +363,15 @@ export function StudioProvider({ children }: { children: ReactNode }) {
                     surface,
                   };
 
-                  if (!compositeHere && !base.logo) return asset;
+                  // The emblem is burned into the finished clip instead, so the
+                  // still stays clean and there is one logo path, not two.
+                  if (!compositeHere) return asset;
 
                   try {
                     const composed = await composeScene({
                       renderUrl: img.url,
-                      cardUrl: compositeHere ? cardAsset!.url : null,
-                      withLogo: base.logo,
+                      cardUrl: cardAsset!.url,
+                      withLogo: false,
                     });
                     return {
                       ...asset,
@@ -408,6 +410,68 @@ export function StudioProvider({ children }: { children: ReactNode }) {
 
   /* -------------------------- step 3: video -------------------------- */
 
+  /**
+   * Turns a Seedance payload into a finished clip, burning the emblem in on the
+   * way through.
+   *
+   * Every video path goes via here so there is exactly one logo mechanism. It
+   * used to be stamped into the printed still and then held in place by prompt,
+   * which asked the video model to preserve something exactly — the one thing
+   * that has drifted every time it's been tried.
+   */
+  const finishVideo = useCallback(
+    async (
+      data: unknown,
+      jobId: string,
+      setStage: (stage: string | undefined) => void,
+      meta: {
+        label: string;
+        tags: string[];
+        parentId?: string;
+        prompt: string;
+        aspect?: Asset["aspect"];
+      },
+    ): Promise<Asset[]> => {
+      const v = (data as { video?: { url: string; content_type?: string } }).video;
+      if (!v) return [];
+
+      const wantsLogo = getPersisted().base.logo;
+      let url = v.url;
+      let stamped = false;
+
+      if (wantsLogo) {
+        try {
+          url = await stampVideoLogo(v.url, (p) =>
+            setStage(p.pct != null ? `Logo ${p.pct}%` : p.stage),
+          );
+          stamped = true;
+        } catch (err) {
+          toast(`Logo stamp failed, keeping the un-stamped clip. ${(err as Error).message}`, "error");
+        } finally {
+          setStage(undefined);
+        }
+      }
+
+      return [
+        {
+          id: `${jobId}-0`,
+          kind: "video" as const,
+          url,
+          contentType: v.content_type ?? "video/mp4",
+          label: meta.label,
+          tags: [...meta.tags, wantsLogo ? (stamped ? "logo" : "no logo") : "no logo"],
+          createdAt: Date.now(),
+          parentId: meta.parentId,
+          prompt: meta.prompt,
+          aspect: meta.aspect,
+          surface: getPersisted().surface,
+          rawUrl: stamped ? v.url : undefined,
+        },
+      ];
+    },
+    [toast],
+  );
+
   const generateVideo = useCallback(() => {
     if (!keyConnected) {
       setKeyDialogOpen(true);
@@ -438,7 +502,6 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       const prompt = buildCardOpenPrompt({
         motionId: video.motionId,
         sceneId: base.sceneId,
-        hasLogo: base.logo,
         extraNotes: video.notes,
       });
       void runner.run([
@@ -455,25 +518,14 @@ export function StudioProvider({ children }: { children: ReactNode }) {
             generate_audio: video.generateAudio,
             bitrate_mode: "high",
           },
-          toAssets: (data, jobId) => {
-            const v = (data as { video?: { url: string; content_type?: string } }).video;
-            if (!v) return [];
-            return [
-              {
-                id: `${jobId}-0`,
-                kind: "video" as const,
-                url: v.url,
-                contentType: v.content_type ?? "video/mp4",
-                label: `Opening · ${still.label}`,
-                tags: [video.resolution, "inside spread", motion.label],
-                createdAt: Date.now(),
-                parentId: still.id,
-                prompt,
-                aspect: still.aspect,
-                surface,
-              },
-            ];
-          },
+          toAssets: (data, jobId, setStage) =>
+            finishVideo(data, jobId, setStage, {
+              label: `Opening · ${still.label}`,
+              tags: [video.resolution, "inside spread", motion.label],
+              parentId: still.id,
+              prompt,
+              aspect: still.aspect,
+            }),
         },
       ]);
       return;
@@ -487,7 +539,6 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       const prompt = buildScreenReplacePrompt({
         surface,
         motionId: video.motionId,
-        hasLogo: base.logo,
         extraNotes: video.notes,
       });
       void runner.run([
@@ -505,25 +556,14 @@ export function StudioProvider({ children }: { children: ReactNode }) {
             generate_audio: video.generateAudio,
             bitrate_mode: "high",
           },
-          toAssets: (data, jobId) => {
-            const v = (data as { video?: { url: string; content_type?: string } }).video;
-            if (!v) return [];
-            return [
-              {
-                id: `${jobId}-0`,
-                kind: "video" as const,
-                url: v.url,
-                contentType: v.content_type ?? "video/mp4",
-                label: `Screen replace · ${still.label}`,
-                tags: [video.resolution, `${video.duration}s`, "seedance"],
-                createdAt: Date.now(),
-                parentId: still.id,
-                prompt,
-                aspect: still.aspect,
-                surface,
-              },
-            ];
-          },
+          toAssets: (data, jobId, setStage) =>
+            finishVideo(data, jobId, setStage, {
+              label: `Screen replace · ${still.label}`,
+              tags: [video.resolution, `${video.duration}s`, "seedance"],
+              parentId: still.id,
+              prompt,
+              aspect: still.aspect,
+            }),
         },
       ]);
       return;
@@ -533,7 +573,6 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       motionId: video.motionId,
       surface,
       sceneId: base.sceneId,
-      hasLogo: base.logo,
       extraNotes: video.notes,
     });
 
@@ -551,29 +590,18 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           generate_audio: video.generateAudio,
           bitrate_mode: "high",
         },
-        toAssets: (data, jobId) => {
-          const v = (data as { video?: { url: string; content_type?: string } }).video;
-          if (!v) return [];
-          return [
-            {
-              id: `${jobId}-0`,
-              kind: "video" as const,
-              url: v.url,
-              contentType: v.content_type ?? "video/mp4",
-              label: `Motion · ${still.label}`,
-              tags: [video.resolution, `${video.duration}s`, byId(MOTIONS, video.motionId)?.label ?? "motion"],
-              createdAt: Date.now(),
-              parentId: still.id,
-              prompt,
-              aspect: still.aspect,
-              surface,
-            },
-          ];
-        },
+        toAssets: (data, jobId, setStage) =>
+          finishVideo(data, jobId, setStage, {
+            label: `Motion · ${still.label}`,
+            tags: [video.resolution, `${video.duration}s`, byId(MOTIONS, video.motionId)?.label ?? "motion"],
+            parentId: still.id,
+            prompt,
+            aspect: still.aspect,
+          }),
       },
     ]);
   }, [
-    assets, base.sceneId, base.logo, baseId, cardVideoId, cardInsideId,
+    assets, base.sceneId, baseId, cardVideoId, cardInsideId, finishVideo,
     keyConnected, runner, surface, toast, video,
   ]);
 
@@ -647,54 +675,21 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           generate_audio: video.generateAudio,
           bitrate_mode: "high",
         },
-        toAssets: async (data, jobId, setStage) => {
-          const v = (data as { video?: { url: string; content_type?: string } }).video;
-          if (!v) return [];
-
-          // No still to inherit the emblem from, so it's burned into the clip.
-          let url = v.url;
-          let stamped = false;
-          if (base.logo) {
-            try {
-              url = await stampVideoLogo(v.url, (p) =>
-                setStage(p.pct != null ? `Logo ${p.pct}%` : p.stage),
-              );
-              stamped = true;
-            } catch (err) {
-              toast(
-                `Logo stamp failed, keeping the un-stamped clip. ${(err as Error).message}`,
-                "error",
-              );
-            } finally {
-              setStage(undefined);
-            }
-          }
-
-          return [
-            {
-              id: `${jobId}-0`,
-              kind: "video" as const,
-              url,
-              contentType: v.content_type ?? "video/mp4",
-              label: `${device?.label ?? "Scene"} · ${motion?.label ?? "motion"}`,
-              tags: [
-                isPrint ? "printed card" : "digital card",
-                video.resolution,
-                ...(opensCard ? ["opens"] : []),
-                base.logo ? (stamped ? "logo" : "no logo") : "no logo",
-              ],
-              createdAt: Date.now(),
-              parentId: isPrint ? front!.id : clip!.id,
-              prompt,
-              surface,
-              rawUrl: stamped ? v.url : undefined,
-            },
-          ];
-        },
+        toAssets: (data, jobId, setStage) =>
+          finishVideo(data, jobId, setStage, {
+            label: `${device?.label ?? "Scene"} · ${motion?.label ?? "motion"}`,
+            tags: [
+              isPrint ? "printed card" : "digital card",
+              video.resolution,
+              ...(opensCard ? ["opens"] : []),
+            ],
+            parentId: isPrint ? front!.id : clip!.id,
+            prompt,
+          }),
       },
     ]);
   }, [
-    assets, base, cardFrontId, cardInsideId, cardVideoId,
+    assets, base, cardFrontId, cardInsideId, cardVideoId, finishVideo,
     keyConnected, runner, surface, toast, video,
   ]);
 

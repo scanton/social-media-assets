@@ -9,6 +9,7 @@ import {
   VIDEO_RESOLUTIONS,
 } from "@/lib/options";
 import { usableMotions } from "@/lib/persisted-store";
+import { canStampVideo } from "@/lib/video-logo";
 import { useStudio } from "../studio-store";
 import { AssetTile } from "../AssetTile";
 import { Button, Chip, Field, Select, Switch, cx } from "../ui";
@@ -17,6 +18,9 @@ import { Panel, ResultsGrid, SectionHead } from "./shared";
 export function Step3Motion() {
   const s = useStudio();
   const [showPrompt, setShowPrompt] = useState(false);
+  // Re-encoding needs MediaRecorder + canvas capture; fail visibly rather than
+  // silently dropping the logo.
+  const stampable = canStampVideo();
 
   const stills = s.assets.filter((a) => a.kind === "base");
   const videos = s.assets.filter((a) => a.kind === "video");
@@ -38,14 +42,12 @@ export function Step3Motion() {
     ? buildCardOpenPrompt({
         motionId: s.video.motionId,
         sceneId: s.base.sceneId,
-        hasLogo: s.base.logo,
         extraNotes: s.video.notes,
       })
     : buildAnimatePrompt({
         motionId: s.video.motionId,
         surface: s.surface,
         sceneId: s.base.sceneId,
-        hasLogo: s.base.logo,
         extraNotes: s.video.notes,
       });
 
@@ -177,6 +179,17 @@ export function Step3Motion() {
               </div>
 
               <Switch
+                checked={s.base.logo && stampable}
+                onChange={(logo) => s.setBase({ logo })}
+                label="Stamp the HeartStamp logo"
+                hint={
+                  stampable
+                    ? "Redraws the finished clip through a canvas with the emblem burned into the bottom-right corner. Runs in this tab and takes about as long as the clip."
+                    : "Unavailable — this browser can't re-encode video. Try Chrome, Edge or Safari."
+                }
+              />
+
+              <Switch
                 checked={s.video.generateAudio}
                 onChange={(generateAudio) => s.setVideo({ generateAudio })}
                 label="Generate audio"
@@ -244,7 +257,8 @@ export function Step3Motion() {
               </div>
 
               <p className="mt-3 rounded-xl bg-canvas-2 px-3 py-2 text-xs leading-relaxed text-ink-soft">
-                🕐 Video renders take a few minutes. Leave this tab open — progress is tracked below.
+                🕐 One Seedance call, a few minutes{s.base.logo && stampable ? ", then a logo pass in this tab that runs about as long as the clip" : ""}.
+                Keep this tab open.
               </p>
 
               <button

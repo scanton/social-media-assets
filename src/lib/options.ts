@@ -1226,18 +1226,10 @@ const NO_ENVELOPE_CLAUSE = [
   "no envelope, sleeve, wrapper, insert or backing card of any kind is present, and nothing is tucked into the card, laid across it or propped behind it — not even if the printed artwork happens to depict such a thing",
 ].join(". ");
 
-const LOGO_LOCK_CLAUSE = [
-  "There is a small HeartStamp heart logo in the bottom-right corner of the frame",
-  "it is a flat 2D overlay burned onto the footage, not an object inside the scene",
-  "keep it perfectly static, sharp, fully opaque and identical in every single frame — exactly the same size, the same position and the same colours",
-  "it must never move, drift, rotate, scale, fade, blur, catch the scene lighting, gain a shadow or reflection, or be occluded by anything in the scene",
-].join(". ");
-
 export function buildAnimatePrompt(opts: {
   motionId: string;
   surface: SurfaceKind;
   sceneId?: string;
-  hasLogo?: boolean;
   extraNotes?: string;
 }): string {
   const motion = byId(MOTIONS, opts.motionId);
@@ -1253,10 +1245,7 @@ export function buildAnimatePrompt(opts: {
     opts.surface === "print" ? undefined : NO_TOUCH_CLAUSE,
     opts.surface === "print" ? NO_FACES_CLAUSE : undefined,
     "Preserve the exact identity, wardrobe, framing and lighting of the source photograph",
-    opts.hasLogo ? LOGO_LOCK_CLAUSE : undefined,
-    opts.hasLogo
-      ? "Realistic physics and motion blur. No scene cuts, and no text overlays, captions or watermarks beyond the corner logo already present"
-      : "Realistic physics and motion blur. No text overlays, no captions, no watermarks, no logos, no scene cuts",
+    "Realistic physics and motion blur. No text overlays, no captions, no watermarks, no logos, no scene cuts",
     opts.extraNotes?.trim(),
   ]);
 }
@@ -1264,7 +1253,6 @@ export function buildAnimatePrompt(opts: {
 export function buildScreenReplacePrompt(opts: {
   surface: SurfaceKind;
   motionId: string;
-  hasLogo?: boolean;
   extraNotes?: string;
 }): string {
   const motion = byId(MOTIONS, opts.motionId);
@@ -1281,10 +1269,7 @@ export function buildScreenReplacePrompt(opts: {
     opts.surface === "print" ? undefined : NO_TOUCH_CLAUSE,
     motion?.prompt,
     "Preserve the exact subject, wardrobe, environment, framing and lighting of @Image1",
-    opts.hasLogo ? LOGO_LOCK_CLAUSE : undefined,
-    opts.hasLogo
-      ? "Realistic physics and motion blur. No scene cuts, and no text overlays, captions or watermarks beyond the corner logo already present"
-      : "Realistic physics and motion blur. No text overlays, no captions, no watermarks, no scene cuts",
+    "Realistic physics and motion blur. No text overlays, no captions, no watermarks, no logos, no scene cuts",
     opts.extraNotes?.trim(),
   ]);
 }
@@ -1393,7 +1378,6 @@ export function buildOneShotPrompt(sel: {
 export function buildCardOpenPrompt(opts: {
   motionId: string;
   sceneId?: string;
-  hasLogo?: boolean;
   extraNotes?: string;
 }): string {
   const motion = byId(MOTIONS, opts.motionId);
@@ -1411,10 +1395,7 @@ export function buildCardOpenPrompt(opts: {
     "Preserve the exact identity, wardrobe, framing and lighting of @Image1",
     PRINT_CONTAINMENT_CLAUSE,
     NO_FACES_CLAUSE,
-    opts.hasLogo ? LOGO_LOCK_CLAUSE : undefined,
-    opts.hasLogo
-      ? "Realistic physics and paper motion. No scene cuts, and no text overlays, captions or watermarks beyond the corner logo already present"
-      : "Realistic physics and paper motion. No text overlays, no captions, no watermarks, no logos, no scene cuts",
+    "Realistic physics and paper motion. No text overlays, no captions, no watermarks, no logos, no scene cuts",
     opts.extraNotes?.trim(),
   ]);
 }

@@ -42,9 +42,16 @@ Which panel an upload is gets guessed from its aspect ratio — fronts are portr
 are two panels side by side and so land as landscape. Dropping onto a named slot overrides the
 guess but warns if the two disagree, and every tile has a front/inside toggle.
 
-The logo is stamped into the still for printed cards, and burned into the finished clip for digital
-ones — [`src/lib/video-logo.ts`](src/lib/video-logo.ts) plays the clip through a canvas, paints the
-emblem on every frame with the same `paintLogo()`, and records it back out to MP4 via MediaRecorder.
+**The logo is burned into the finished clip, on both paths.**
+[`src/lib/video-logo.ts`](src/lib/video-logo.ts) plays the clip through a canvas, paints the emblem
+on every frame with `paintLogo()`, and records it back out to MP4 via MediaRecorder. Every video
+goes through one `finishVideo()` helper, so there is a single place that decides where the mark sits.
+
+Printed cards used to stamp the still instead and then ask Seedance to hold the mark in place. That
+meant relying on a video model to preserve something exactly, which is the one thing that has drifted
+every time it's been tried in this codebase — the card front, the artwork, the envelope. Compositing
+it ourselves is the only approach that has held. Scene stills are therefore clean; the logo appears
+on the video only.
 
 Three things about that file are load-bearing and were each found by testing, not reasoning:
 
