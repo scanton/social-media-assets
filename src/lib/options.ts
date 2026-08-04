@@ -233,7 +233,7 @@ export const SCENES: (Option & { audience?: string[] })[] = [
     emoji: "🪞",
     audience: ["genz"],
     prompt:
-      "a full-length mirror selfie set-up in a bedroom, outfit visible, mirror slightly smudged, natural daylight from a window",
+      "a full-length mirror selfie set-up in a bedroom, framed so the mirror shows the outfit from the chin down and no face is reflected, mirror slightly smudged, natural daylight from a window",
   },
   {
     id: "concert",
@@ -257,7 +257,7 @@ export const SCENES: (Option & { audience?: string[] })[] = [
     emoji: "🏙️",
     audience: ["genz", "pro"],
     prompt:
-      "walking on a busy city street, storefronts and taxis compressed in the blurred background, sunlight bouncing off the pavement",
+      "walking along the sidewalk of a busy city street, safely up on the kerb with storefronts close behind and traffic further off in the blurred background — never standing or walking in the road itself, sunlight bouncing off the paving",
   },
   {
     id: "family-kitchen",
@@ -369,7 +369,7 @@ export const SCENES: (Option & { audience?: string[] })[] = [
     emoji: "🥕",
     audience: ["genz", "millennial-mom", "pro"],
     prompt:
-      "walking a farmers market on a bright morning, canvas tote of produce on the shoulder, stall awnings and crates of flowers and fruit crowding the background",
+      "walking down the pedestrian aisle between stalls at a farmers market on a bright morning, canvas tote of produce on the shoulder, stall awnings and crates of flowers and fruit crowding the background",
   },
   {
     id: "rooftop-bar",
@@ -433,7 +433,7 @@ export const SCENES: (Option & { audience?: string[] })[] = [
     emoji: "🛁",
     audience: ["genz", "millennial-mom"],
     prompt:
-      "a candlelit self-care evening, bath tray with a candle and a glass, steam and warm low light, tiled wall softly out of focus",
+      "a candlelit self-care evening styled around the edge of a bath, bath tray with a candle and a glass, steam and warm low light, tiled wall softly out of focus; nobody is in the water and anyone in frame is fully dressed in a robe, sitting on the edge or on a stool beside it",
   },
   {
     id: "school-pickup",
@@ -441,7 +441,7 @@ export const SCENES: (Option & { audience?: string[] })[] = [
     emoji: "🎒",
     audience: ["millennial-mom"],
     prompt:
-      "in the driver's seat waiting in the school pickup line, backpack on the passenger seat, windshield light, other cars queued blurry ahead",
+      "in the driver's seat of a car that is parked and completely stationary in the school pickup line, both hands free and away from the wheel, backpack on the passenger seat, windshield light, other cars queued blurry ahead",
   },
   {
     id: "soccer-sideline",
@@ -449,7 +449,7 @@ export const SCENES: (Option & { audience?: string[] })[] = [
     emoji: "⚽",
     audience: ["millennial-mom"],
     prompt:
-      "on a folding chair at the sideline of a kids' sports practice, travel mug in hand, green field and small figures running out of focus behind",
+      "on a folding chair at the sideline of a kids' sports practice, travel mug in hand, green field behind with distant players far downfield, small and heavily out of focus with no child's face discernible",
   },
   {
     id: "nursery",
@@ -457,7 +457,7 @@ export const SCENES: (Option & { audience?: string[] })[] = [
     emoji: "🍼",
     audience: ["millennial-mom"],
     prompt:
-      "in a soft pastel nursery, rocking chair and muslin blankets, mobile turning slowly, gentle daylight through sheer curtains",
+      "in a soft pastel nursery, rocking chair and muslin blankets, mobile turning slowly, gentle daylight through sheer curtains; the room is empty of any baby or child, styled props only",
   },
   {
     id: "craft-table",
@@ -720,6 +720,10 @@ export const PRESENCE: Option[] = [
   },
 ];
 
+/** Catch-all for the class of error the city-street scene exposed. */
+const PLAUSIBLE_PLACEMENT_CLAUSE =
+  "Everyone and everything sits where it plausibly and safely would in that setting — people on footpaths rather than in traffic, seated where there is seating, standing where there is room to stand";
+
 /* --------------------------- FACES ------------------------------- */
 
 /**
@@ -839,6 +843,7 @@ export function buildScenePrompt(sel: SceneSelection): string {
       ? NO_ENVELOPE_CLAUSE
       : undefined,
     sel.surface === "print" ? NO_FACES_CLAUSE : undefined,
+    PLAUSIBLE_PLACEMENT_CLAUSE,
     "Photorealistic, sharp, high dynamic range, believable real-world materials and physics",
     // The HeartStamp mark is composited on afterwards in the browser, so the
     // model must not try to draw one of its own.
@@ -1318,6 +1323,7 @@ export function buildOneShotPrompt(sel: {
     light?.prompt,
     look?.prompt,
     audience ? `the styling, wardrobe and props should read as authentically ${audience.prompt}` : undefined,
+    PLAUSIBLE_PLACEMENT_CLAUSE,
   ];
 
   if (sel.surface === "print") {
