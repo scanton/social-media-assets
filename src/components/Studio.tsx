@@ -181,29 +181,48 @@ function StudioShell({
         </div>
 
         {/* --------------------------- what we sell --------------------------- */}
-        <div className="mx-auto max-w-[110rem] px-4 pb-2 sm:px-6">
-          <div
-            role="tablist"
-            aria-label="What are we selling?"
-            className="inline-flex gap-1 rounded-full border border-hairline bg-canvas-2 p-1"
-          >
-            {SURFACES.map((opt) => (
-              <button
-                key={opt.id}
-                type="button"
-                role="tab"
-                aria-selected={s.surface === opt.kind}
-                onClick={() => s.setSurface(opt.kind)}
-                title={opt.hint}
-                className={cx(
-                  "focus-stamp flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-bold transition-all duration-200",
-                  s.surface === opt.kind ? "bg-white text-ink shadow-sm" : "text-ink-faint hover:text-ink",
-                )}
-              >
-                <span className="text-sm leading-none">{opt.emoji}</span>
-                {opt.label}
-              </button>
-            ))}
+        {/* This is the pipeline choice, not a view toggle, so it gets the weight
+            of a real decision rather than a pill. */}
+        <div className="mx-auto max-w-[110rem] px-4 pb-3 sm:px-6">
+          <div role="tablist" aria-label="What are we selling?" className="flex flex-wrap gap-2">
+            {SURFACES.map((opt) => {
+              const active = s.surface === opt.kind;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => s.setSurface(opt.kind)}
+                  className={cx(
+                    "focus-stamp group flex items-center gap-2.5 rounded-2xl border px-4 py-2.5 text-left transition-all duration-200 active:scale-[0.98]",
+                    active
+                      ? "border-stamp-600 bg-stamp-600 text-white shadow-[0_6px_18px_-8px_rgba(190,30,46,0.85)]"
+                      : "border-hairline bg-white text-ink hover:-translate-y-0.5 hover:border-stamp-300 hover:bg-stamp-50/50",
+                  )}
+                >
+                  <span
+                    className={cx(
+                      "text-lg leading-none transition-transform duration-300",
+                      active && "animate-wobble",
+                    )}
+                  >
+                    {opt.emoji}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-bold leading-tight">{opt.label}</span>
+                    <span
+                      className={cx(
+                        "mt-0.5 hidden text-[11px] font-medium leading-tight sm:block",
+                        active ? "text-stamp-100" : "text-ink-faint",
+                      )}
+                    >
+                      {opt.hint}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
