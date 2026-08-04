@@ -42,8 +42,6 @@ export const SURFACES: (Option & { kind: SurfaceKind })[] = [
 export const DEVICES: (Option & {
   surface: SurfaceKind;
   defaultAspect?: string;
-  /** Printed cards: this framing shows the inside spread rather than the front. */
-  showsInside?: boolean;
 })[] = [
   {
     id: "iphone-portrait",
@@ -145,16 +143,6 @@ export const DEVICES: (Option & {
     defaultAspect: "4:5",
     prompt:
       "a printed A6 folded greeting card held upright in one hand, front panel facing the camera square-on, crisp paper edges, slight natural hand shadow",
-  },
-  {
-    id: "card-held-open",
-    surface: "print",
-    showsInside: true,
-    label: "Card held — opened",
-    emoji: "💌",
-    defaultAspect: "4:5",
-    prompt:
-      "a printed folded greeting card held open with both hands revealing the inside spread, visible centre fold, soft paper curl",
   },
   {
     id: "card-table-standing",
@@ -980,7 +968,7 @@ export const MOTIONS: (Option & {
       "a breeze moves through the shot — hair lifts and falls, loose fabric ripples, leaves and dappled sunlight shift across the subject and the surface, dust motes drift through the light. The subject breathes, blinks and shifts their weight naturally",
   },
 
-  /* --------------------------- print-only ---------------------------- */
+  /* ------------------ print · card stays closed ---------------------- */
   {
     id: "card-zoom",
     kind: "camera",
@@ -1009,16 +997,6 @@ export const MOTIONS: (Option & {
       "hands stand the folded card upright on the surface like a tent, adjust it square to the camera and let go; the card settles and the hands withdraw from frame",
   },
   {
-    id: "card-open",
-    kind: "action",
-    surface: "print",
-    requiresInside: true,
-    label: "Open the card",
-    emoji: "💌",
-    prompt:
-      "hands take hold of the front panel and slowly swing the card open to reveal the full inside spread, the paper flexing with believable stiffness and weight, until both inside panels are square to the camera and fully readable. The card stays open and still for the last beat of the clip",
-  },
-  {
     id: "envelope-reveal",
     kind: "action",
     surface: "print",
@@ -1027,15 +1005,37 @@ export const MOTIONS: (Option & {
     prompt:
       "hands tear open the envelope, slide the greeting card out and turn its printed front to face the camera, paper and flap moving with believable stiffness",
   },
+
+  /* -------- print · card opens (needs the inside spread) ------------- */
   {
-    id: "envelope-open-read",
+    id: "card-open",
     kind: "action",
     surface: "print",
     requiresInside: true,
-    label: "Unbox, open & read",
-    emoji: "🎁",
+    label: "Open the card",
+    emoji: "💌",
     prompt:
-      "hands slide the card out of its envelope, turn the printed front to camera for a beat, then open it out to the full inside spread and hold it steady and readable while the recipient's eyes move across it",
+      "hands take hold of the front panel and swing the card open to reveal the full inside spread, the paper flexing with believable stiffness and weight, until both inside panels are square to the camera and fully readable. The card stays open and still for the last beat",
+  },
+  {
+    id: "open-slow-reveal",
+    kind: "camera",
+    surface: "print",
+    requiresInside: true,
+    label: "Slow reveal",
+    emoji: "🎥",
+    prompt:
+      "the card opens slowly and deliberately while the camera pushes in at the same pace, the inside spread growing to fill the frame; one smooth continuous move, no hurry",
+  },
+  {
+    id: "open-and-linger",
+    kind: "action",
+    surface: "print",
+    requiresInside: true,
+    label: "Open & linger",
+    emoji: "🥰",
+    prompt:
+      "the card is opened out to the inside spread and then held completely still and square to the camera while the reader's eyes travel slowly across it; a long, quiet beat on the message",
   },
   {
     id: "open-and-react-print",
@@ -1046,6 +1046,76 @@ export const MOTIONS: (Option & {
     emoji: "🥹",
     prompt:
       "the recipient opens the card out to its inside spread, reads it, and reacts in real time — eyebrows lift, a grin spreads, a hand comes to their mouth. The open card stays square to camera and readable throughout",
+  },
+  {
+    id: "envelope-open-read",
+    kind: "action",
+    surface: "print",
+    requiresInside: true,
+    label: "Unbox, open & read",
+    emoji: "🎁",
+    prompt:
+      "hands slide the card out of its envelope, turn the printed front to camera for a beat, then open it out to the full inside spread and hold it steady and readable",
+  },
+  {
+    id: "open-show-friend",
+    kind: "action",
+    surface: "print",
+    requiresInside: true,
+    label: "Open & show a friend",
+    emoji: "👯",
+    prompt:
+      "the card is opened to the inside spread and then turned toward a friend beside them; the friend leans in to read it, eyes widen, and they both start laughing",
+  },
+  {
+    id: "open-on-table",
+    kind: "action",
+    surface: "print",
+    requiresInside: true,
+    label: "Open it flat on the table",
+    emoji: "🫳",
+    prompt:
+      "the closed card lies on the surface and hands reach in from the edge of frame to fold it open flat, pressing the centre crease down so the whole inside spread lies square and readable beneath an overhead camera",
+  },
+  {
+    id: "open-and-stand",
+    kind: "action",
+    surface: "print",
+    requiresInside: true,
+    label: "Open & stand it up",
+    emoji: "🪧",
+    prompt:
+      "hands open the card and stand it upright on the surface with the inside spread facing the camera, adjust it square and withdraw from frame; the card settles and holds",
+  },
+  {
+    id: "open-hand-over",
+    kind: "action",
+    surface: "print",
+    requiresInside: true,
+    label: "Open & pass it over",
+    emoji: "🤝",
+    prompt:
+      "the card is opened to the inside spread and handed across to another person, who takes it, looks down at it and breaks into a smile. Hands cross in frame and the open spread stays readable through the exchange",
+  },
+  {
+    id: "open-busy-world",
+    kind: "action",
+    surface: "print",
+    requiresInside: true,
+    label: "Open it in the thick of it",
+    emoji: "🌆",
+    prompt:
+      "the card is opened out to its inside spread while the world keeps moving around the subject — people crossing behind in both directions, traffic passing, fabric and hair stirring in the breeze. They stay with the open card while life carries on",
+  },
+  {
+    id: "open-celebrate",
+    kind: "action",
+    surface: "print",
+    requiresInside: true,
+    label: "Open & celebrate",
+    emoji: "🎉",
+    prompt:
+      "the card is opened to the inside spread and the room erupts — friends cheer and clap, arms go up, streamers or confetti drift through the frame — while the open card stays square to camera and readable",
   },
 ];
 
@@ -1183,10 +1253,7 @@ export function buildOneShotPrompt(sel: {
   const presence = byId(PRESENCE, sel.presenceId);
   const audience = byId(AUDIENCES, sel.audienceId);
   const motion = byId(MOTIONS, sel.motionId);
-  // Two different ways the inside can be on screen: the card is opened during
-  // the clip, or it was already being held open to begin with.
   const opensCard = Boolean(motion?.requiresInside && sel.hasInside);
-  const heldOpen = Boolean(device?.showsInside && sel.hasInside && !opensCard);
 
   const setting = [
     scene?.prompt,
@@ -1200,19 +1267,13 @@ export function buildOneShotPrompt(sel: {
 
   if (sel.surface === "print") {
     return joinPrompts([
-      `A photorealistic live-action clip of ${
-        device?.showsInside && !sel.hasInside
-          ? "a printed A6 folded greeting card held upright in one hand, front panel facing the camera square-on, crisp paper edges"
-          : (device?.prompt ?? "a printed greeting card")
-      }`,
+      `A photorealistic live-action clip of ${device?.prompt ?? "a printed greeting card"}`,
       ...setting,
       "@Image1 is the artwork printed on the front panel of that card. Reproduce it exactly — same composition, same colours, same typography, same layout. Do not redesign it, re-letter it, recolour it, crop it or invent any printed content of your own",
       "Fit it to the front panel edge to edge with correct perspective for the card's angle, following any curl or flex in the paper, and let the scene's own light fall across it so it reads as genuinely printed on card stock",
       opensCard
         ? "@Image2 is the artwork printed across the full inside spread — the left and right inside panels together. The card starts closed showing @Image1; as it opens, the inside must show exactly @Image2, mapped across both panels with the centre fold running down the middle of it. Reproduce it just as faithfully, and hold the open card steady and readable at the end"
-        : heldOpen
-          ? "@Image2 is the artwork printed across the full inside spread — the left and right inside panels together. The card is already held open for the whole clip and it is @Image2 that faces the camera, mapped across both panels with the centre fold down the middle. Reproduce it exactly and never close the card"
-          : "The card stays closed for the whole clip — only the printed front from @Image1 is ever shown. Never open it, never show an inside, and never invent a back or an interior",
+        : "The card stays closed for the whole clip — only the printed front from @Image1 is ever shown. Never open it, never show an inside, and never invent a back or an interior",
       PRINT_CONTAINMENT_CLAUSE,
       motion?.prompt,
       "Realistic physics and paper motion, with believable card stock weight and stiffness. No text overlays, no captions, no watermarks, no logos, no scene cuts",

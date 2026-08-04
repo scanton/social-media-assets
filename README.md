@@ -21,11 +21,15 @@ approximate first frame made Seedance stop believing the clip belonged on the sc
 printed cards it invented people whose faces then had to be animated. Describing the scene in words
 and handing over the real artwork avoids both.
 
-The inside spread is what unlocks the opening motions. Without it the model invents an interior,
-which is the one thing a greeting-card asset can't get wrong, so those motions stay hidden until a
-spread exists and a stored one resets if the spread is removed. The "Card held — opened" framing
-shows the inside without an animated open, and the prompt accounts for that rather than telling the
-model to keep the card shut while holding it open.
+The inside spread decides which motions exist, and the two sets are mutually exclusive. With a
+spread, every motion opens the card — that's the whole reason to have one, and 11 openings cover the
+range from a plain reveal to unboxing, showing a friend, or opening it flat under an overhead
+camera. Without a spread nothing opens, because the model would have to invent an interior, which is
+the one thing a greeting-card asset can't get wrong.
+
+Uploading or removing a spread flips the set, so the selected motion is re-validated on every asset
+change and on load, falling back to the first one that fits rather than stranding the UI on a motion
+that no longer applies.
 
 Which panel an upload is gets guessed from its aspect ratio — fronts are portrait, inside spreads
 are two panels side by side and so land as landscape. Dropping onto a named slot overrides the

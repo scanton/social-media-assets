@@ -15,6 +15,7 @@ import {
   VIDEO_DURATIONS,
   VIDEO_RESOLUTIONS,
 } from "@/lib/options";
+import { usableMotions } from "@/lib/persisted-store";
 import { canStampVideo } from "@/lib/video-logo";
 import { useStudio } from "./studio-store";
 import { Button, Chip, Field, Select, Switch, cx } from "./ui";
@@ -50,22 +51,12 @@ export function OneShot() {
   );
   const sceneMissing = !scenes.some((sc) => sc.id === base.sceneId);
 
-  // Opening motions have nothing truthful to reveal without the inside spread.
-  const motions = MOTIONS.filter(
-    (m) => (!m.surface || m.surface === s.surface) && (!m.requiresInside || Boolean(inside)),
-  );
-  const lockedOpeners = MOTIONS.filter(
-    (m) => m.requiresInside && m.surface === s.surface && !inside,
-  );
+  // With a spread every printed motion opens the card; without one, none do.
+  const motions = usableMotions(s.assets, s.surface);
 
   const selectedMotion = MOTIONS.find((m) => m.id === video.motionId);
   const opensCard = Boolean(isPrint && selectedMotion?.requiresInside && inside);
-  // "Card held — opened" shows the inside without an animated open, so it sends
-  // the spread too. Mirrors the rule in studio-store's generateOneShot.
-  const heldOpen = Boolean(
-    isPrint && DEVICES.find((d) => d.id === base.deviceId)?.showsInside && inside && !opensCard,
-  );
-  const insideAttached = opensCard || heldOpen;
+  const insideAttached = opensCard;
   const ready = isPrint ? Boolean(front) : Boolean(clip);
 
   const prompt = buildOneShotPrompt({
@@ -119,20 +110,7 @@ export function OneShot() {
             <>
               <RefChip label="Front" sub="@Image1" asset={front!} active />
               {inside ? (
-                <>
-                  <RefChip
-                    label="Inside spread"
-                    sub={insideAttached ? "@Image2" : "not sent"}
-                    asset={inside}
-                    active={insideAttached}
-                  />
-                  {!insideAttached && (
-                    <span className="text-xs leading-snug text-ink-faint">
-                      Pick an opening motion — or the &ldquo;Card held — opened&rdquo; framing — to
-                      send it.
-                    </span>
-                  )}
-                </>
+                <RefChip label="Inside spread" sub="@Image2" asset={inside} active={insideAttached} />
               ) : (
                 <span className="text-xs leading-snug text-ink-faint">
                   No inside spread — the card stays closed.
@@ -248,24 +226,35 @@ export function OneShot() {
               ))}
             </div>
 
-            {lockedOpeners.length > 0 && (
-              <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2.5">
-                <p className="text-xs font-semibold text-amber-900">
-                  🔒 {lockedOpeners.map((m) => m.label).join(", ")}
-                </p>
-                <p className="mt-1 text-xs leading-relaxed text-amber-900/80">
-                  Opening the card needs the inside spread, otherwise the model invents what&apos;s
-                  printed inside.{" "}
-                  <button
-                    type="button"
-                    onClick={() => s.setStep(1)}
-                    className="focus-stamp font-bold underline underline-offset-2"
-                  >
-                    Add it in step 1
-                  </button>
-                  .
-                </p>
-              </div>
+            {isPrint && (
+              <p className="mt-3 rounded-2xl bg-canvas-2 px-3 py-2.5 text-xs leading-relaxed text-ink-soft">
+                {inside ? (
+                  <>
+                    <span className="font-bold text-ink">Every motion opens the card.</span> You
+                    uploaded an inside spread, so the shot is about revealing it.{" "}
+                    <button
+                      type="button"
+                      onClick={() => s.setStep(1)}
+                      className="focus-stamp font-bold text-stamp-600 underline underline-offset-2"
+                    >
+                      Remove it
+                    </button>{" "}
+                    for front-only motions.
+                  </>
+                ) : (
+                  <>
+                    <span className="font-bold text-ink">The card stays closed.</span>{" "}
+                    <button
+                      type="button"
+                      onClick={() => s.setStep(1)}
+                      className="focus-stamp font-bold text-stamp-600 underline underline-offset-2"
+                    >
+                      Add an inside spread
+                    </button>{" "}
+                    to unlock the motions that open it.
+                  </>
+                )}
+              </p>
             )}
           </Panel>
 

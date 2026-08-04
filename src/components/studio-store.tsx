@@ -19,6 +19,7 @@ import { MODELS } from "@/lib/models";
 import type { Asset } from "@/lib/studio-types";
 import { useJobRunner, type JobSpec } from "@/lib/use-jobs";
 import {
+  firstUsableMotion,
   getPersisted,
   motionUsable,
   updatePersisted,
@@ -129,7 +130,17 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const addAssets = useCallback((next: Asset[]) => {
-    updatePersisted({ assets: [...next, ...getPersisted().assets] });
+    const current = getPersisted();
+    const assets = [...next, ...current.assets];
+    // An inside spread flips printed cards to the opening-motion set, so a
+    // motion picked before the upload may no longer apply.
+    const stranded = !motionUsable(current.video.motionId, assets, current.surface);
+    updatePersisted({
+      assets,
+      ...(stranded
+        ? { video: { ...current.video, motionId: firstUsableMotion(assets, current.surface) } }
+        : {}),
+    });
   }, []);
 
   const removeAsset = useCallback((id: string) => {
@@ -141,8 +152,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     const lostLastClip =
       removed?.kind === "card-video" && !assets.some((a) => a.kind === "card-video");
     // Likewise an opening motion with no inside spread left to reveal.
-    const motionStranded =
-      removed?.panel === "inside" && !motionUsable(current.video.motionId, assets);
+    const motionStranded = !motionUsable(current.video.motionId, assets, current.surface);
 
     // Fall back to the next asset of the same kind rather than clearing the
     // slot — an empty slot is how step 2 silently went back to blank screens.
@@ -162,7 +172,9 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       ...(lostLastClip && current.video.engine === "screen-replace"
         ? { video: { ...current.video, engine: "animate" as const } }
         : {}),
-      ...(motionStranded ? { video: { ...current.video, motionId: "slow-push" } } : {}),
+      ...(motionStranded
+        ? { video: { ...current.video, motionId: firstUsableMotion(assets, current.surface) } }
+        : {}),
     });
   }, []);
 
@@ -587,10 +599,6 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     const inside = assets.find((a) => a.id === cardInsideId && a.kind === "card-art");
     const motion = byId(MOTIONS, video.motionId);
     const opensCard = Boolean(isPrint && motion?.requiresInside && inside);
-    // "Card held — opened" already shows the inside, so it needs the spread too.
-    const heldOpen = Boolean(
-      isPrint && byId(DEVICES, base.deviceId)?.showsInside && inside && !opensCard,
-    );
 
     if (isPrint && !front) {
       toast("Add the printed front panel in step 1 first.", "error");
@@ -622,7 +630,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
 
     const device = byId(DEVICES, base.deviceId);
     const references = isPrint
-      ? { image_urls: opensCard || heldOpen ? [front!.url, inside!.url] : [front!.url] }
+      ? { image_urls: opensCard ? [front!.url, inside!.url] : [front!.url] }
       : { video_urls: [clip!.url] };
 
     void runner.run([
@@ -672,7 +680,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
               tags: [
                 isPrint ? "printed card" : "digital card",
                 video.resolution,
-                ...(opensCard ? ["opens"] : heldOpen ? ["inside"] : []),
+                ...(opensCard ? ["opens"] : []),
                 base.logo ? (stamped ? "logo" : "no logo") : "no logo",
               ],
               createdAt: Date.now(),

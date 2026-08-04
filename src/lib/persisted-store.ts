@@ -92,12 +92,33 @@ const DEFAULTS: Persisted = {
 
 const has = (list: { id: string }[], id: string) => list.some((o) => o.id === id);
 
-/** A motion is usable if it exists and its inside-spread requirement is met. */
-export function motionUsable(motionId: string, assets: Asset[]): boolean {
-  const motion = MOTIONS.find((m) => m.id === motionId);
-  if (!motion) return false;
-  if (!motion.requiresInside) return true;
-  return assets.some((a) => a.kind === "card-art" && a.panel === "inside");
+export const hasInsideSpread = (assets: Asset[]) =>
+  assets.some((a) => a.kind === "card-art" && a.panel === "inside");
+
+/**
+ * Which motions apply, given the product and what's been uploaded.
+ *
+ * For printed cards the two sets are mutually exclusive: with an inside spread
+ * every motion opens the card, because that's the whole point of having one.
+ * Without a spread nothing may open, because there'd be nothing truthful to
+ * reveal.
+ */
+export function usableMotions(assets: Asset[], surface: SurfaceKind) {
+  const inside = hasInsideSpread(assets);
+  return MOTIONS.filter((m) => {
+    if (m.surface && m.surface !== surface) return false;
+    if (surface !== "print") return !m.requiresInside;
+    return inside ? Boolean(m.requiresInside) : !m.requiresInside;
+  });
+}
+
+export function motionUsable(motionId: string, assets: Asset[], surface: SurfaceKind): boolean {
+  return usableMotions(assets, surface).some((m) => m.id === motionId);
+}
+
+/** Falls back to the first motion that fits, so a stale id can't strand the UI. */
+export function firstUsableMotion(assets: Asset[], surface: SurfaceKind): string {
+  return usableMotions(assets, surface)[0]?.id ?? DEFAULT_VIDEO.motionId;
 }
 
 /** Shape as it comes off disk: selection ids may be absent on older sessions. */
@@ -164,9 +185,11 @@ function sanitize(p: RawPersisted): Persisted {
     },
     video: {
       ...p.video,
-      // An opening motion with no inside spread left to reveal would render a
-      // card opening onto artwork the model invented.
-      motionId: motionUsable(p.video.motionId, p.assets) ? p.video.motionId : DEFAULT_VIDEO.motionId,
+      // Uploading or removing an inside spread flips which set applies, so a
+      // stored motion from the other set has to be swapped out.
+      motionId: motionUsable(p.video.motionId, p.assets, p.surface)
+        ? p.video.motionId
+        : firstUsableMotion(p.assets, p.surface),
     },
   };
 }
