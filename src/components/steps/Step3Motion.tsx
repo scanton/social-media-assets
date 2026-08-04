@@ -8,6 +8,7 @@ import {
   VIDEO_DURATIONS,
   VIDEO_RESOLUTIONS,
 } from "@/lib/options";
+import { usableMotions } from "@/lib/persisted-store";
 import { useStudio } from "../studio-store";
 import { AssetTile } from "../AssetTile";
 import { Button, Chip, Field, Select, Switch, cx } from "../ui";
@@ -23,18 +24,13 @@ export function Step3Motion() {
   const selectedStill = stills.find((a) => a.id === selectedStillId);
 
   const inside = s.assets.find((a) => a.id === s.cardInsideId && a.kind === "card-art");
-  // Opening motions have nothing truthful to reveal without the inside spread.
-  const motions = MOTIONS.filter(
-    (m) => (!m.surface || m.surface === s.surface) && (!m.requiresInside || Boolean(inside)),
-  );
+  // With a spread every motion opens the card; without one, none do.
+  const motions = usableMotions(s.assets, s.surface);
   const cameraMotions = motions.filter((m) => m.kind === "camera");
   const actionMotions = motions.filter((m) => m.kind === "action");
-  const lockedOpeners = MOTIONS.filter(
-    (m) => m.requiresInside && m.surface === s.surface && !inside,
-  );
   const selectedMotion = MOTIONS.find((m) => m.id === s.video.motionId);
   const opensCard = Boolean(selectedMotion?.requiresInside && inside);
-  const ready = Boolean(selectedStill) && (!selectedMotion?.requiresInside || Boolean(inside));
+  const ready = Boolean(selectedStill);
 
   // An opening clip is a different call — the inside spread rides along as a
   // second reference so Seedance reveals the real artwork, not an invented one.
@@ -101,25 +97,26 @@ export function Step3Motion() {
                   wind and weight. Stops the clip reading like a slow pan over a photo.
                 </p>
 
-                {lockedOpeners.length > 0 && (
-                  <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2.5">
-                    <p className="text-xs font-semibold text-amber-900">
-                      🔒 {lockedOpeners.map((m) => m.label).join(", ")}
-                    </p>
-                    <p className="mt-1 text-xs leading-relaxed text-amber-900/80">
-                      Opening the card needs the inside spread, otherwise the model invents what&apos;s
-                      printed inside.{" "}
+                <p className="mt-3 rounded-2xl bg-canvas-2 px-3 py-2.5 text-xs leading-relaxed text-ink-soft">
+                  {inside ? (
+                    <>
+                      <span className="font-bold text-ink">Every motion opens the card</span>, since
+                      you uploaded an inside spread.
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-bold text-ink">The card stays closed.</span>{" "}
                       <button
                         type="button"
                         onClick={() => s.setStep(1)}
-                        className="focus-stamp font-bold underline underline-offset-2"
+                        className="focus-stamp font-bold text-stamp-600 underline underline-offset-2"
                       >
-                        Add it in step 1
-                      </button>
-                      .
-                    </p>
-                  </div>
-                )}
+                        Add an inside spread
+                      </button>{" "}
+                      to unlock the motions that open it.
+                    </>
+                  )}
+                </p>
               </div>
 
               <div>

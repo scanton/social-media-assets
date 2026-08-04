@@ -1,7 +1,20 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { ANGLES, ASPECTS, DEVICES, FRAMINGS, MOTIONS, SCENES, type AspectId, type SurfaceKind } from "@/lib/options";
+import {
+  ANGLES,
+  ASPECTS,
+  AUDIENCES,
+  DEVICES,
+  FRAMINGS,
+  LIGHTING,
+  LOOKS,
+  MOTIONS,
+  PRESENCE,
+  SCENES,
+  type AspectId,
+  type SurfaceKind,
+} from "@/lib/options";
 import type { Asset, AssetKind, CardPanel } from "@/lib/studio-types";
 
 export type BaseConfig = {
@@ -180,6 +193,10 @@ function sanitize(p: RawPersisted): Persisted {
       deviceId: has(DEVICES, p.base.deviceId) ? p.base.deviceId : DEFAULT_BASE.deviceId,
       sceneId: has(SCENES, p.base.sceneId) ? p.base.sceneId : DEFAULT_BASE.sceneId,
       framingId: has(FRAMINGS, p.base.framingId) ? p.base.framingId : DEFAULT_BASE.framingId,
+      presenceId: has(PRESENCE, p.base.presenceId) ? p.base.presenceId : DEFAULT_BASE.presenceId,
+      lightingId: has(LIGHTING, p.base.lightingId) ? p.base.lightingId : DEFAULT_BASE.lightingId,
+      lookId: has(LOOKS, p.base.lookId) ? p.base.lookId : DEFAULT_BASE.lookId,
+      audienceId: has(AUDIENCES, p.base.audienceId) ? p.base.audienceId : DEFAULT_BASE.audienceId,
       angleIds: angleIds.length ? angleIds : DEFAULT_BASE.angleIds,
       aspectIds: aspectIds.length ? aspectIds : DEFAULT_BASE.aspectIds,
     },

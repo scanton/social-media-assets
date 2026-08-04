@@ -3,50 +3,48 @@
 Generate social-media assets for HeartStamp printed (POD) and 3D digital greeting cards.
 Base lifestyle images → card composites → TikTok / Reels / Pinterest video.
 
-What you're selling picks the pipeline — the buttons in the header are the choice. Both products
-run the same two steps and the same single Seedance call; only the references differ.
+What you're selling picks the pipeline — the buttons in the header are the choice.
 
-| | Step 1 | Step 2 |
+**Digital 3D Card** — two steps, one Seedance call, no still.
+
+| Step | What it does | Model |
 | --- | --- | --- |
-| **Digital 3D Card** | Upload the 2–15s card animation | Scene + motion + output → the clip plays on a device |
-| **Printed Card** | Upload the front panel, optionally the inside spread | Scene + motion + output → the card is the subject |
+| **1 · Clip** | Upload the 2–15s card animation | direct-to-fal upload |
+| **2 · Video** | Scene + motion + output, straight through | `bytedance/seedance-2.0/reference-to-video` |
 
-Digital hands the clip over as `@Video1`. Print hands over the artwork itself — front as `@Image1`,
-inside spread as `@Image2` when the card opens. Everything goes through
-`bytedance/seedance-2.0/reference-to-video`.
+**Printed Card** — a scene still first, then animate it.
 
-**There is no generated still in either path.** There used to be: a GPT-Image-2 scene that artwork
-was composited onto, then animated. It cost more than it gave. The digital flow fought it — an
-approximate first frame made Seedance stop believing the clip belonged on the screen — and on
-printed cards it invented people whose faces then had to be animated. Describing the scene in words
-and handing over the real artwork avoids both.
+| Step | What it does | Model |
+| --- | --- | --- |
+| **1 · Artwork** | Front panel, plus an optional inside spread | direct-to-fal upload |
+| **2 · Scene** | Lifestyle scenes with the front printed on the card, logo stamped | `openai/gpt-image-2/edit` (+ browser canvas) |
+| **3 · Motion** | Animate the scene — or open the card and reveal the inside | `…/image-to-video` · `…/reference-to-video` |
+
+**Why the two differ.** A printed card was tried as a one-shot too, handing the artwork straight to
+Seedance as `@Image1`. It doesn't hold: `reference-to-video` treats a reference image as inspiration
+and kept re-drawing the card front — at one point building the envelope from the card's own
+illustration as a real envelope the card sat inside. Three rounds of prompt work moved it but never
+fixed it. `image-to-video` reproduces frame one exactly, so the printed path goes through a still.
+Digital doesn't have the problem because `@Video1` is played back rather than re-imagined.
+
+**Printed scenes show no faces.** Generated faces animate badly, which is what prompted the one-shot
+experiment in the first place. Instead the scene prompt forbids faces outright and every "who's in
+frame" option is written to match — hands, shoulders, a figure from behind, a group cropped at the
+neck. People still sell the scene; their faces were the only part causing trouble.
 
 The inside spread decides which motions exist, and the two sets are mutually exclusive. With a
-spread, every motion opens the card — that's the whole reason to have one, and 11 openings cover the
-range from a plain reveal to unboxing, showing a friend, or opening it flat under an overhead
-camera. Without a spread nothing opens, because the model would have to invent an interior, which is
-the one thing a greeting-card asset can't get wrong.
-
+spread, every motion opens the card and the spread rides along as `@Image2` so Seedance reveals the
+real artwork. Without one nothing opens, because the model would have to invent an interior.
 Uploading or removing a spread flips the set, so the selected motion is re-validated on every asset
-change and on load, falling back to the first one that fits rather than stranding the UI on a motion
-that no longer applies.
-
-Card artwork routinely depicts objects — an envelope, a letter, flowers — and the model will happily
-build those as real props in the room. One render came back with the envelope from the card's own
-illustration stuck to the front of the physical card. The print prompt now states that everything in
-the supplied artwork is flat ink inside the card's edges and nothing more, and adds an explicit
-"the card appears on its own" rule unless a chosen device or motion genuinely involves an envelope
-(`involvesEnvelope` on the option). That rule leads with the positive description, because opening
-with a bare negation hands the model the noun to latch onto.
+change and on load.
 
 Which panel an upload is gets guessed from its aspect ratio — fronts are portrait, inside spreads
 are two panels side by side and so land as landscape. Dropping onto a named slot overrides the
 guess but warns if the two disagree, and every tile has a front/inside toggle.
 
-The logo is burned into the finished clip in the browser —
-[`src/lib/video-logo.ts`](src/lib/video-logo.ts) plays it through a canvas, paints the emblem on
-every frame with `paintLogo()`, and records the canvas back out to MP4 via MediaRecorder. Real time,
-no dependencies, no extra API cost.
+The logo is stamped into the still for printed cards, and burned into the finished clip for digital
+ones — [`src/lib/video-logo.ts`](src/lib/video-logo.ts) plays the clip through a canvas, paints the
+emblem on every frame with the same `paintLogo()`, and records it back out to MP4 via MediaRecorder.
 
 Three things about that file are load-bearing and were each found by testing, not reasoning:
 
@@ -59,11 +57,8 @@ Three things about that file are load-bearing and were each found by testing, no
   element is muted. A Web Audio tap looks tidier but records silence from a muted element, and the
   element has to stay muted to satisfy autoplay policy.
 
-**Unreachable as of this change:** `Step2Scene`, `Step3Motion`, `ScreenAligner`, `lib/compose.ts`,
-`lib/screen-detect.ts`, `lib/perspective.ts`, and the `generateScenes` / `generateVideo` actions in
-the store. They implement the old still pipeline, including the perspective compositing that put
-artwork on a device screen pixel-exactly. Kept for now because the one-shot printed path hasn't been
-through a real render yet; delete once it has.
+`OneShot` still handles both surfaces even though only digital routes to it now, so A/B-ing the two
+approaches again is a one-line routing change.
 
 Everything is downloadable in-app. Nothing is stored server-side.
 

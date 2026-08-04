@@ -10,16 +10,25 @@ import { StudioProvider, useStudio } from "./studio-store";
 import { KeyDialog } from "./KeyDialog";
 import { AssetTile } from "./AssetTile";
 import { Step1Card } from "./steps/Step1Card";
+import { Step2Scene } from "./steps/Step2Scene";
+import { Step3Motion } from "./steps/Step3Motion";
 import { OneShot } from "./OneShot";
 import { Backdrop, Button, Confetti, StampMark, ToastProvider, cx } from "./ui";
 
 type Step = { n: number; label: string; emoji: string };
 
 /* What you're selling decides the pipeline, so it also decides the steps. */
+/*
+ * Printed cards go through a scene still first: Seedance treats a reference
+ * image as inspiration and kept re-drawing the card front, whereas
+ * image-to-video reproduces frame one exactly. Digital cards don't need it —
+ * the clip itself is the reference and plays back faithfully.
+ */
 const STEPS: Record<SurfaceKind, Step[]> = {
   print: [
     { n: 1, label: "Artwork", emoji: "🎨" },
-    { n: 2, label: "Video", emoji: "🎬" },
+    { n: 2, label: "Scene", emoji: "📸" },
+    { n: 3, label: "Motion", emoji: "🎬" },
   ],
   screen: [
     { n: 1, label: "Clip", emoji: "🎞️" },
@@ -68,10 +77,17 @@ function StudioShell({
   }, []);
 
   const steps = STEPS[s.surface];
-  const done: Record<number, boolean> = {
-    1: s.assets.some((a) => (s.surface === "screen" ? a.kind === "card-video" : a.kind === "card-art")),
-    2: s.assets.some((a) => a.kind === "video"),
-  };
+  const done: Record<number, boolean> =
+    s.surface === "screen"
+      ? {
+          1: s.assets.some((a) => a.kind === "card-video"),
+          2: s.assets.some((a) => a.kind === "video"),
+        }
+      : {
+          1: s.assets.some((a) => a.kind === "card-art"),
+          2: s.assets.some((a) => a.kind === "base"),
+          3: s.assets.some((a) => a.kind === "video"),
+        };
 
   return (
     <div className="relative min-h-dvh">
@@ -278,7 +294,15 @@ function StudioShell({
       {/* ------------------------------- main ------------------------------- */}
       <main className="mx-auto max-w-[110rem] px-4 py-8 sm:px-6 sm:py-10">
         <div key={`${s.surface}-${s.step}`} className="animate-rise">
-          {s.step === 1 ? <Step1Card /> : <OneShot />}
+          {s.step === 1 ? (
+            <Step1Card />
+          ) : s.surface === "screen" ? (
+            <OneShot />
+          ) : s.step === 2 ? (
+            <Step2Scene />
+          ) : (
+            <Step3Motion />
+          )}
         </div>
       </main>
 

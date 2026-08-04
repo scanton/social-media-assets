@@ -696,11 +696,44 @@ export const LOOKS: Option[] = [
 
 export const PRESENCE: Option[] = [
   { id: "none", label: "No people", emoji: "🚫", prompt: "no people visible in the frame at all, the object rests on its own" },
-  { id: "hands", label: "Hands only", emoji: "🤲", prompt: "only the subject's hands and forearms are visible, tasteful manicure, no face in frame" },
-  { id: "one-partial", label: "One person, partial", emoji: "🙋", prompt: "one person partially in frame, cropped at the chin or seen from behind, face not the focus" },
-  { id: "one-full", label: "One person, full", emoji: "🧍", prompt: "one person clearly in frame and engaged with the device, natural candid expression" },
-  { id: "group", label: "Friend group", emoji: "👯", prompt: "a small group of friends together, one holding the device while the others lean in" },
+  { id: "hands", label: "Hands only", emoji: "🤲", prompt: "only hands and forearms are visible, tasteful manicure, no face and no head in frame" },
+  {
+    id: "one-partial",
+    label: "One person, cropped",
+    emoji: "🙋",
+    prompt:
+      "one person in frame but framed from the shoulders down, or cropped above the chin, so no face is visible",
+  },
+  {
+    id: "one-back",
+    label: "One person, from behind",
+    emoji: "🧍",
+    prompt:
+      "one person seen from behind or over their shoulder, the back of their head and hair toward the camera, face turned away and never visible",
+  },
+  {
+    id: "group",
+    label: "Friend group",
+    emoji: "👯",
+    prompt:
+      "a small group of friends together, seen from behind or cropped at the shoulders, leaning in around the card; heads turned away or out of frame so no faces are visible",
+  },
 ];
+
+/* --------------------------- FACES ------------------------------- */
+
+/**
+ * Printed-card scenes keep faces out of frame entirely.
+ *
+ * Generated faces animate badly — that was the original reason for trying a
+ * one-shot printed flow at all — but bodies, hands and shoulders sell the scene
+ * just fine, and cropping them out is cheaper than losing the people.
+ */
+const NO_FACES_CLAUSE = [
+  "CRITICAL: no human face is visible anywhere in this frame",
+  "people may appear, but only as hands, arms, shoulders, a lap, the back of a head, or a figure turned away or cropped above the chin",
+  "no eyes, nose or mouth are ever in shot, no face is reflected in any surface, and no photograph or poster in the background shows a face",
+].join(". ");
 
 /* --------------------------- HELPERS ----------------------------- */
 
@@ -799,6 +832,13 @@ export function buildScenePrompt(sel: SceneSelection): string {
     audience ? `the styling, wardrobe and props should read as authentically ${audience.prompt}` : undefined,
     aspect ? `composed for a ${aspect.id} ${aspect.label.split(" ")[1].toLowerCase()} social crop` : undefined,
     sel.hasCard ? cardOnSurfaceClause(sel.surface) : blankSurfaceClause(sel.surface),
+    // Carried over from the one-shot experiments: artwork depicting an envelope
+    // was being built as a real envelope holding the card.
+    sel.surface === "print" ? PRINT_CONTAINMENT_CLAUSE : undefined,
+    sel.surface === "print" && !byId(DEVICES, sel.deviceId)?.involvesEnvelope
+      ? NO_ENVELOPE_CLAUSE
+      : undefined,
+    sel.surface === "print" ? NO_FACES_CLAUSE : undefined,
     "Photorealistic, sharp, high dynamic range, believable real-world materials and physics",
     // The HeartStamp mark is composited on afterwards in the browser, so the
     // model must not try to draw one of its own.
@@ -1211,6 +1251,7 @@ export function buildAnimatePrompt(opts: {
     `Whatever artwork is already on ${surfaceNoun} must stay perfectly locked to that surface with correct perspective for the whole clip — it must never slide, flicker, warp or change`,
     opts.surface === "print" ? PRINT_CONTAINMENT_CLAUSE : SCREEN_CONTAINMENT_CLAUSE,
     opts.surface === "print" ? undefined : NO_TOUCH_CLAUSE,
+    opts.surface === "print" ? NO_FACES_CLAUSE : undefined,
     "Preserve the exact identity, wardrobe, framing and lighting of the source photograph",
     opts.hasLogo ? LOGO_LOCK_CLAUSE : undefined,
     opts.hasLogo
@@ -1369,6 +1410,7 @@ export function buildCardOpenPrompt(opts: {
     scene ? `Keep the environment consistent: ${scene.prompt}` : undefined,
     "Preserve the exact identity, wardrobe, framing and lighting of @Image1",
     PRINT_CONTAINMENT_CLAUSE,
+    NO_FACES_CLAUSE,
     opts.hasLogo ? LOGO_LOCK_CLAUSE : undefined,
     opts.hasLogo
       ? "Realistic physics and paper motion. No scene cuts, and no text overlays, captions or watermarks beyond the corner logo already present"
