@@ -1295,18 +1295,32 @@ export function buildOneShotPrompt(sel: {
   ];
 
   if (sel.surface === "print") {
+    /*
+     * The card contract goes FIRST, before any scene description.
+     *
+     * With it buried after the setting, renders came back with the envelope
+     * from the card's own illustration built as a real envelope the card was
+     * tucked into — "greeting card + envelope" is a strong enough prior to
+     * survive a rule stated 1,500 characters in. Stating the coverage in
+     * absolute terms ("one hundred percent of that panel, top edge to bottom
+     * edge") is aimed at the same failure: only the busy lower half of the
+     * artwork was being replaced.
+     */
     return joinPrompts([
-      `A photorealistic live-action clip of ${device?.prompt ?? "a printed greeting card"}`,
-      ...setting,
-      "@Image1 is the artwork printed on the front panel of that card. The printed front must match @Image1 exactly, edge to edge — same composition, same colours, same typography, same layout, with nothing added, removed, moved, covered or cropped. Do not redesign it, re-letter it, recolour it or invent any printed content of your own",
-      "Fit it to the front panel edge to edge with correct perspective for the card's angle, following any curl or flex in the paper, and let the scene's own light fall across it so it reads as genuinely printed on card stock",
-      opensCard
-        ? "@Image2 is the artwork printed across the full inside spread — the left and right inside panels together. The card starts closed showing @Image1; as it opens, the inside must show exactly @Image2, mapped across both panels with the centre fold running down the middle of it. Reproduce it just as faithfully, and hold the open card steady and readable at the end"
-        : "The card stays closed for the whole clip — only the printed front from @Image1 is ever shown. Never open it, never show an inside, and never invent a back or an interior",
-      PRINT_CONTAINMENT_CLAUSE,
+      "A photorealistic live-action clip whose subject is one printed greeting card",
+      "THE CARD IS A SINGLE FLAT RECTANGLE OF CARD STOCK AND NOTHING ELSE",
+      "@Image1 is the artwork printed on its front. That artwork covers one hundred percent of that panel — top edge to bottom edge, left edge to right edge — and is reproduced exactly: same composition, same colours, same typography, same layout, nothing added, removed, moved or cropped",
+      "No part of the card is ever covered, overlapped, obscured or interrupted by anything. Nothing is tucked into it, slipped over it, clipped to it, laid across it, wrapped around it or propped in front of it",
+      "Whatever the artwork depicts — people, objects, letters, envelopes, flowers — is flat printed ink inside that rectangle. None of it becomes a real object in the scene, gains depth or its own shadow, or appears anywhere outside the card",
       device?.involvesEnvelope || motion?.involvesEnvelope ? undefined : NO_ENVELOPE_CLAUSE,
+      opensCard
+        ? "@Image2 is the artwork printed across the full inside spread — left and right inside panels together. The card starts closed showing @Image1; as it opens, the inside shows exactly @Image2 across both panels with the centre fold down the middle, reproduced just as faithfully, and holds steady and readable at the end"
+        : "The card stays closed throughout — only the printed front from @Image1 is ever shown. Never open it and never invent an interior",
+      `Now the shot: ${device?.prompt ?? "the card held upright, front facing the camera"}`,
+      ...setting,
       motion?.prompt,
-      "Realistic physics and paper motion, with believable card stock weight and stiffness. No text overlays, no captions, no watermarks, no logos, no scene cuts",
+      "The printed artwork follows any curl or flex in the paper and takes the scene's own light, so it reads as genuinely printed on stock",
+      "Realistic physics and paper motion, with believable card weight and stiffness. No text overlays, no captions, no watermarks, no logos, no scene cuts",
       sel.extraNotes?.trim(),
     ]);
   }
