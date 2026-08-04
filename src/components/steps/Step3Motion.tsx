@@ -3,7 +3,7 @@
 import { useState } from "react";
 import {
   buildAnimatePrompt,
-  buildScreenReplacePrompt,
+  buildCardOpenPrompt,
   MOTIONS,
   VIDEO_DURATIONS,
   VIDEO_RESOLUTIONS,
@@ -19,68 +19,64 @@ export function Step3Motion() {
 
   const stills = s.assets.filter((a) => a.kind === "base");
   const videos = s.assets.filter((a) => a.kind === "video");
-  const cardClip = s.assets.find((a) => a.id === s.cardVideoId);
-
   const selectedStillId = s.baseId;
   const selectedStill = stills.find((a) => a.id === selectedStillId);
 
-  const motions = MOTIONS.filter((m) => !m.surface || m.surface === s.surface);
+  const inside = s.assets.find((a) => a.id === s.cardInsideId && a.kind === "card-art");
+  // Opening motions have nothing truthful to reveal without the inside spread.
+  const motions = MOTIONS.filter(
+    (m) => (!m.surface || m.surface === s.surface) && (!m.requiresInside || Boolean(inside)),
+  );
   const cameraMotions = motions.filter((m) => m.kind === "camera");
   const actionMotions = motions.filter((m) => m.kind === "action");
-  const screenReplaceReady = Boolean(cardClip);
-  const ready = Boolean(selectedStill) && (s.video.engine === "animate" || screenReplaceReady);
+  const lockedOpeners = MOTIONS.filter(
+    (m) => m.requiresInside && m.surface === s.surface && !inside,
+  );
+  const selectedMotion = MOTIONS.find((m) => m.id === s.video.motionId);
+  const opensCard = Boolean(selectedMotion?.requiresInside && inside);
+  const ready = Boolean(selectedStill) && (!selectedMotion?.requiresInside || Boolean(inside));
 
-  const prompt =
-    s.video.engine === "screen-replace"
-      ? buildScreenReplacePrompt({
-          surface: s.surface,
-          motionId: s.video.motionId,
-          hasLogo: s.base.logo,
-          extraNotes: s.video.notes,
-        })
-      : buildAnimatePrompt({
-          motionId: s.video.motionId,
-          surface: s.surface,
-          sceneId: s.base.sceneId,
-          hasLogo: s.base.logo,
-          extraNotes: s.video.notes,
-        });
+  // An opening clip is a different call — the inside spread rides along as a
+  // second reference so Seedance reveals the real artwork, not an invented one.
+  const prompt = opensCard
+    ? buildCardOpenPrompt({
+        motionId: s.video.motionId,
+        sceneId: s.base.sceneId,
+        hasLogo: s.base.logo,
+        extraNotes: s.video.notes,
+      })
+    : buildAnimatePrompt({
+        motionId: s.video.motionId,
+        surface: s.surface,
+        sceneId: s.base.sceneId,
+        hasLogo: s.base.logo,
+        extraNotes: s.video.notes,
+      });
 
   return (
     <div className="space-y-8">
       <SectionHead
         step={3}
         title="Make it move"
-        blurb="Turn the still into a scroll-stopping clip with Seedance 2.0. Animate the scene, or play your uploaded card video directly on the device in it."
+        blurb="Turn the still into a scroll-stopping clip with Seedance 2.0. Pick a motion — with an inside spread uploaded, the card can open on camera and reveal it."
       />
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
         <div className="space-y-5">
-          <Panel title="Engine">
-            <div className="grid gap-2.5 sm:grid-cols-2">
-              <EngineCard
-                active={s.video.engine === "animate"}
-                onClick={() => s.setVideo({ engine: "animate" })}
-                emoji="🎞️"
-                title="Animate the still"
-                body="Brings your scene to life. The card already on the surface stays locked in place."
-                foot="Seedance 2.0 · image-to-video"
+          {opensCard && (
+            <div className="flex items-center gap-3 rounded-2xl border border-stamp-200 bg-stamp-50 px-4 py-3">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={inside!.url}
+                alt=""
+                className="h-12 w-16 shrink-0 rounded-lg object-cover ring-1 ring-stamp-200"
               />
-              <EngineCard
-                active={s.video.engine === "screen-replace"}
-                onClick={() => s.setVideo({ engine: "screen-replace" })}
-                emoji="📲"
-                title="Play the card clip"
-                body="Uses your uploaded 3D card video as a reference so it plays on the surface in the scene."
-                foot="Seedance 2.0 · reference-to-video"
-                warning={
-                  screenReplaceReady
-                    ? undefined
-                    : "Needs a 2–15s card clip from step 1."
-                }
-              />
+              <p className="text-xs leading-relaxed text-stamp-800">
+                <span className="font-bold">Opening clip.</span> The card swings open onto this inside
+                spread, passed to Seedance as a reference so the printed artwork is the real one.
+              </p>
             </div>
-          </Panel>
+          )}
 
           <Panel title="Motion" aside={<span className="sticker">{motions.length} options</span>}>
             <div className="space-y-4">
@@ -104,6 +100,26 @@ export function Step3Motion() {
                   People do something and the world moves around them — reactions, background life,
                   wind and weight. Stops the clip reading like a slow pan over a photo.
                 </p>
+
+                {lockedOpeners.length > 0 && (
+                  <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2.5">
+                    <p className="text-xs font-semibold text-amber-900">
+                      🔒 {lockedOpeners.map((m) => m.label).join(", ")}
+                    </p>
+                    <p className="mt-1 text-xs leading-relaxed text-amber-900/80">
+                      Opening the card needs the inside spread, otherwise the model invents what&apos;s
+                      printed inside.{" "}
+                      <button
+                        type="button"
+                        onClick={() => s.setStep(1)}
+                        className="focus-stamp font-bold underline underline-offset-2"
+                      >
+                        Add it in step 1
+                      </button>
+                      .
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -259,47 +275,5 @@ export function Step3Motion() {
         </div>
       </div>
     </div>
-  );
-}
-
-function EngineCard({
-  active,
-  onClick,
-  emoji,
-  title,
-  body,
-  foot,
-  warning,
-}: {
-  active: boolean;
-  onClick: () => void;
-  emoji: string;
-  title: string;
-  body: string;
-  foot: string;
-  warning?: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cx(
-        "focus-stamp group flex flex-col rounded-2xl border p-4 text-left transition-all duration-300 active:scale-[0.98]",
-        active
-          ? "border-stamp-600 bg-stamp-50 shadow-[0_0_0_3px_rgba(190,30,46,0.1)]"
-          : "border-hairline bg-white hover:-translate-y-0.5 hover:border-stamp-300",
-      )}
-    >
-      <span className={cx("text-2xl transition-transform duration-300", active && "animate-wobble")}>{emoji}</span>
-      <span className="mt-2 font-display text-sm font-bold text-ink">{title}</span>
-      <span className="mt-1 flex-1 text-xs leading-relaxed text-ink-soft">{body}</span>
-      <span className="mt-2.5 text-[10px] font-bold uppercase tracking-wider text-ink-faint">{foot}</span>
-      {warning && (
-        <span className="mt-2 rounded-lg bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800">
-          {warning}
-        </span>
-      )}
-    </button>
   );
 }

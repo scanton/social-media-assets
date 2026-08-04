@@ -1,130 +1,152 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { extractVideoFrame, readVideoDuration, uploadToFal } from "@/lib/client-api";
-import { SURFACES } from "@/lib/options";
-import type { Asset } from "@/lib/studio-types";
+import { readVideoDuration, uploadToFal } from "@/lib/client-api";
+import type { Asset, CardPanel } from "@/lib/studio-types";
 import { useStudio, uid } from "../studio-store";
 import { Uploader } from "../Uploader";
 import { AssetTile } from "../AssetTile";
-import { Button, Chip, usePasteShortcut, useToast } from "../ui";
+import { Button, cx, usePasteShortcut, useToast } from "../ui";
 import { SectionHead } from "./shared";
 
 /** Formats fal accepts and the image models handle cleanly. */
 const PASTEABLE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
 
+const sizeTag = (bytes: number) =>
+  bytes < 1024 * 1024
+    ? `${Math.max(1, Math.round(bytes / 1024))}KB`
+    : `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+
+/**
+ * Card fronts are portrait, inside spreads are two panels side by side and so
+ * come out landscape. Good enough to pick a default; the tiles let it be changed.
+ */
+async function guessPanel(file: File): Promise<CardPanel> {
+  try {
+    const bitmap = await createImageBitmap(file);
+    const landscape = bitmap.width > bitmap.height * 1.05;
+    bitmap.close();
+    return landscape ? "inside" : "front";
+  } catch {
+    return "front";
+  }
+}
+
 export function Step1Card() {
   const s = useStudio();
   const toast = useToast();
   const pasteKey = usePasteShortcut();
-  const [uploading, setUploading] = useState<null | "art" | "video">(null);
+  const [uploading, setUploading] = useState(false);
   const [pasteProgress, setPasteProgress] = useState<number | null>(null);
 
+  const isPrint = s.surface === "print";
   const cardArt = s.assets.filter((a) => a.kind === "card-art");
   const cardVideos = s.assets.filter((a) => a.kind === "card-video");
 
-  const upload = async (
+  /* ----------------------------- uploads ----------------------------- */
+
+  const uploadArtwork = async (
     file: File,
-    kind: "card-art" | "card-video",
     onProgress: (pct: number) => void,
-    opts: { label?: string; extraTags?: string[]; parentId?: string; quiet?: boolean } = {},
+    opts: { label?: string; extraTags?: string[]; panel?: CardPanel } = {},
   ): Promise<Asset | null> => {
     if (!s.keyConnected) {
       s.openKeyDialog();
       return null;
     }
-    setUploading(kind === "card-art" ? "art" : "video");
+    setUploading(true);
     try {
-      if (kind === "card-video") {
-        const seconds = await readVideoDuration(file).catch(() => 0);
-        if (seconds && (seconds < 2 || seconds > 15)) {
-          toast(
-            `That clip is ${seconds.toFixed(1)}s. Seedance reference clips must be 2–15s — trim it and retry.`,
-            "error",
-          );
-          return null;
-        }
+      /*
+       * Dropping into a named slot is an explicit choice and wins. Aspect ratio
+       * only decides when there's no slot to go on — a paste, mainly — but it
+       * still gets a look in so an obvious mis-drop doesn't pass silently.
+       */
+      const detected = await guessPanel(file);
+      const panel = opts.panel ?? detected;
+      if (opts.panel && detected !== opts.panel) {
+        toast(
+          detected === "inside"
+            ? "That looks like a landscape inside spread but you dropped it on the front. Switch it below if that wasn't intended."
+            : "That looks like a portrait front panel but you dropped it on the inside. Switch it below if that wasn't intended.",
+          "info",
+        );
       }
       const url = await uploadToFal(file, onProgress);
       const asset: Asset = {
         id: uid(),
-        kind,
+        kind: "card-art",
         url,
         contentType: file.type,
         label: opts.label ?? file.name.replace(/\.\w+$/, ""),
-        tags: [
-          kind === "card-art" ? "artwork" : "clip",
-          ...(opts.extraTags ?? []),
-          file.size < 1024 * 1024
-            ? `${Math.max(1, Math.round(file.size / 1024))}KB`
-            : `${(file.size / 1024 / 1024).toFixed(1)}MB`,
-        ],
+        tags: [panel === "inside" ? "inside spread" : "front", ...(opts.extraTags ?? []), sizeTag(file.size)],
         createdAt: Date.now(),
-        parentId: opts.parentId,
+        panel,
       };
       s.addAssets([asset]);
-      if (kind === "card-art") s.setCardArtId(asset.id);
-      else s.setCardVideoId(asset.id);
-      if (!opts.quiet) toast("Uploaded to fal. Ready to use.", "success");
+      if (panel === "inside") s.setCardInsideId(asset.id);
+      else s.setCardFrontId(asset.id);
+      toast(
+        panel === "inside"
+          ? "Inside spread added — opening motions are now available in step 3."
+          : "Card front added.",
+        "success",
+      );
       return asset;
     } catch (err) {
       toast((err as Error).message, "error");
       return null;
     } finally {
-      setUploading(null);
+      setUploading(false);
     }
   };
 
-  /**
-   * A clip on its own leaves step 2 with nothing to put on the screen, so the
-   * scene renders blank and the video has to invent its way out of a white
-   * screen. Grabbing frame one and registering it as card artwork means the
-   * still already shows exactly what the clip opens on.
-   */
   const uploadClip = async (file: File, onProgress: (pct: number) => void) => {
-    const clip = await upload(file, "card-video", (p) => onProgress(Math.round(p * 0.8)), {
-      quiet: true,
-    });
-    if (!clip) return;
-
-    try {
-      const frame = await extractVideoFrame(file, 0.04);
-      await upload(frame, "card-art", (p) => onProgress(80 + Math.round(p * 0.2)), {
-        label: `First frame · ${clip.label}`,
-        extraTags: ["from clip"],
-        parentId: clip.id,
-        quiet: true,
-      });
-      toast("Clip uploaded, and its first frame is ready for the scene.", "success");
-    } catch (err) {
-      toast(
-        `Clip uploaded, but the first frame couldn't be read (${(err as Error).message}) — add card artwork manually so step 2 isn't blank.`,
-        "error",
-      );
+    if (!s.keyConnected) {
+      s.openKeyDialog();
+      return;
     }
-
-    // Uploading a clip is a clear statement of intent for step 3.
-    if (s.surface === "screen") s.setVideo({ engine: "screen-replace" });
+    setUploading(true);
+    try {
+      const seconds = await readVideoDuration(file).catch(() => 0);
+      if (seconds && (seconds < 2 || seconds > 15)) {
+        toast(
+          `That clip is ${seconds.toFixed(1)}s. Seedance reference clips must be 2–15s — trim it and retry.`,
+          "error",
+        );
+        return;
+      }
+      const url = await uploadToFal(file, onProgress);
+      const asset: Asset = {
+        id: uid(),
+        kind: "card-video",
+        url,
+        contentType: file.type,
+        label: file.name.replace(/\.\w+$/, ""),
+        tags: ["clip", sizeTag(file.size)],
+        createdAt: Date.now(),
+      };
+      s.addAssets([asset]);
+      s.setCardVideoId(asset.id);
+      toast("Clip uploaded. Head to the video step.", "success");
+    } catch (err) {
+      toast((err as Error).message, "error");
+    } finally {
+      setUploading(false);
+    }
   };
 
   /* ------------------------------ paste ------------------------------ */
 
-  /**
-   * Anything pasted here is treated as card artwork — never a clip. Videos are
-   * far too big to live on a clipboard, so there's nothing to disambiguate.
-   */
   const handlePaste = async (files: File[]) => {
     setPasteProgress(0);
     try {
       for (const file of files) {
         const stamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-        // Clipboard files are usually called "image.png" — give it something
-        // recognisable in the roll and in the download filename.
         const named = new File([file], `pasted-card-${Date.now()}.${file.type.split("/")[1] ?? "png"}`, {
           type: file.type,
         });
-        await upload(named, "card-art", setPasteProgress, {
-          label: `Pasted card · ${stamp}`,
+        await uploadArtwork(named, setPasteProgress, {
+          label: `Pasted · ${stamp}`,
           extraTags: ["pasted"],
         });
       }
@@ -133,14 +155,9 @@ export function Step1Card() {
     }
   };
 
-  // Don't accept a paste mid-upload, or while the key dialog owns the keyboard.
-  const canPaste = !uploading && pasteProgress === null && !s.keyDialogOpen;
+  // Pasting only makes sense where artwork is the input.
+  const canPaste = isPrint && !uploading && pasteProgress === null && !s.keyDialogOpen;
 
-  /*
-   * One "latest values" box, refreshed after every render. This lets the document
-   * listener below be registered exactly once instead of being torn down and
-   * rebuilt on every progress tick.
-   */
   const latest = useRef({ handlePaste, toast, canPaste });
   useEffect(() => {
     latest.current = { handlePaste, toast, canPaste };
@@ -148,8 +165,6 @@ export function Step1Card() {
 
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
-      // Don't hijack a paste meant for a text field — the fal key input, the
-      // notes textareas, and so on.
       const target = e.target as HTMLElement | null;
       if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
 
@@ -171,131 +186,232 @@ export function Step1Card() {
       }
       void run(usable);
     };
-
     document.addEventListener("paste", onPaste);
     return () => document.removeEventListener("paste", onPaste);
   }, []);
+
+  /* ------------------------------ render ----------------------------- */
+
+  const front = cardArt.find((a) => a.id === s.cardFrontId);
+  const inside = cardArt.find((a) => a.id === s.cardInsideId);
 
   return (
     <div className="space-y-8">
       <SectionHead
         step={1}
-        title="Bring your card"
-        blurb="Start with what you're selling. Upload the printed card artwork, the digital 3D card clip, or both — they get placed into the scene in step 2 and brought to life in step 3."
+        title={isPrint ? "Bring your card artwork" : "Bring your card animation"}
+        blurb={
+          isPrint
+            ? "Upload the printed front panel. Add the full inside spread too and step 3 can open the card and reveal it."
+            : "Upload the 3D card animation that plays on the device. Everything else is set up on the next page."
+        }
       />
 
-      <div>
-        <p className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.09em] text-ink-faint">
-          What are we selling?
-        </p>
-        <div className="flex flex-wrap gap-2">
-          {SURFACES.map((opt) => (
-            <Chip
-              key={opt.id}
-              emoji={opt.emoji}
-              active={s.surface === opt.kind}
-              onClick={() => s.setSurface(opt.kind)}
-              sub={opt.hint}
-            >
-              {opt.label}
-            </Chip>
-          ))}
-        </div>
-      </div>
-
-      <div className="grid gap-5 lg:grid-cols-2">
-        <div className="card-surface p-5">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div>
-              <h3 className="font-display text-base font-bold text-ink">Card artwork</h3>
-              <p className="mt-0.5 text-xs text-ink-faint">
-                PNG, JPG, WebP or GIF. This is what gets printed on the panel or shown on the screen.
-              </p>
-            </div>
-            <div className="flex shrink-0 items-center gap-1.5">
-              <span className="sticker border-stamp-200 bg-stamp-50 text-stamp-700">{pasteKey}V ready</span>
-              <span className="sticker">Step 2</span>
-            </div>
+      {isPrint ? (
+        <>
+          <div className="grid gap-5 lg:grid-cols-2">
+            <PanelSlot
+              panel="front"
+              title="Front panel"
+              hint="Portrait. The printed face of the card — this is what the scene is built around."
+              emoji="🎴"
+              required
+              asset={front}
+              pasteKey={pasteKey}
+              pasteProgress={pasteProgress}
+              disabled={uploading}
+              onFile={(f, p) => uploadArtwork(f, p, { panel: "front" }).then(() => {})}
+            />
+            <PanelSlot
+              panel="inside"
+              title="Inside spread"
+              hint="Landscape. Both inside panels in one image. Optional — but it's what unlocks the opening motions."
+              emoji="📖"
+              asset={inside}
+              disabled={uploading}
+              onFile={(f, p) => uploadArtwork(f, p, { panel: "inside" }).then(() => {})}
+            />
           </div>
-
-          <Uploader
-            emoji="🎨"
-            accept="image/png,image/jpeg,image/webp,image/gif"
-            title="Drop, browse or paste"
-            subtitle="Front panel, inside spread, or a still frame from your 3D card. Copy an image anywhere and paste it straight onto this page."
-            disabled={uploading !== null}
-            pasteable
-            externalProgress={pasteProgress}
-            onFile={async (f, p) => {
-              await upload(f, "card-art", p);
-            }}
-          />
 
           {cardArt.length > 0 && (
-            <div className="mt-4 grid grid-cols-3 gap-2.5">
-              {cardArt.map((a) => (
-                <AssetTile
-                  key={a.id}
-                  asset={a}
-                  selectable
-                  selected={s.cardArtId === a.id}
-                  onSelect={() => s.setCardArtId(s.cardArtId === a.id ? null : a.id)}
-                  onRemove={() => s.removeAsset(a.id)}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="card-surface p-5">
-          <div className="mb-4 flex items-center justify-between gap-3">
             <div>
-              <h3 className="font-display text-base font-bold text-ink">3D card clip</h3>
-              <p className="mt-0.5 text-xs text-ink-faint">
-                MP4 or MOV, 2–15 seconds, up to 720p. Its first frame goes on the device in step 2, then the clip plays there in step 3.
-              </p>
-            </div>
-            <span className="sticker shrink-0">Steps 2 &amp; 3</span>
-          </div>
-
-          <Uploader
-            emoji="🎬"
-            accept="video/mp4,video/quicktime"
-            title="Drop the card animation"
-            subtitle="Opening animation, envelope reveal, interaction — 8–13s is the sweet spot"
-            disabled={uploading !== null}
-            onFile={(f, p) => uploadClip(f, p)}
-          />
-
-          {cardVideos.length > 0 && (
-            <div className="mt-4 grid grid-cols-3 gap-2.5">
-              {cardVideos.map((a) => (
-                <AssetTile
-                  key={a.id}
-                  asset={a}
-                  selectable
-                  selected={s.cardVideoId === a.id}
-                  onSelect={() => s.setCardVideoId(s.cardVideoId === a.id ? null : a.id)}
-                  onRemove={() => s.removeAsset(a.id)}
-                />
-              ))}
+              <div className="mb-2.5 flex items-baseline justify-between gap-3">
+                <p className="text-[11px] font-bold uppercase tracking-[0.09em] text-ink-faint">
+                  Uploaded artwork
+                </p>
+                <p className="text-xs text-ink-faint">
+                  Side detected from the aspect ratio — switch it below if it guessed wrong.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+                {cardArt.map((a) => (
+                  <div key={a.id} className="space-y-1.5">
+                    <AssetTile
+                      asset={a}
+                      selectable
+                      selected={s.cardFrontId === a.id || s.cardInsideId === a.id}
+                      onSelect={() =>
+                        a.panel === "inside"
+                          ? s.setCardInsideId(s.cardInsideId === a.id ? null : a.id)
+                          : s.setCardFrontId(s.cardFrontId === a.id ? null : a.id)
+                      }
+                      onRemove={() => s.removeAsset(a.id)}
+                    />
+                    <div className="flex gap-1">
+                      {(["front", "inside"] as CardPanel[]).map((panel) => (
+                        <button
+                          key={panel}
+                          type="button"
+                          onClick={() => {
+                            s.updateAsset(a.id, {
+                              panel,
+                              tags: [
+                                panel === "inside" ? "inside spread" : "front",
+                                ...a.tags.filter((tg) => tg !== "front" && tg !== "inside spread"),
+                              ],
+                            });
+                            if (panel === "inside") {
+                              s.setCardInsideId(a.id);
+                              if (s.cardFrontId === a.id) s.setCardFrontId(null);
+                            } else {
+                              s.setCardFrontId(a.id);
+                              if (s.cardInsideId === a.id) s.setCardInsideId(null);
+                            }
+                          }}
+                          className={cx(
+                            "focus-stamp flex-1 rounded-lg px-1.5 py-1 text-[10px] font-bold uppercase tracking-wide transition-colors",
+                            a.panel === panel
+                              ? "bg-stamp-600 text-white"
+                              : "bg-canvas-2 text-ink-faint hover:bg-stamp-50 hover:text-stamp-700",
+                          )}
+                        >
+                          {panel}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
-        </div>
-      </div>
 
-      <div className="rounded-2xl border border-hairline bg-canvas-2/70 p-4">
-        <p className="text-sm leading-relaxed text-ink-soft">
-          <span className="font-semibold text-ink">No card yet?</span> You can skip straight to step 2 and
-          batch out base images with blank screens. Come back and place artwork whenever it&apos;s ready.
-        </p>
-      </div>
+          <div className="rounded-2xl border border-hairline bg-canvas-2/70 p-4">
+            <p className="text-sm leading-relaxed text-ink-soft">
+              <span className="font-semibold text-ink">Front only?</span> That&apos;s fine — you&apos;ll
+              get a scene and a clip built around the printed face. Add the inside spread whenever
+              you want the card to open on camera.
+            </p>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="card-surface mx-auto max-w-2xl p-5">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="font-display text-base font-bold text-ink">3D card clip</h3>
+                <p className="mt-0.5 text-xs text-ink-faint">
+                  MP4 or MOV, 2–15 seconds, up to 720p. This plays on the device in the video.
+                </p>
+              </div>
+              <span className="sticker shrink-0">Required</span>
+            </div>
+
+            <Uploader
+              emoji="🎬"
+              accept="video/mp4,video/quicktime"
+              title="Drop the card animation"
+              subtitle="Opening animation, envelope reveal, interaction — 8–13s is the sweet spot"
+              disabled={uploading}
+              onFile={uploadClip}
+            />
+
+            {cardVideos.length > 0 && (
+              <div className="mt-4 grid grid-cols-3 gap-2.5">
+                {cardVideos.map((a) => (
+                  <AssetTile
+                    key={a.id}
+                    asset={a}
+                    selectable
+                    selected={s.cardVideoId === a.id}
+                    onSelect={() => s.setCardVideoId(s.cardVideoId === a.id ? null : a.id)}
+                    onRemove={() => s.removeAsset(a.id)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
       <div className="flex justify-end">
         <Button size="lg" onClick={() => s.setStep(2)}>
-          {s.flow === 2 ? "Set up the video" : "Build the scene"}
+          {isPrint ? "Build the scene" : "Set up the video"}
           <span aria-hidden>→</span>
         </Button>
+      </div>
+    </div>
+  );
+}
+
+function PanelSlot({
+  title,
+  hint,
+  emoji,
+  asset,
+  required,
+  disabled,
+  pasteKey,
+  pasteProgress,
+  onFile,
+}: {
+  panel: CardPanel;
+  title: string;
+  hint: string;
+  emoji: string;
+  asset?: Asset;
+  required?: boolean;
+  disabled?: boolean;
+  pasteKey?: string;
+  pasteProgress?: number | null;
+  onFile: (file: File, onProgress: (pct: number) => void) => Promise<void>;
+}) {
+  return (
+    <div className="card-surface p-5">
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="font-display text-base font-bold text-ink">{title}</h3>
+          <p className="mt-0.5 text-xs leading-relaxed text-ink-faint">{hint}</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {pasteKey && (
+            <span className="sticker border-stamp-200 bg-stamp-50 text-stamp-700">{pasteKey}V ready</span>
+          )}
+          <span className="sticker">{required ? "Required" : "Optional"}</span>
+        </div>
+      </div>
+
+      {asset ? (
+        <div className="flex items-center gap-3 rounded-2xl border border-stamp-300 bg-white p-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={asset.url} alt="" className="h-20 w-20 rounded-xl object-cover ring-1 ring-hairline" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold text-ink">{asset.label}</p>
+            <p className="mt-0.5 text-xs text-ink-faint">Selected — replace it by dropping another below.</p>
+          </div>
+        </div>
+      ) : null}
+
+      <div className={cx(asset && "mt-3")}>
+        <Uploader
+          emoji={emoji}
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          title={asset ? "Replace it" : "Drop, browse or paste"}
+          subtitle={hint}
+          disabled={disabled}
+          pasteable={Boolean(pasteKey)}
+          externalProgress={pasteProgress}
+          onFile={onFile}
+        />
       </div>
     </div>
   );

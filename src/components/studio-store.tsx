@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useMemo, useState, type ReactNo
 import {
   ASPECTS,
   buildAnimatePrompt,
+  buildCardOpenPrompt,
   buildOneShotPrompt,
   buildScenePrompt,
   buildScreenReplacePrompt,
@@ -19,6 +20,7 @@ import type { Asset } from "@/lib/studio-types";
 import { useJobRunner, type JobSpec } from "@/lib/use-jobs";
 import {
   getPersisted,
+  motionUsable,
   updatePersisted,
   usePersisted,
   type BaseConfig,
@@ -51,8 +53,10 @@ type StudioValue = {
   video: VideoConfig;
   setVideo: (patch: Partial<VideoConfig>) => void;
 
-  cardArtId: string | null;
-  setCardArtId: (id: string | null) => void;
+  cardFrontId: string | null;
+  setCardFrontId: (id: string | null) => void;
+  cardInsideId: string | null;
+  setCardInsideId: (id: string | null) => void;
   cardVideoId: string | null;
   setCardVideoId: (id: string | null) => void;
   baseId: string | null;
@@ -61,9 +65,6 @@ type StudioValue = {
   jobs: ReturnType<typeof useJobRunner>["jobs"];
   busy: boolean;
   cancelAll: () => void;
-
-  flow: 1 | 2;
-  setFlow: (f: 1 | 2) => void;
 
   basePlanCount: number;
   generateScenes: () => void;
@@ -95,12 +96,19 @@ export function StudioProvider({ children }: { children: ReactNode }) {
 
   // assets / base / video / surface live in an external store so they survive a
   // reload without a hydration-mismatch dance. See lib/persisted-store.ts.
-  const { assets, base, video, surface, cardArtId, cardVideoId, baseId, flow } = usePersisted();
-  const setFlow = useCallback((f: 1 | 2) => updatePersisted({ flow: f }), []);
+  const { assets, base, video, surface, cardFrontId, cardInsideId, cardVideoId, baseId } =
+    usePersisted();
 
   const [step, setStepRaw] = useState(1);
 
-  const setCardArtId = useCallback((cardArtId: string | null) => updatePersisted({ cardArtId }), []);
+  const setCardFrontId = useCallback(
+    (cardFrontId: string | null) => updatePersisted({ cardFrontId }),
+    [],
+  );
+  const setCardInsideId = useCallback(
+    (cardInsideId: string | null) => updatePersisted({ cardInsideId }),
+    [],
+  );
   const setCardVideoId = useCallback(
     (cardVideoId: string | null) => updatePersisted({ cardVideoId }),
     [],
@@ -132,20 +140,29 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     // Screen-replace needs a clip; without one it would just fail at render time.
     const lostLastClip =
       removed?.kind === "card-video" && !assets.some((a) => a.kind === "card-video");
+    // Likewise an opening motion with no inside spread left to reveal.
+    const motionStranded =
+      removed?.panel === "inside" && !motionUsable(current.video.motionId, assets);
 
     // Fall back to the next asset of the same kind rather than clearing the
     // slot — an empty slot is how step 2 silently went back to blank screens.
     const nextOf = (kind: Asset["kind"]) =>
       assets.filter((a) => a.kind === kind).sort((a, b) => b.createdAt - a.createdAt)[0]?.id ?? null;
+    const nextPanel = (panel: "front" | "inside") =>
+      assets
+        .filter((a) => a.kind === "card-art" && a.panel === panel)
+        .sort((a, b) => b.createdAt - a.createdAt)[0]?.id ?? null;
 
     updatePersisted({
       assets,
-      ...(current.cardArtId === id ? { cardArtId: nextOf("card-art") } : {}),
+      ...(current.cardFrontId === id ? { cardFrontId: nextPanel("front") } : {}),
+      ...(current.cardInsideId === id ? { cardInsideId: nextPanel("inside") } : {}),
       ...(current.cardVideoId === id ? { cardVideoId: nextOf("card-video") } : {}),
       ...(current.baseId === id ? { baseId: nextOf("base") } : {}),
       ...(lostLastClip && current.video.engine === "screen-replace"
         ? { video: { ...current.video, engine: "animate" as const } }
         : {}),
+      ...(motionStranded ? { video: { ...current.video, motionId: "slow-push" } } : {}),
     });
   }, []);
 
@@ -160,7 +177,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     updatePersisted({
       assets: [],
       video: { ...current.video, engine: "animate" },
-      cardArtId: null,
+      cardFrontId: null,
+      cardInsideId: null,
       cardVideoId: null,
       baseId: null,
     });
@@ -240,7 +258,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const cardAsset = assets.find((a) => a.id === cardArtId && a.kind === "card-art");
+    const cardAsset = assets.find((a) => a.id === cardFrontId && a.kind === "card-art");
     const hasCard = Boolean(cardAsset);
 
     /*
@@ -374,7 +392,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     }
 
     void runner.run(specs);
-  }, [assets, base, cardArtId, keyConnected, runner, surface, toast]);
+  }, [assets, base, cardFrontId, keyConnected, runner, surface, toast]);
 
   /* -------------------------- step 3: video -------------------------- */
 
@@ -391,6 +409,63 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     }
 
     const cardClip = assets.find((a) => a.id === cardVideoId);
+    const inside = assets.find((a) => a.id === cardInsideId && a.kind === "card-art");
+    const motion = byId(MOTIONS, video.motionId);
+
+    /*
+     * A card that opens has to reveal the artwork the customer actually bought,
+     * so the inside spread goes in as a second reference image. Without it the
+     * model invents an inside, which is the one thing a greeting-card asset
+     * can't get wrong.
+     */
+    if (surface === "print" && motion?.requiresInside) {
+      if (!inside) {
+        toast("That motion opens the card — add an inside spread in step 1 first.", "error");
+        return;
+      }
+      const prompt = buildCardOpenPrompt({
+        motionId: video.motionId,
+        sceneId: base.sceneId,
+        hasLogo: base.logo,
+        extraNotes: video.notes,
+      });
+      void runner.run([
+        {
+          label: `Opening · ${still.label}`,
+          kind: "video",
+          model: MODELS.screenReplace,
+          input: {
+            prompt,
+            image_urls: [still.url, inside.url],
+            resolution: video.resolution,
+            duration: video.duration,
+            aspect_ratio: video.aspectRatio,
+            generate_audio: video.generateAudio,
+            bitrate_mode: "high",
+          },
+          toAssets: (data, jobId) => {
+            const v = (data as { video?: { url: string; content_type?: string } }).video;
+            if (!v) return [];
+            return [
+              {
+                id: `${jobId}-0`,
+                kind: "video" as const,
+                url: v.url,
+                contentType: v.content_type ?? "video/mp4",
+                label: `Opening · ${still.label}`,
+                tags: [video.resolution, "inside spread", motion.label],
+                createdAt: Date.now(),
+                parentId: still.id,
+                prompt,
+                aspect: still.aspect,
+                surface,
+              },
+            ];
+          },
+        },
+      ]);
+      return;
+    }
 
     if (video.engine === "screen-replace") {
       if (!cardClip) {
@@ -485,7 +560,10 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         },
       },
     ]);
-  }, [assets, base.sceneId, base.logo, baseId, cardVideoId, keyConnected, runner, surface, toast, video]);
+  }, [
+    assets, base.sceneId, base.logo, baseId, cardVideoId, cardInsideId,
+    keyConnected, runner, surface, toast, video,
+  ]);
 
   /* --------------------- flow 2: straight to video -------------------- */
 
@@ -595,8 +673,10 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       setBase,
       video,
       setVideo,
-      cardArtId,
-      setCardArtId,
+      cardFrontId,
+      setCardFrontId,
+      cardInsideId,
+      setCardInsideId,
       cardVideoId,
       setCardVideoId,
       baseId,
@@ -604,8 +684,6 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       jobs: runner.jobs,
       busy: runner.busy,
       cancelAll: runner.cancelAll,
-      flow,
-      setFlow,
       basePlanCount,
       generateScenes,
       generateVideo,
@@ -622,9 +700,10 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     [
       step, setStep, surface, setSurface, assets, addAssets, removeAsset, updateAsset, clearAssets,
       base, setBase, video, setVideo,
-      cardArtId, setCardArtId, cardVideoId, setCardVideoId, baseId, setBaseId,
+      cardFrontId, setCardFrontId, cardInsideId, setCardInsideId,
+      cardVideoId, setCardVideoId, baseId, setBaseId,
       runner.jobs, runner.busy, runner.cancelAll, basePlanCount,
-      generateScenes, generateVideo, generateOneShot, flow, setFlow,
+      generateScenes, generateVideo, generateOneShot,
       keyConnected, keyDialogOpen, keyHint, confettiKey,
     ],
   );

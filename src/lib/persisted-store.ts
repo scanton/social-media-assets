@@ -2,7 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import { ANGLES, ASPECTS, DEVICES, FRAMINGS, MOTIONS, SCENES, type AspectId, type SurfaceKind } from "@/lib/options";
-import type { Asset, AssetKind } from "@/lib/studio-types";
+import type { Asset, AssetKind, CardPanel } from "@/lib/studio-types";
 
 export type BaseConfig = {
   deviceId: string;
@@ -44,11 +44,13 @@ export type Persisted = {
    * artwork was still in the roll, nothing was selected, and step 2 quietly
    * rendered a blank screen.
    */
-  cardArtId: string | null;
+  /** Printed-card front panel. */
+  cardFrontId: string | null;
+  /** Printed-card inside spread — optional; unlocks the opening motions. */
+  cardInsideId: string | null;
+  /** Digital-card animation clip. */
   cardVideoId: string | null;
   baseId: string | null;
-  /** 1 = still then animate. 2 = straight to Seedance, no still. */
-  flow: 1 | 2;
 };
 
 export const DEFAULT_BASE: BaseConfig = {
@@ -82,19 +84,30 @@ const DEFAULTS: Persisted = {
   base: DEFAULT_BASE,
   video: DEFAULT_VIDEO,
   surface: "screen",
-  cardArtId: null,
+  cardFrontId: null,
+  cardInsideId: null,
   cardVideoId: null,
   baseId: null,
-  flow: 1,
 };
 
 const has = (list: { id: string }[], id: string) => list.some((o) => o.id === id);
 
+/** A motion is usable if it exists and its inside-spread requirement is met. */
+export function motionUsable(motionId: string, assets: Asset[]): boolean {
+  const motion = MOTIONS.find((m) => m.id === motionId);
+  if (!motion) return false;
+  if (!motion.requiresInside) return true;
+  return assets.some((a) => a.kind === "card-art" && a.panel === "inside");
+}
+
 /** Shape as it comes off disk: selection ids may be absent on older sessions. */
-type RawPersisted = Omit<Persisted, "cardArtId" | "cardVideoId" | "baseId"> & {
-  cardArtId?: string | null;
+type RawPersisted = Omit<Persisted, "cardFrontId" | "cardInsideId" | "cardVideoId" | "baseId"> & {
+  cardFrontId?: string | null;
+  cardInsideId?: string | null;
   cardVideoId?: string | null;
   baseId?: string | null;
+  /** Pre-split sessions kept a single artwork slot. */
+  cardArtId?: string | null;
 };
 
 /**
@@ -117,12 +130,28 @@ function sanitize(p: RawPersisted): Persisted {
     return newestOf(kind);
   };
 
+  const newestPanel = (panel: CardPanel) =>
+    p.assets
+      .filter((a) => a.kind === "card-art" && a.panel === panel)
+      .sort((a, b) => b.createdAt - a.createdAt)[0]?.id ?? null;
+
+  const resolvePanel = (id: string | null | undefined, panel: CardPanel): string | null => {
+    if (id === null) return null;
+    if (id && p.assets.some((a) => a.id === id && a.kind === "card-art" && a.panel === panel)) {
+      return id;
+    }
+    return newestPanel(panel);
+  };
+
   const angleIds = p.base.angleIds.filter((id) => has(ANGLES, id));
   const aspectIds = p.base.aspectIds.filter((id) => has(ASPECTS, id));
 
+  const { cardArtId: _legacy, ...rest } = p;
   return {
-    ...p,
-    cardArtId: resolve(p.cardArtId, "card-art"),
+    ...rest,
+    // Sessions from before the front/inside split carried one artwork slot.
+    cardFrontId: resolvePanel(p.cardFrontId ?? _legacy, "front"),
+    cardInsideId: resolvePanel(p.cardInsideId, "inside"),
     cardVideoId: resolve(p.cardVideoId, "card-video"),
     baseId: resolve(p.baseId, "base"),
     base: {
@@ -135,7 +164,9 @@ function sanitize(p: RawPersisted): Persisted {
     },
     video: {
       ...p.video,
-      motionId: has(MOTIONS, p.video.motionId) ? p.video.motionId : DEFAULT_VIDEO.motionId,
+      // An opening motion with no inside spread left to reveal would render a
+      // card opening onto artwork the model invented.
+      motionId: motionUsable(p.video.motionId, p.assets) ? p.video.motionId : DEFAULT_VIDEO.motionId,
     },
   };
 }
@@ -158,16 +189,17 @@ function readStorage(): Persisted {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULTS;
-    const saved = JSON.parse(raw) as Partial<Persisted>;
+    const saved = JSON.parse(raw) as Partial<RawPersisted>;
     return sanitize({
       assets: Array.isArray(saved.assets) ? saved.assets : DEFAULTS.assets,
       base: { ...DEFAULT_BASE, ...(saved.base ?? {}) },
       video: { ...DEFAULT_VIDEO, ...(saved.video ?? {}) },
       surface: saved.surface === "print" ? "print" : "screen",
+      cardFrontId: saved.cardFrontId,
+      cardInsideId: saved.cardInsideId,
       cardArtId: saved.cardArtId,
       cardVideoId: saved.cardVideoId,
       baseId: saved.baseId,
-      flow: saved.flow === 2 ? 2 : 1,
     });
   } catch {
     return DEFAULTS;

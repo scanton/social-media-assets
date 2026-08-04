@@ -1,8 +1,11 @@
 import type { AspectId, SurfaceKind } from "@/lib/options";
 import type { Quad } from "@/lib/perspective";
 
+/** Which panel a piece of printed-card artwork represents. */
+export type CardPanel = "front" | "inside";
+
 export type AssetKind =
-  | "card-art" /* uploaded printed-card / digital-card artwork */
+  | "card-art" /* uploaded printed-card artwork — see `panel` */
   | "card-video" /* uploaded 8–13s digital card clip */
   | "base" /* generated lifestyle scene, card already on the surface */
   | "video"; /* final motion asset */
@@ -20,6 +23,8 @@ export type Asset = {
   createdAt: number;
   parentId?: string;
   prompt?: string;
+  /** Set on card-art: the front panel, or the full inside spread. */
+  panel?: CardPanel;
   aspect?: AspectId;
   surface?: SurfaceKind;
 

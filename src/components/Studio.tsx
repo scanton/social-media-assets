@@ -5,6 +5,7 @@ import { getKeyState } from "@/lib/client-api";
 import { signOutAction } from "@/app/actions";
 import type { StudioUser } from "@/auth";
 import { BRAND } from "@/lib/brand";
+import { SURFACES, type SurfaceKind } from "@/lib/options";
 import { StudioProvider, useStudio } from "./studio-store";
 import { KeyDialog } from "./KeyDialog";
 import { AssetTile } from "./AssetTile";
@@ -14,17 +15,20 @@ import { Step3Motion } from "./steps/Step3Motion";
 import { Flow2 } from "./Flow2";
 import { Backdrop, Button, Confetti, StampMark, ToastProvider, cx } from "./ui";
 
-const FLOW_STEPS = {
-  1: [
-    { n: 1, label: "Card", emoji: "💌" },
+type Step = { n: number; label: string; emoji: string };
+
+/* What you're selling decides the pipeline, so it also decides the steps. */
+const STEPS: Record<SurfaceKind, Step[]> = {
+  print: [
+    { n: 1, label: "Artwork", emoji: "🎨" },
     { n: 2, label: "Scene", emoji: "📸" },
     { n: 3, label: "Motion", emoji: "🎬" },
   ],
-  2: [
-    { n: 1, label: "Card", emoji: "💌" },
+  screen: [
+    { n: 1, label: "Clip", emoji: "🎞️" },
     { n: 2, label: "Video", emoji: "🎬" },
   ],
-} as const;
+};
 
 export function Studio({
   user,
@@ -66,15 +70,15 @@ function StudioShell({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const steps = FLOW_STEPS[s.flow];
+  const steps = STEPS[s.surface];
   const done: Record<number, boolean> =
-    s.flow === 2
+    s.surface === "screen"
       ? {
           1: s.assets.some((a) => a.kind === "card-video"),
           2: s.assets.some((a) => a.kind === "video"),
         }
       : {
-          1: s.assets.some((a) => a.kind === "card-art" || a.kind === "card-video"),
+          1: s.assets.some((a) => a.kind === "card-art"),
           2: s.assets.some((a) => a.kind === "base"),
           3: s.assets.some((a) => a.kind === "video"),
         };
@@ -176,35 +180,28 @@ function StudioShell({
           </div>
         </div>
 
-        {/* ------------------------------ flows ------------------------------ */}
+        {/* --------------------------- what we sell --------------------------- */}
         <div className="mx-auto max-w-[110rem] px-4 pb-2 sm:px-6">
           <div
             role="tablist"
-            aria-label="Workflow"
+            aria-label="What are we selling?"
             className="inline-flex gap-1 rounded-full border border-hairline bg-canvas-2 p-1"
           >
-            {(
-              [
-                { id: 1, label: "Flow 1", hint: "Still → video" },
-                { id: 2, label: "Flow 2", hint: "Straight to video" },
-              ] as const
-            ).map((f) => (
+            {SURFACES.map((opt) => (
               <button
-                key={f.id}
+                key={opt.id}
                 type="button"
                 role="tab"
-                aria-selected={s.flow === f.id}
-                onClick={() => s.setFlow(f.id)}
-                title={f.hint}
+                aria-selected={s.surface === opt.kind}
+                onClick={() => s.setSurface(opt.kind)}
+                title={opt.hint}
                 className={cx(
-                  "focus-stamp rounded-full px-3.5 py-1.5 text-xs font-bold transition-all duration-200",
-                  s.flow === f.id
-                    ? "bg-white text-ink shadow-sm"
-                    : "text-ink-faint hover:text-ink",
+                  "focus-stamp flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-bold transition-all duration-200",
+                  s.surface === opt.kind ? "bg-white text-ink shadow-sm" : "text-ink-faint hover:text-ink",
                 )}
               >
-                {f.label}
-                <span className="ml-1.5 hidden font-medium text-ink-faint sm:inline">{f.hint}</span>
+                <span className="text-sm leading-none">{opt.emoji}</span>
+                {opt.label}
               </button>
             ))}
           </div>
@@ -271,8 +268,8 @@ function StudioShell({
 
       {/* ------------------------------- main ------------------------------- */}
       <main className="mx-auto max-w-[110rem] px-4 py-8 sm:px-6 sm:py-10">
-        <div key={`${s.flow}-${s.step}`} className="animate-rise">
-          {s.flow === 2 ? (
+        <div key={`${s.surface}-${s.step}`} className="animate-rise">
+          {s.surface === "screen" ? (
             s.step === 1 ? <Step1Card /> : <Flow2 />
           ) : (
             <>

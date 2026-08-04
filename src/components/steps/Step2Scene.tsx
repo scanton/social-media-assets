@@ -76,7 +76,7 @@ export function Step2Scene() {
   const toggleIn = <T extends string>(list: T[], value: T): T[] =>
     list.includes(value) ? list.filter((x) => x !== value) : [...list, value];
 
-  const cardAsset = s.assets.find((a) => a.id === s.cardArtId && a.kind === "card-art");
+  const cardAsset = s.assets.find((a) => a.id === s.cardFrontId && a.kind === "card-art");
   const hasCard = Boolean(cardAsset);
 
   const previewPrompt = buildScenePrompt({
@@ -104,20 +104,18 @@ export function Step2Scene() {
         title="Build the scene"
         blurb={
           hasCard
-            ? s.surface === "print"
-              ? "Photoreal lifestyle shots with your artwork already printed on the card, logo stamped in the corner. Check multiple angles and orientations to batch a whole shoot at once."
-              : "Photoreal lifestyle shots with your card already on the screen, logo stamped in the corner. Check multiple angles and orientations to batch a whole shoot at once."
-            : "No card artwork selected, so surfaces will render blank. Pick artwork in step 1 to have it placed straight into the scene."
+            ? "Photoreal lifestyle shots with your front panel already printed on the card, logo stamped in the corner. Check multiple angles and orientations to batch a whole shoot at once."
+            : "No front panel selected, so the card will render blank. Pick artwork in step 1 to have it printed straight into the scene."
         }
       />
 
       {!hasCard && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
           <p className="text-sm font-medium text-amber-900">
-            ⚠️ No card artwork selected — screens and panels will come out blank.
+            ⚠️ No front panel selected — the card will come out blank.
           </p>
           <Button variant="outline" size="sm" onClick={() => s.setStep(1)}>
-            Add card artwork
+            Add front artwork
           </Button>
         </div>
       )}
@@ -356,7 +354,7 @@ export function Step2Scene() {
                     )}
                     <span className="min-w-0">
                       <span className="block text-[10px] font-bold uppercase tracking-[0.09em] text-ink-faint">
-                        {s.surface === "print" ? "On the card" : "On the screen"}
+                        On the card
                       </span>
                       <span
                         className={cx(
@@ -364,7 +362,7 @@ export function Step2Scene() {
                           hasCard ? "text-ink" : "text-amber-900",
                         )}
                       >
-                        {hasCard ? cardAsset!.label : "Blank — no artwork selected"}
+                        {hasCard ? cardAsset!.label : "Blank — no front panel selected"}
                       </span>
                     </span>
                   </div>

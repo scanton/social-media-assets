@@ -22,17 +22,17 @@ export const SURFACES: (Option & { kind: SurfaceKind })[] = [
   {
     id: "digital",
     kind: "screen",
-    label: "Digital card",
+    label: "Digital 3D Card",
     emoji: "📱",
-    hint: "Card plays on a device screen",
+    hint: "Your card animation playing on a device — straight to video",
     prompt: "",
   },
   {
     id: "print",
     kind: "print",
-    label: "Printed card",
+    label: "Printed Card",
     emoji: "💌",
-    hint: "Physical POD greeting card in the scene",
+    hint: "Physical POD card in a scene — still, then video",
     prompt: "",
   },
 ];
@@ -819,7 +819,13 @@ export type MotionKind = "camera" | "action";
  * "camera" moves the lens across an otherwise still scene.
  * "action" makes the world move — people do things, the background lives.
  */
-export const MOTIONS: (Option & { surface?: SurfaceKind; kind: MotionKind })[] = [
+export const MOTIONS: (Option & {
+  /** Restricts the motion to one surface. Omitted = fine on both. */
+  surface?: SurfaceKind;
+  kind: MotionKind;
+  /** Only offered once an inside-spread image exists to reveal. */
+  requiresInside?: boolean;
+})[] = [
   /* ------------------------------ camera ----------------------------- */
   {
     id: "hold-steady",
@@ -861,6 +867,7 @@ export const MOTIONS: (Option & { surface?: SurfaceKind; kind: MotionKind })[] =
   {
     id: "lift-to-camera",
     kind: "camera",
+    surface: "screen",
     label: "Lift toward camera",
     emoji: "🙌",
     prompt: "the subject lifts the device up toward the camera, presenting the screen proudly to the viewer",
@@ -870,7 +877,7 @@ export const MOTIONS: (Option & { surface?: SurfaceKind; kind: MotionKind })[] =
   {
     id: "open-and-react",
     kind: "action",
-    label: "Open & react",
+    label: "React to it",
     emoji: "🥹",
     prompt:
       "the subject looks down at the card and reacts in real time — eyebrows lift, a grin spreads, a hand comes up to their mouth, they let out a small laugh and shake their head. Shoulders and chest move with the breath and the laugh. Genuine, unforced, caught-in-the-moment energy",
@@ -886,6 +893,7 @@ export const MOTIONS: (Option & { surface?: SurfaceKind; kind: MotionKind })[] =
   {
     id: "lean-in-together",
     kind: "action",
+    surface: "screen",
     label: "Lean in together",
     emoji: "🫂",
     prompt:
@@ -902,6 +910,7 @@ export const MOTIONS: (Option & { surface?: SurfaceKind; kind: MotionKind })[] =
   {
     id: "prop-and-watch",
     kind: "action",
+    surface: "screen",
     label: "Prop it up & watch",
     emoji: "🪑",
     prompt:
@@ -910,6 +919,7 @@ export const MOTIONS: (Option & { surface?: SurfaceKind; kind: MotionKind })[] =
   {
     id: "double-take",
     kind: "action",
+    surface: "screen",
     label: "Double take",
     emoji: "😳",
     prompt:
@@ -966,22 +976,41 @@ export const MOTIONS: (Option & { surface?: SurfaceKind; kind: MotionKind })[] =
 
   /* --------------------------- print-only ---------------------------- */
   {
-    id: "card-open",
-    kind: "action",
-    surface: "print",
-    label: "Card opening",
-    emoji: "💌",
-    prompt:
-      "hands slowly open the folded greeting card to reveal the inside, the paper flexing naturally with realistic weight, then the subject's eyes track across it",
-  },
-  {
     id: "card-zoom",
     kind: "camera",
     surface: "print",
     label: "Stationary card zoom",
     emoji: "🔎",
     prompt:
-      "the greeting card stays completely stationary while the camera slowly zooms in on it, no hands entering frame",
+      "the greeting card stays completely stationary while the camera slowly pushes in on its front panel, no hands entering frame",
+  },
+  {
+    id: "card-turn",
+    kind: "action",
+    surface: "print",
+    label: "Tilt & catch the light",
+    emoji: "✨",
+    prompt:
+      "hands tilt the card slowly back and forth so the light rakes across the printed front and any foil or texture catches it, the card never leaving frame",
+  },
+  {
+    id: "stand-it-up",
+    kind: "action",
+    surface: "print",
+    label: "Stand it up",
+    emoji: "🕯️",
+    prompt:
+      "hands stand the folded card upright on the surface like a tent, adjust it square to the camera and let go; the card settles and the hands withdraw from frame",
+  },
+  {
+    id: "card-open",
+    kind: "action",
+    surface: "print",
+    requiresInside: true,
+    label: "Open the card",
+    emoji: "💌",
+    prompt:
+      "hands take hold of the front panel and slowly swing the card open to reveal the full inside spread, the paper flexing with believable stiffness and weight, until both inside panels are square to the camera and fully readable. The card stays open and still for the last beat of the clip",
   },
   {
     id: "envelope-reveal",
@@ -990,7 +1019,27 @@ export const MOTIONS: (Option & { surface?: SurfaceKind; kind: MotionKind })[] =
     label: "Envelope reveal",
     emoji: "✉️",
     prompt:
-      "hands tear open the envelope, slide the greeting card out and turn it to face the camera, paper and flap moving with believable stiffness",
+      "hands tear open the envelope, slide the greeting card out and turn its printed front to face the camera, paper and flap moving with believable stiffness",
+  },
+  {
+    id: "envelope-open-read",
+    kind: "action",
+    surface: "print",
+    requiresInside: true,
+    label: "Unbox, open & read",
+    emoji: "🎁",
+    prompt:
+      "hands slide the card out of its envelope, turn the printed front to camera for a beat, then open it out to the full inside spread and hold it steady and readable while the recipient's eyes move across it",
+  },
+  {
+    id: "open-and-react-print",
+    kind: "action",
+    surface: "print",
+    requiresInside: true,
+    label: "Open & react",
+    emoji: "🥹",
+    prompt:
+      "the recipient opens the card out to its inside spread, reads it, and reacts in real time — eyebrows lift, a grin spreads, a hand comes to their mouth. The open card stays square to camera and readable throughout",
   },
 ];
 
@@ -1144,5 +1193,42 @@ export function buildOneShotPrompt(sel: {
     motion?.prompt,
     "Realistic physics and motion blur. No text overlays, no captions, no watermarks, no logos, no scene cuts",
     sel.extraNotes?.trim(),
+  ]);
+}
+
+/* ---------------------- PRINTED CARD: OPENING ----------------------- */
+
+/**
+ * Prompt for a printed-card clip that opens to reveal the inside spread.
+ *
+ * Uses Seedance's reference-to-video so the inside artwork can be supplied as
+ * @Image2. Without it the model invents an inside, which is the one thing a
+ * greeting-card asset can't get wrong.
+ */
+export function buildCardOpenPrompt(opts: {
+  motionId: string;
+  sceneId?: string;
+  hasLogo?: boolean;
+  extraNotes?: string;
+}): string {
+  const motion = byId(MOTIONS, opts.motionId);
+  const scene = byId(SCENES, opts.sceneId ?? "");
+
+  return joinPrompts([
+    "Bring @Image1 to life as a short, natural-looking live-action clip",
+    "@Image1 is the scene with the greeting card closed, its printed front showing",
+    "@Image2 is the artwork printed across the full inside spread of that same card — the left and right inside panels together",
+    motion?.prompt,
+    "As the card opens, the inside must show exactly the artwork from @Image2: same composition, same colours, same typography, same layout across both panels. Reproduce it faithfully — do not redesign it, re-letter it, recolour it or invent any inside content of your own",
+    "Map it to the open card with correct perspective, following the centre fold and any curl in the paper, and let the scene's own light fall across it. It must read as genuinely printed on that stock",
+    "Keep the printed front from @Image1 exactly as it is for as long as it is visible; the same physical card is simply being opened",
+    scene ? `Keep the environment consistent: ${scene.prompt}` : undefined,
+    "Preserve the exact identity, wardrobe, framing and lighting of @Image1",
+    PRINT_CONTAINMENT_CLAUSE,
+    opts.hasLogo ? LOGO_LOCK_CLAUSE : undefined,
+    opts.hasLogo
+      ? "Realistic physics and paper motion. No scene cuts, and no text overlays, captions or watermarks beyond the corner logo already present"
+      : "Realistic physics and paper motion. No text overlays, no captions, no watermarks, no logos, no scene cuts",
+    opts.extraNotes?.trim(),
   ]);
 }

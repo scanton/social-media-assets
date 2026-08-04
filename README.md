@@ -3,24 +3,39 @@
 Generate social-media assets for HeartStamp printed (POD) and 3D digital greeting cards.
 Base lifestyle images → card composites → TikTok / Reels / Pinterest video.
 
-Two workflows, switchable from the tabs in the header.
+What you're selling picks the pipeline — the tabs in the header are the choice.
 
-**Flow 1 — still, then video.** Three steps:
+**Digital 3D Card.** One page, one Seedance call, no still. Upload the card animation and it plays
+on a device in a generated scene. This is the one that works well, so it stays deliberately simple:
+no artwork upload, no compositing step, no printed-card options.
 
 | Step | What it does | Model |
 | --- | --- | --- |
-| **1 · Card** | Upload printed-card artwork and/or an 8–13s 3D card clip | direct-to-fal upload |
-| **2 · Scene** | Batch photoreal lifestyle scenes, artwork composited exactly onto the screen, logo stamped | `openai/gpt-image-2` (+ browser canvas) |
-| **3 · Motion** | Animate the scene, or play the card clip on the device in it | `bytedance/seedance-2.0/image-to-video` · `…/reference-to-video` |
+| **1 · Clip** | Upload the 2–15s card animation | direct-to-fal upload |
+| **2 · Video** | Scene + motion + output, straight through | `bytedance/seedance-2.0/reference-to-video` |
 
-**Flow 2 — straight to video.** One page, one Seedance call, no still. Needs an uploaded clip.
-Faster, but the artwork on screen is whatever Seedance renders rather than a pixel-exact composite.
+**Printed Card.** Still first, then animate it.
 
-The logo still lands: flow 1 inherits it from the still it animates, and flow 2 burns it into the
-finished clip in the browser — [`src/lib/video-logo.ts`](src/lib/video-logo.ts) plays the clip
-through a canvas, paints the emblem on every frame with the same `paintLogo()` the stills use, and
-records the canvas straight back out to MP4 via MediaRecorder. Real time, no dependencies, no extra
-API cost.
+| Step | What it does | Model |
+| --- | --- | --- |
+| **1 · Artwork** | Front panel, plus an optional inside spread | direct-to-fal upload |
+| **2 · Scene** | Batch lifestyle scenes with the front printed on the card, logo stamped | `openai/gpt-image-2/edit` |
+| **3 · Motion** | Animate the scene — or open the card and reveal the inside | `…/image-to-video` · `…/reference-to-video` |
+
+The inside spread is what unlocks the opening motions. It rides along as a second reference image so
+Seedance reveals the artwork the customer actually bought; without it the model invents an inside,
+which is the one thing a greeting-card asset can't get wrong. Opening motions are hidden until a
+spread exists, and a stored one is reset if the spread is later removed.
+
+Which panel an upload is gets guessed from its aspect ratio — fronts are portrait, inside spreads
+are two panels side by side and so land as landscape. Dropping onto a named slot overrides the
+guess, and every tile has a front/inside toggle.
+
+The logo lands on both paths: the printed flow inherits it from the still it animates, and the
+digital flow burns it into the finished clip in the browser —
+[`src/lib/video-logo.ts`](src/lib/video-logo.ts) plays the clip through a canvas, paints the emblem
+on every frame with the same `paintLogo()` the stills use, and records the canvas back out to MP4
+via MediaRecorder. Real time, no dependencies, no extra API cost.
 
 Three things about that file are load-bearing and were each found by testing, not reasoning:
 
