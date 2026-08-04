@@ -42,6 +42,8 @@ export const SURFACES: (Option & { kind: SurfaceKind })[] = [
 export const DEVICES: (Option & {
   surface: SurfaceKind;
   defaultAspect?: string;
+  /** This framing genuinely includes an envelope, so the prompt may mention one. */
+  involvesEnvelope?: boolean;
 })[] = [
   {
     id: "iphone-portrait",
@@ -156,6 +158,7 @@ export const DEVICES: (Option & {
   {
     id: "card-flatlay",
     surface: "print",
+    involvesEnvelope: true,
     label: "Card flat-lay with envelope",
     emoji: "✉️",
     defaultAspect: "1:1",
@@ -165,6 +168,7 @@ export const DEVICES: (Option & {
   {
     id: "card-mailbox",
     surface: "print",
+    involvesEnvelope: true,
     label: "Card at the mailbox",
     emoji: "📮",
     defaultAspect: "9:16",
@@ -819,6 +823,8 @@ export const MOTIONS: (Option & {
   kind: MotionKind;
   /** Only offered once an inside-spread image exists to reveal. */
   requiresInside?: boolean;
+  /** This motion genuinely handles an envelope, so the prompt may mention one. */
+  involvesEnvelope?: boolean;
 })[] = [
   /* ------------------------------ camera ----------------------------- */
   {
@@ -1000,6 +1006,7 @@ export const MOTIONS: (Option & {
     id: "envelope-reveal",
     kind: "action",
     surface: "print",
+    involvesEnvelope: true,
     label: "Envelope reveal",
     emoji: "✉️",
     prompt:
@@ -1052,6 +1059,7 @@ export const MOTIONS: (Option & {
     kind: "action",
     surface: "print",
     requiresInside: true,
+    involvesEnvelope: true,
     label: "Unbox, open & read",
     emoji: "🎁",
     prompt:
@@ -1151,10 +1159,31 @@ const SCREEN_CONTAINMENT_CLAUSE = [
   "nothing on screen casts a shadow, reflection, light spill or depth into the real environment",
 ].join(". ");
 
-/** Print equivalent: ink stays ink. */
+/**
+ * Print equivalent of the screen clipping rule: ink stays ink.
+ *
+ * Artwork routinely depicts objects — envelopes, letters, flowers, people — and
+ * without this the model builds them as real props in the room. One render came
+ * back with the envelope from the card's own illustration stuck to the front of
+ * the physical card.
+ */
 const PRINT_CONTAINMENT_CLAUSE = [
-  "The artwork on the card is flat printed ink and stays completely within the card's printed panel",
-  "no element of the design may lift off the paper, extend past the card's edges, gain depth or become a physical object in the scene",
+  "ABSOLUTE RULE — everything in the supplied artwork is flat printed ink on the card and nothing more",
+  "whatever that artwork depicts — envelopes, letters, stamps, flowers, objects, hands, people — exists only as part of the printed image, inside the card's own edges",
+  "none of it may lift off the paper, gain depth or its own shadow, become a physical prop in the scene, sit in front of the card, overlap the card's edges or turn up anywhere else in the shot",
+  "the card is one flat rectangular piece of printed stock: nothing is tucked into it, clipped to it, laid across it, propped against it or peeking out from behind it",
+].join(". ");
+
+/**
+ * Used whenever nothing the user picked actually involves an envelope.
+ *
+ * Phrased positively first — describing the card alone — because leading with a
+ * bare negation gives the model the noun to latch onto, which is the opposite of
+ * what's wanted.
+ */
+const NO_ENVELOPE_CLAUSE = [
+  "The card appears completely on its own: bare printed stock, held or resting by itself, with nothing else in frame alongside it and nothing attached to it",
+  "no envelope, sleeve, wrapper, insert or backing card of any kind is present, and nothing is tucked into the card, laid across it or propped behind it — not even if the printed artwork happens to depict such a thing",
 ].join(". ");
 
 const LOGO_LOCK_CLAUSE = [
@@ -1269,12 +1298,13 @@ export function buildOneShotPrompt(sel: {
     return joinPrompts([
       `A photorealistic live-action clip of ${device?.prompt ?? "a printed greeting card"}`,
       ...setting,
-      "@Image1 is the artwork printed on the front panel of that card. Reproduce it exactly — same composition, same colours, same typography, same layout. Do not redesign it, re-letter it, recolour it, crop it or invent any printed content of your own",
+      "@Image1 is the artwork printed on the front panel of that card. The printed front must match @Image1 exactly, edge to edge — same composition, same colours, same typography, same layout, with nothing added, removed, moved, covered or cropped. Do not redesign it, re-letter it, recolour it or invent any printed content of your own",
       "Fit it to the front panel edge to edge with correct perspective for the card's angle, following any curl or flex in the paper, and let the scene's own light fall across it so it reads as genuinely printed on card stock",
       opensCard
         ? "@Image2 is the artwork printed across the full inside spread — the left and right inside panels together. The card starts closed showing @Image1; as it opens, the inside must show exactly @Image2, mapped across both panels with the centre fold running down the middle of it. Reproduce it just as faithfully, and hold the open card steady and readable at the end"
         : "The card stays closed for the whole clip — only the printed front from @Image1 is ever shown. Never open it, never show an inside, and never invent a back or an interior",
       PRINT_CONTAINMENT_CLAUSE,
+      device?.involvesEnvelope || motion?.involvesEnvelope ? undefined : NO_ENVELOPE_CLAUSE,
       motion?.prompt,
       "Realistic physics and paper motion, with believable card stock weight and stiffness. No text overlays, no captions, no watermarks, no logos, no scene cuts",
       sel.extraNotes?.trim(),

@@ -31,6 +31,14 @@ Uploading or removing a spread flips the set, so the selected motion is re-valid
 change and on load, falling back to the first one that fits rather than stranding the UI on a motion
 that no longer applies.
 
+Card artwork routinely depicts objects — an envelope, a letter, flowers — and the model will happily
+build those as real props in the room. One render came back with the envelope from the card's own
+illustration stuck to the front of the physical card. The print prompt now states that everything in
+the supplied artwork is flat ink inside the card's edges and nothing more, and adds an explicit
+"the card appears on its own" rule unless a chosen device or motion genuinely involves an envelope
+(`involvesEnvelope` on the option). That rule leads with the positive description, because opening
+with a bare negation hands the model the noun to latch onto.
+
 Which panel an upload is gets guessed from its aspect ratio — fronts are portrait, inside spreads
 are two panels side by side and so land as landscape. Dropping onto a named slot overrides the
 guess but warns if the two disagree, and every tile has a front/inside toggle.
