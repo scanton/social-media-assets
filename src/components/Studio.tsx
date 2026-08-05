@@ -344,7 +344,8 @@ function AssetRoll({ open, onClose }: { open: boolean; onClose: () => void }) {
 
   const shown = s.assets.filter((a) => {
     if (filter === "all") return true;
-    if (filter === "card-art") return a.kind === "card-art" || a.kind === "card-video";
+    if (filter === "card-art")
+      return a.kind === "card-art" || a.kind === "card-video" || a.kind === "background";
     return a.kind === filter;
   });
 

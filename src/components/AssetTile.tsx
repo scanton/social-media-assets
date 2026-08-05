@@ -4,6 +4,7 @@ import { useState } from "react";
 import { downloadUrl } from "@/lib/client-api";
 import type { Asset } from "@/lib/studio-types";
 import { isVideo } from "@/lib/studio-types";
+import { LavaHearts } from "./LavaHearts";
 import { cx } from "./ui";
 
 const EXT: Record<string, string> = {
@@ -236,11 +237,12 @@ export function PendingTile({ label, state, queuePosition, error, stage }: {
           </div>
         ) : (
           <>
-            <div className="shimmer-bar h-full w-full" />
-            <div className="absolute inset-x-0 top-0 h-1/3 animate-scan bg-gradient-to-b from-transparent via-stamp-200/60 to-transparent" />
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center">
-              <span className="h-6 w-6 animate-spin rounded-full border-2 border-stamp-600 border-t-transparent" />
-              <p className="text-[11px] font-bold uppercase tracking-wider text-stamp-700">
+            <div className="absolute inset-0 bg-stamp-50/40">
+              <LavaHearts />
+            </div>
+            {/* The field is busy behind the label, so the label gets its own plate. */}
+            <div className="absolute inset-0 flex items-end justify-center p-2.5">
+              <p className="rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-stamp-700 shadow-sm backdrop-blur-sm">
                 {stage
                   ? stage
                   : state === "queued"

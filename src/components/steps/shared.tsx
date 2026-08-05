@@ -99,14 +99,36 @@ export function ResultsGrid({
   );
 }
 
-export function Panel({ title, children, aside }: { title: string; children: ReactNode; aside?: ReactNode }) {
+export function Panel({
+  title,
+  children,
+  aside,
+  locked,
+  lockNote,
+}: {
+  title: string;
+  children: ReactNode;
+  aside?: ReactNode;
+  /** Greys the controls out and takes them out of the tab order entirely. */
+  locked?: boolean;
+  /** Why they're locked, and how to get them back. Stays interactive. */
+  lockNote?: ReactNode;
+}) {
   return (
     <section className="card-surface p-5 sm:p-6">
       <div className="mb-5 flex items-center justify-between gap-3">
         <h3 className="font-display text-base font-bold text-ink">{title}</h3>
         {aside}
       </div>
-      {children}
+      {lockNote && (
+        <div className="mb-5 rounded-2xl border border-stamp-200 bg-stamp-50 px-3.5 py-3 text-xs leading-relaxed text-stamp-800">
+          {lockNote}
+        </div>
+      )}
+      {/* `inert` rather than pointer-events: keyboard and screen readers skip it too. */}
+      <div inert={locked} className={cx("transition-opacity duration-300", locked && "opacity-45")}>
+        {children}
+      </div>
     </section>
   );
 }

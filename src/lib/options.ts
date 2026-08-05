@@ -143,8 +143,11 @@ export const DEVICES: (Option & {
     label: "Card held — front panel",
     emoji: "💌",
     defaultAspect: "4:5",
+    // No size in here on purpose — the physical dimensions are stated once, by
+    // cardScaleClause, from the card size the user actually picked. This used
+    // to say "A6", which is 4.1 × 5.8in and contradicted a 5 × 7in card.
     prompt:
-      "a printed A6 folded greeting card held upright in one hand, front panel facing the camera square-on, crisp paper edges, slight natural hand shadow",
+      "a printed folded greeting card held upright in one hand, front panel facing the camera square-on, crisp paper edges, slight natural hand shadow",
   },
   {
     id: "card-table-standing",
@@ -176,6 +179,96 @@ export const DEVICES: (Option & {
       "a printed greeting card being pulled from a residential mailbox in its envelope, card front partially revealed",
   },
 ];
+
+/* -------------------------- CARD SIZE ---------------------------- */
+
+/**
+ * The card's real-world dimensions.
+ *
+ * Image models have no inherent sense of how big a greeting card is, so left
+ * unstated the same prompt yields anything from a postcard to a poster. Stating
+ * the size in inches *and* giving it everyday objects to measure against is what
+ * makes the scale hold.
+ */
+export type CardSize = {
+  id: string;
+  label: string;
+  hint: string;
+  emoji: string;
+  /** Folded, front panel showing: [width, height] in inches. */
+  closed: [number, number];
+  /** Opened flat across both inside panels: [width, height] in inches. */
+  open: [number, number];
+};
+
+export const CARD_SIZES: CardSize[] = [
+  {
+    id: "5x7",
+    label: '5" × 7" folded',
+    hint: '10" × 7" open — the HeartStamp standard',
+    emoji: "💌",
+    closed: [5, 7],
+    open: [10, 7],
+  },
+  {
+    id: "4x6",
+    label: '4" × 6" folded',
+    hint: '8" × 6" open',
+    emoji: "✉️",
+    closed: [4, 6],
+    open: [8, 6],
+  },
+  {
+    id: "square-5.5",
+    label: '5.5" square folded',
+    hint: '11" × 5.5" open',
+    emoji: "🔲",
+    closed: [5.5, 5.5],
+    open: [11, 5.5],
+  },
+  {
+    id: "a6",
+    label: "A6 folded",
+    hint: "105 × 148 mm closed",
+    emoji: "📇",
+    closed: [4.13, 5.83],
+    open: [8.27, 5.83],
+  },
+  {
+    id: "a5",
+    label: "A5 folded",
+    hint: "148 × 210 mm closed",
+    emoji: "📄",
+    closed: [5.83, 8.27],
+    open: [11.69, 8.27],
+  },
+];
+
+const inchesToMm = (n: number) => Math.round(n * 25.4);
+const trimNum = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/0$/, ""));
+
+/**
+ * Everyday objects with sizes the model already knows, so it can triangulate
+ * rather than take "5 inches" on faith. Naming what the card must *not* be
+ * mistaken for is doing as much work here as the measurements.
+ */
+function cardScaleClause(sizeId: string, openInFrame: boolean): string {
+  const size = CARD_SIZES.find((c) => c.id === sizeId) ?? CARD_SIZES[0];
+  const [cw, ch] = size.closed;
+  const [ow, oh] = size.open;
+  const dims = (w: number, h: number) =>
+    `${trimNum(w)} × ${trimNum(h)} inches (${inchesToMm(w)} × ${inchesToMm(h)} mm)`;
+
+  return [
+    "SCALE — the card is a real physical object and must be sized like one",
+    `folded, with the front panel showing, it measures ${dims(cw, ch)}; opened flat across both inside panels it measures ${dims(ow, oh)}`,
+    openInFrame
+      ? `it is open in this shot, so judge it against the ${dims(ow, oh)} figure`
+      : `it is folded in this shot, so judge it against the ${dims(cw, ch)} figure`,
+    "size it against the things around it — an adult hand is about 7.5 inches from wrist to fingertip, a coffee mug about 3.7 inches tall, a smartphone about 6 inches tall, a dinner plate about 10.5 inches across, a paperback about 7 inches tall",
+    "it must not read as a business card, a postcard, a sheet of A4 or a poster: check it against the hands, mugs, tables and books in frame and hold it at its true size",
+  ].join(". ");
+}
 
 /* ---------------------------- SCENES ---------------------------- */
 
@@ -760,8 +853,37 @@ export type SceneSelection = {
   aspect: AspectId;
   /** True when card artwork is supplied as a reference image. */
   hasCard: boolean;
+  /**
+   * True when the user supplied their own location photograph. It replaces
+   * every scene control, so most of this selection goes unused.
+   */
+  hasBackground?: boolean;
+  /** Which CARD_SIZES entry the card is, so the render can be scaled to it. */
+  cardSizeId?: string;
+  /**
+   * Ordered description of every reference image being sent, matching the
+   * `image_urls` array exactly. The prompt names them by position, so these two
+   * must be built from one list or the model is told the wrong thing.
+   */
+  references?: string[];
   extraNotes?: string;
 };
+
+const ORDINALS = ["first", "second", "third", "fourth", "fifth", "sixth"];
+
+/**
+ * Tells the model what each reference image is, by position.
+ *
+ * GPT-Image-2's edit endpoint accepts up to 16 images but gives them no names,
+ * so position is the only handle the prompt has on them.
+ */
+function referenceKeyClause(refs: string[]): string | undefined {
+  if (refs.length < 2) return undefined;
+  const listed = refs
+    .map((r, i) => `the ${ORDINALS[i] ?? `image ${i + 1}`} is ${r}`)
+    .join(", ");
+  return `${refs.length} reference images are supplied, in this order: ${listed}`;
+}
 
 /**
  * Fallback for when no card artwork is selected: leave the display surface empty
@@ -793,7 +915,9 @@ function blankSurfaceClause(surface: SurfaceKind): string {
 function cardOnSurfaceClause(surface: SurfaceKind): string {
   if (surface === "print") {
     return [
-      "CRITICAL REQUIREMENT: the artwork in the supplied reference image is printed on the front panel of the greeting card in the scene",
+      // Named rather than "the supplied reference image": a user-supplied
+      // background makes that phrase ambiguous between two images.
+      "CRITICAL REQUIREMENT: the artwork in the supplied card-artwork reference image is printed on the front panel of the greeting card in the scene",
       "reproduce that artwork exactly as provided — same composition, same colours, same typography; do not redesign it, recolour it, restyle it, add text to it or invent new elements",
       "fit it to the card panel edge to edge with the correct perspective and keystone for the card's angle, following any curl or fold in the paper",
       "let the scene's lighting fall across it naturally — matching brightness, colour temperature, paper texture and grain — so it reads as genuinely printed rather than pasted on",
@@ -809,6 +933,24 @@ function cardOnSurfaceClause(surface: SurfaceKind): string {
   ].join(". ");
 }
 
+/**
+ * A supplied location photograph replaces the whole scene taxonomy, so the job
+ * stops being "imagine a setting" and becomes "composite into this one".
+ *
+ * Framing still has to be stated even though the control is locked: the photo
+ * fixes where the camera is, but nothing in it says how big the card should be,
+ * and left unsaid the card comes back as a detail in the corner.
+ */
+const BACKGROUND_SCENE_CLAUSE = [
+  "CRITICAL REQUIREMENT: the supplied location photograph is the scene, and it is already finished",
+  "keep it exactly as it is — same framing, same crop, same camera position and perspective, same lighting direction and colour, same depth of field, same surfaces, props and people",
+  "do not re-stage it, re-light it, re-shoot it from another angle, extend its edges, or add or remove anything from it beyond the card itself",
+  "place the printed greeting card into that photograph as a real physical object, resting on, standing on or held against something that is genuinely there",
+  "match its scale, perspective and contact shadows to the surfaces already in the photograph, and let the photograph's own light fall across it, so it reads as having been there when the shutter fired",
+  "the card picks up that photograph's grain, white balance, exposure and depth of field",
+  "the card is still the subject: place it near the centre of frame and large enough that its printed artwork is sharp and legible at a glance while someone is scrolling, while staying a physically plausible size for the surfaces and distances in the photograph",
+].join(". ");
+
 /** Compile the scene prompt for GPT-Image-2 (text-to-image or edit). */
 export function buildScenePrompt(sel: SceneSelection): string {
   const device = byId(DEVICES, sel.deviceId);
@@ -820,36 +962,62 @@ export function buildScenePrompt(sel: SceneSelection): string {
   const audience = byId(AUDIENCES, sel.audienceId);
   const aspect = ASPECTS.find((a) => a.id === sel.aspect);
 
-  const subjectLine =
-    sel.surface === "print"
+  const bg = Boolean(sel.hasBackground);
+
+  const subjectLine = bg
+    ? "A photorealistic lifestyle photograph: one printed greeting card composited into the supplied location photograph"
+    : sel.surface === "print"
       ? `A photorealistic lifestyle photograph of ${device?.prompt ?? "a printed greeting card"}`
       : `A photorealistic lifestyle photograph of ${device?.prompt ?? "a smartphone"}`;
 
+  const refs = sel.references ?? [];
+
   return joinPrompts([
+    // With more than one reference in play, saying which is which comes first —
+    // otherwise the card-artwork rules below have no unambiguous referent.
+    referenceKeyClause(refs) ??
+      (bg && refs.length === 1 ? `One reference image is supplied: ${refs[0]}` : undefined),
     subjectLine,
-    scene?.prompt,
-    presence?.prompt,
-    angle?.prompt,
-    framingClause(sel.framingId, sel.surface),
-    light?.prompt,
-    look?.prompt,
-    audience ? `the styling, wardrobe and props should read as authentically ${audience.prompt}` : undefined,
+    bg ? BACKGROUND_SCENE_CLAUSE : undefined,
+    /*
+     * Everything the background photograph already decides. Emitting these
+     * alongside it would ask the model to re-shoot the photo it was told to
+     * preserve, which is the one instruction that has to survive intact.
+     */
+    bg ? undefined : scene?.prompt,
+    bg ? undefined : presence?.prompt,
+    bg ? undefined : angle?.prompt,
+    bg ? undefined : framingClause(sel.framingId, sel.surface),
+    bg ? undefined : light?.prompt,
+    bg ? undefined : look?.prompt,
+    bg || !audience
+      ? undefined
+      : `the styling, wardrobe and props should read as authentically ${audience.prompt}`,
     aspect ? `composed for a ${aspect.id} ${aspect.label.split(" ")[1].toLowerCase()} social crop` : undefined,
     sel.hasCard ? cardOnSurfaceClause(sel.surface) : blankSurfaceClause(sel.surface),
+    // Scenes here always show the card folded, front panel out.
+    sel.surface === "print" ? cardScaleClause(sel.cardSizeId ?? CARD_SIZES[0].id, false) : undefined,
     // Carried over from the one-shot experiments: artwork depicting an envelope
     // was being built as a real envelope holding the card.
     sel.surface === "print" ? PRINT_CONTAINMENT_CLAUSE : undefined,
-    sel.surface === "print" && !byId(DEVICES, sel.deviceId)?.involvesEnvelope
+    /*
+     * Both of these describe what may exist in the frame, so a supplied
+     * photograph overrules them — it may well contain faces or an envelope, and
+     * ordering the model to remove them contradicts leaving it untouched.
+     */
+    !bg && sel.surface === "print" && !byId(DEVICES, sel.deviceId)?.involvesEnvelope
       ? NO_ENVELOPE_CLAUSE
       : undefined,
-    sel.surface === "print" ? NO_FACES_CLAUSE : undefined,
-    PLAUSIBLE_PLACEMENT_CLAUSE,
+    !bg && sel.surface === "print" ? NO_FACES_CLAUSE : undefined,
+    bg ? undefined : PLAUSIBLE_PLACEMENT_CLAUSE,
     "Photorealistic, sharp, high dynamic range, believable real-world materials and physics",
     // The HeartStamp mark is composited on afterwards in the browser, so the
     // model must not try to draw one of its own.
-    sel.hasCard
-      ? "No watermarks, no captions, no brand logos and no readable text anywhere except the supplied card artwork itself"
-      : "Absolutely no watermarks, no captions, no brand logos and no readable text anywhere in the image",
+    bg
+      ? "Add no watermarks, captions, brand logos or text of your own — the only text in the image is whatever the supplied references already contain"
+      : sel.hasCard
+        ? "No watermarks, no captions, no brand logos and no readable text anywhere except the supplied card artwork itself"
+        : "Absolutely no watermarks, no captions, no brand logos and no readable text anywhere in the image",
     sel.extraNotes?.trim(),
   ]);
 }

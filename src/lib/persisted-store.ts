@@ -5,6 +5,7 @@ import {
   ANGLES,
   ASPECTS,
   AUDIENCES,
+  CARD_SIZES,
   DEVICES,
   FRAMINGS,
   LIGHTING,
@@ -26,6 +27,8 @@ export type BaseConfig = {
   presenceId: string;
   /** How much of the frame the product fills. */
   framingId: string;
+  /** The card's real-world size — see CARD_SIZES. Printed cards only. */
+  cardSizeId: string;
   angleIds: string[];
   aspectIds: AspectId[];
   /** Renders per angle × orientation combo. */
@@ -63,6 +66,11 @@ export type Persisted = {
   cardInsideId: string | null;
   /** Digital-card animation clip. */
   cardVideoId: string | null;
+  /**
+   * Printed-card location photo. When set it *is* the scene, so the scene
+   * controls in step 2 are locked and their stored values go unused.
+   */
+  backgroundId: string | null;
   baseId: string | null;
 };
 
@@ -74,6 +82,7 @@ export const DEFAULT_BASE: BaseConfig = {
   lookId: "iphone",
   presenceId: "hands",
   framingId: "hero",
+  cardSizeId: "5x7",
   angleIds: ["pov"],
   aspectIds: ["9:16"],
   variations: 1,
@@ -100,6 +109,7 @@ const DEFAULTS: Persisted = {
   cardFrontId: null,
   cardInsideId: null,
   cardVideoId: null,
+  backgroundId: null,
   baseId: null,
 };
 
@@ -135,10 +145,14 @@ export function firstUsableMotion(assets: Asset[], surface: SurfaceKind): string
 }
 
 /** Shape as it comes off disk: selection ids may be absent on older sessions. */
-type RawPersisted = Omit<Persisted, "cardFrontId" | "cardInsideId" | "cardVideoId" | "baseId"> & {
+type RawPersisted = Omit<
+  Persisted,
+  "cardFrontId" | "cardInsideId" | "cardVideoId" | "backgroundId" | "baseId"
+> & {
   cardFrontId?: string | null;
   cardInsideId?: string | null;
   cardVideoId?: string | null;
+  backgroundId?: string | null;
   baseId?: string | null;
   /** Pre-split sessions kept a single artwork slot. */
   cardArtId?: string | null;
@@ -187,12 +201,19 @@ function sanitize(p: RawPersisted): Persisted {
     cardFrontId: resolvePanel(p.cardFrontId ?? _legacy, "front"),
     cardInsideId: resolvePanel(p.cardInsideId, "inside"),
     cardVideoId: resolve(p.cardVideoId, "card-video"),
+    // A background locks the whole scene panel, so a stale or absent id must
+    // never resolve into one being silently re-applied on reload.
+    backgroundId:
+      p.backgroundId && p.assets.some((a) => a.id === p.backgroundId && a.kind === "background")
+        ? p.backgroundId
+        : null,
     baseId: resolve(p.baseId, "base"),
     base: {
       ...p.base,
       deviceId: has(DEVICES, p.base.deviceId) ? p.base.deviceId : DEFAULT_BASE.deviceId,
       sceneId: has(SCENES, p.base.sceneId) ? p.base.sceneId : DEFAULT_BASE.sceneId,
       framingId: has(FRAMINGS, p.base.framingId) ? p.base.framingId : DEFAULT_BASE.framingId,
+      cardSizeId: has(CARD_SIZES, p.base.cardSizeId) ? p.base.cardSizeId : DEFAULT_BASE.cardSizeId,
       presenceId: has(PRESENCE, p.base.presenceId) ? p.base.presenceId : DEFAULT_BASE.presenceId,
       lightingId: has(LIGHTING, p.base.lightingId) ? p.base.lightingId : DEFAULT_BASE.lightingId,
       lookId: has(LOOKS, p.base.lookId) ? p.base.lookId : DEFAULT_BASE.lookId,
@@ -239,6 +260,7 @@ function readStorage(): Persisted {
       cardInsideId: saved.cardInsideId,
       cardArtId: saved.cardArtId,
       cardVideoId: saved.cardVideoId,
+      backgroundId: saved.backgroundId,
       baseId: saved.baseId,
     });
   } catch {

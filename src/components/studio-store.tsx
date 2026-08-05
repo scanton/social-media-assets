@@ -60,6 +60,8 @@ type StudioValue = {
   setCardInsideId: (id: string | null) => void;
   cardVideoId: string | null;
   setCardVideoId: (id: string | null) => void;
+  backgroundId: string | null;
+  setBackgroundId: (id: string | null) => void;
   baseId: string | null;
   setBaseId: (id: string | null) => void;
 
@@ -97,7 +99,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
 
   // assets / base / video / surface live in an external store so they survive a
   // reload without a hydration-mismatch dance. See lib/persisted-store.ts.
-  const { assets, base, video, surface, cardFrontId, cardInsideId, cardVideoId, baseId } =
+  const { assets, base, video, surface, cardFrontId, cardInsideId, cardVideoId, backgroundId, baseId } =
     usePersisted();
 
   const [step, setStepRaw] = useState(1);
@@ -112,6 +114,10 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   );
   const setCardVideoId = useCallback(
     (cardVideoId: string | null) => updatePersisted({ cardVideoId }),
+    [],
+  );
+  const setBackgroundId = useCallback(
+    (backgroundId: string | null) => updatePersisted({ backgroundId }),
     [],
   );
   const setBaseId = useCallback((baseId: string | null) => updatePersisted({ baseId }), []);
@@ -168,6 +174,10 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       ...(current.cardFrontId === id ? { cardFrontId: nextPanel("front") } : {}),
       ...(current.cardInsideId === id ? { cardInsideId: nextPanel("inside") } : {}),
       ...(current.cardVideoId === id ? { cardVideoId: nextOf("card-video") } : {}),
+      // No fallback here on purpose: a background locks every scene control, so
+      // quietly swapping in a different one would relock the UI around a photo
+      // the user never chose.
+      ...(current.backgroundId === id ? { backgroundId: null } : {}),
       ...(current.baseId === id ? { baseId: nextOf("base") } : {}),
       ...(lostLastClip && current.video.engine === "screen-replace"
         ? { video: { ...current.video, engine: "animate" as const } }
@@ -192,6 +202,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       cardFrontId: null,
       cardInsideId: null,
       cardVideoId: null,
+      backgroundId: null,
       baseId: null,
     });
   }, []);
@@ -249,7 +260,15 @@ export function StudioProvider({ children }: { children: ReactNode }) {
 
   /* ------------------- step 2: the finished scene --------------------- */
 
-  const basePlanCount = base.angleIds.length * base.aspectIds.length * base.variations;
+  /*
+   * A supplied location photograph already fixes where the camera is, so step 2
+   * locks the angle chips and the batch collapses to one render per orientation
+   * × variation rather than multiplying by angles that can't be honoured.
+   */
+  const backgroundAsset = assets.find((a) => a.id === backgroundId && a.kind === "background");
+  const usingBackground = surface === "print" && Boolean(backgroundAsset);
+  const basePlanCount =
+    (usingBackground ? 1 : base.angleIds.length) * base.aspectIds.length * base.variations;
 
   /**
    * One pass now does what used to take two. When card artwork is selected we
@@ -265,8 +284,13 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       setKeyDialogOpen(true);
       return;
     }
-    if (!base.angleIds.length || !base.aspectIds.length) {
-      toast("Pick at least one camera angle and one orientation.", "error");
+    if (!base.aspectIds.length || (!usingBackground && !base.angleIds.length)) {
+      toast(
+        usingBackground
+          ? "Pick at least one orientation."
+          : "Pick at least one camera angle and one orientation.",
+        "error",
+      );
       return;
     }
 
@@ -285,13 +309,34 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     const compositeHere = hasCard && surface === "screen";
     const modelPlacesCard = hasCard && surface === "print";
 
+    /*
+     * One list drives both the `image_urls` payload and the prompt's reference
+     * key, so the model can never be told that image two is something other
+     * than what image two actually is. GPT-Image-2's edit endpoint takes up to
+     * 16, so there is headroom to add more (an inside spread, say) by pushing
+     * another entry here — nothing else has to change.
+     *
+     * Either alone is valid: a background with no artwork still renders the
+     * scene, just with a blank panel.
+     */
+    const references = [
+      ...(modelPlacesCard ? [{ url: cardAsset!.url, label: "the card artwork" }] : []),
+      ...(usingBackground ? [{ url: backgroundAsset!.url, label: "the location photograph" }] : []),
+    ];
+    const useEdit = references.length > 0;
+
     const scene = byId(SCENES, base.sceneId);
     const device = byId(DEVICES, base.deviceId);
+    const shotLabel = usingBackground
+      ? backgroundAsset!.label || "Background"
+      : device?.label ?? "Scene";
+    // Locked to one pass: the photograph is the angle.
+    const angleIds = usingBackground ? [base.angleIds[0] ?? "pov"] : base.angleIds;
     const specs: JobSpec[] = [];
 
     for (const aspectId of base.aspectIds) {
       const aspect = ASPECTS.find((a) => a.id === aspectId)!;
-      for (const angleId of base.angleIds) {
+      for (const angleId of angleIds) {
         for (let v = 1; v <= base.variations; v++) {
           const prompt = buildScenePrompt({
             surface,
@@ -305,6 +350,9 @@ export function StudioProvider({ children }: { children: ReactNode }) {
             framingId: base.framingId,
             aspect: aspectId,
             hasCard: modelPlacesCard,
+            hasBackground: usingBackground,
+            cardSizeId: base.cardSizeId,
+            references: references.map((r) => r.label),
             // GPT-Image-2 has no seed input, so variation comes from separate
             // calls plus a light nudge in the prompt.
             extraNotes: [
@@ -320,13 +368,13 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           const size = { width: aspect.width, height: aspect.height };
 
           specs.push({
-            label: `${device?.label ?? "Scene"} · ${aspectId} · v${v}`,
+            label: `${shotLabel} · ${aspectId} · v${v}`,
             kind: "base",
-            model: modelPlacesCard ? MODELS.compositeImage : MODELS.baseImage,
-            input: modelPlacesCard
+            model: useEdit ? MODELS.compositeImage : MODELS.baseImage,
+            input: useEdit
               ? {
                   prompt,
-                  image_urls: [cardAsset!.url],
+                  image_urls: references.map((r) => r.url),
                   image_size: size,
                   quality: base.quality,
                   num_images: 1,
@@ -350,12 +398,12 @@ export function StudioProvider({ children }: { children: ReactNode }) {
                     contentType: img.content_type,
                     width: img.width,
                     height: img.height,
-                    label: `${device?.label ?? "Scene"} · v${v}`,
+                    label: `${shotLabel} · v${v}`,
                     tags: [
                       aspectId,
-                      angleId,
+                      usingBackground ? "your background" : angleId,
                       hasCard ? "card placed" : "blank surface",
-                      scene?.label ?? "scene",
+                      usingBackground ? backgroundAsset!.label : scene?.label ?? "scene",
                     ],
                     createdAt: Date.now(),
                     prompt,
@@ -406,7 +454,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     }
 
     void runner.run(specs);
-  }, [assets, base, cardFrontId, keyConnected, runner, surface, toast]);
+  }, [assets, backgroundAsset, base, cardFrontId, keyConnected, runner, surface, toast, usingBackground]);
 
   /* -------------------------- step 3: video -------------------------- */
 
@@ -714,6 +762,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       setCardInsideId,
       cardVideoId,
       setCardVideoId,
+      backgroundId,
+      setBackgroundId,
       baseId,
       setBaseId,
       jobs: runner.jobs,
@@ -736,7 +786,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       step, setStep, surface, setSurface, assets, addAssets, removeAsset, updateAsset, clearAssets,
       base, setBase, video, setVideo,
       cardFrontId, setCardFrontId, cardInsideId, setCardInsideId,
-      cardVideoId, setCardVideoId, baseId, setBaseId,
+      cardVideoId, setCardVideoId, backgroundId, setBackgroundId, baseId, setBaseId,
       runner.jobs, runner.busy, runner.cancelAll, basePlanCount,
       generateScenes, generateVideo, generateOneShot,
       keyConnected, keyDialogOpen, keyHint, confettiKey,

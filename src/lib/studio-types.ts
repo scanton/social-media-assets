@@ -7,6 +7,7 @@ export type CardPanel = "front" | "inside";
 export type AssetKind =
   | "card-art" /* uploaded printed-card artwork — see `panel` */
   | "card-video" /* uploaded 8–13s digital card clip */
+  | "background" /* uploaded location photo the printed card is placed into */
   | "base" /* generated lifestyle scene, card already on the surface */
   | "video"; /* final motion asset */
 
