@@ -53,11 +53,20 @@ export async function uploadToFal(file: File, onProgress?: (pct: number) => void
   return fileUrl;
 }
 
-export async function submitJob(model: string, input: Record<string, unknown>): Promise<string> {
+/**
+ * `slot` names the step, not the model. The server needs it to check the model
+ * is a legitimate stand-in and to reshape this payload to that model's schema —
+ * see lib/model-input.ts.
+ */
+export async function submitJob(
+  model: string,
+  slot: string,
+  input: Record<string, unknown>,
+): Promise<string> {
   const res = await fetch("/api/fal/submit", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model, input }),
+    body: JSON.stringify({ model, slot, input }),
   });
   if (!res.ok) await readError(res);
   const { requestId } = (await res.json()) as { requestId: string };

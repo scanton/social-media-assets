@@ -15,7 +15,7 @@ import {
   type AspectId,
   type SurfaceKind,
 } from "@/lib/options";
-import { MODELS } from "@/lib/models";
+import { useModelChoices } from "@/lib/model-prefs";
 import type { Asset } from "@/lib/studio-types";
 import { useJobRunner, type JobSpec } from "@/lib/use-jobs";
 import {
@@ -96,6 +96,8 @@ const uid = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(
 
 export function StudioProvider({ children }: { children: ReactNode }) {
   const toast = useToast();
+  // Which fal model each step runs on. Defaults until the user picks otherwise.
+  const { modelFor } = useModelChoices();
 
   // assets / base / video / surface live in an external store so they survive a
   // reload without a hydration-mismatch dance. See lib/persisted-store.ts.
@@ -370,7 +372,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
           specs.push({
             label: `${shotLabel} · ${aspectId} · v${v}`,
             kind: "base",
-            model: useEdit ? MODELS.compositeImage : MODELS.baseImage,
+            slot: useEdit ? "compositeImage" : "baseImage",
+            model: modelFor(useEdit ? "compositeImage" : "baseImage"),
             input: useEdit
               ? {
                   prompt,
@@ -454,7 +457,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     }
 
     void runner.run(specs);
-  }, [assets, backgroundAsset, base, cardFrontId, keyConnected, runner, surface, toast, usingBackground]);
+  }, [assets, backgroundAsset, base, cardFrontId, keyConnected, modelFor, runner, surface, toast, usingBackground]);
 
   /* -------------------------- step 3: video -------------------------- */
 
@@ -556,7 +559,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         {
           label: `Opening · ${still.label}`,
           kind: "video",
-          model: MODELS.screenReplace,
+          slot: "screenReplace",
+          model: modelFor("screenReplace"),
           input: {
             prompt,
             image_urls: [still.url, inside.url],
@@ -593,7 +597,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         {
           label: `Screen replace · ${still.label}`,
           kind: "video",
-          model: MODELS.screenReplace,
+          slot: "screenReplace",
+          model: modelFor("screenReplace"),
           input: {
             prompt,
             image_urls: [still.url],
@@ -628,7 +633,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       {
         label: `Motion · ${still.label}`,
         kind: "video",
-        model: MODELS.animate,
+        slot: "animate",
+        model: modelFor("animate"),
         input: {
           prompt,
           image_url: still.url,
@@ -650,7 +656,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     ]);
   }, [
     assets, base.sceneId, baseId, cardVideoId, cardInsideId, finishVideo,
-    keyConnected, runner, surface, toast, video,
+    keyConnected, modelFor, runner, surface, toast, video,
   ]);
 
   /* ------------------- straight to video (both products) -------------- */
@@ -713,7 +719,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       {
         label: `${device?.label ?? "Scene"} · ${motion?.label ?? "motion"}`,
         kind: "video",
-        model: MODELS.screenReplace,
+        slot: "screenReplace",
+        model: modelFor("screenReplace"),
         input: {
           prompt,
           ...references,
@@ -738,7 +745,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     ]);
   }, [
     assets, base, cardFrontId, cardInsideId, cardVideoId, finishVideo,
-    keyConnected, runner, surface, toast, video,
+    keyConnected, modelFor, runner, surface, toast, video,
   ]);
 
   const value = useMemo<StudioValue>(

@@ -2,11 +2,14 @@
 
 import { useCallback, useRef, useState } from "react";
 import { awaitJob, NoKeyError, submitJob } from "@/lib/client-api";
+import type { ModelSlotId } from "@/lib/models";
 import type { Asset, AssetKind, Job } from "@/lib/studio-types";
 
 export type JobSpec = {
   label: string;
   kind: AssetKind;
+  /** Which step this is — decides how the server adapts `input` to `model`. */
+  slot: ModelSlotId;
   model: string;
   input: Record<string, unknown>;
   /**
@@ -74,7 +77,7 @@ export function useJobRunner(opts: {
           patch(job.id, { state: "running" });
 
           try {
-            const requestId = await submitJob(spec.model, spec.input);
+            const requestId = await submitJob(spec.model, spec.slot, spec.input);
             const data = await awaitJob<unknown>(spec.model, requestId, {
               signal: controller.signal,
               onUpdate: (u) => patch(job.id, { queuePosition: u.queuePosition }),

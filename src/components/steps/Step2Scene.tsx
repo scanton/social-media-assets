@@ -20,6 +20,7 @@ import {
 import { useStudio, uid } from "../studio-store";
 import { Uploader } from "../Uploader";
 import { AssetTile } from "../AssetTile";
+import { ModelPicker } from "../ModelPicker";
 import { ScreenAligner } from "../ScreenAligner";
 import { Button, Chip, Field, Select, Stepper, cx, useToast } from "../ui";
 import { Panel, ResultsGrid, SectionHead } from "./shared";
@@ -244,6 +245,10 @@ export function Step2Scene() {
         <div className="space-y-5">
           {/* Not part of "the scene": this is a fact about the product, so it
               stays live even when a background locks everything else. */}
+          {/* Which model runs this step depends on whether anything is being
+              referenced, so the picker follows the same branch the store takes. */}
+          <ModelPicker slot={hasCard || locked ? "compositeImage" : "baseImage"} />
+
           <Panel title="The card">
             <Field
               label="Physical size"

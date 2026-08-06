@@ -19,6 +19,7 @@ import { usableMotions } from "@/lib/persisted-store";
 import { canStampVideo } from "@/lib/video-logo";
 import { useStudio } from "./studio-store";
 import { Button, Chip, Field, Select, Switch, cx } from "./ui";
+import { ModelPicker } from "./ModelPicker";
 import { Panel, ResultsGrid, SectionHead } from "./steps/shared";
 
 /**
@@ -125,6 +126,9 @@ export function OneShot() {
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
         <div className="space-y-5">
+          {/* One Seedance-style call with both image and video refs. */}
+          <ModelPicker slot="screenReplace" />
+
           <Panel title="The scene">
             <div className="space-y-4">
               <Field label="Audience">

@@ -13,6 +13,7 @@ import { canStampVideo } from "@/lib/video-logo";
 import { useStudio } from "../studio-store";
 import { AssetTile } from "../AssetTile";
 import { Button, Chip, Field, Select, Switch, cx } from "../ui";
+import { ModelPicker } from "../ModelPicker";
 import { Panel, ResultsGrid, SectionHead } from "./shared";
 
 export function Step3Motion() {
@@ -35,6 +36,9 @@ export function Step3Motion() {
   const selectedMotion = MOTIONS.find((m) => m.id === s.video.motionId);
   const opensCard = Boolean(selectedMotion?.requiresInside && inside);
   const ready = Boolean(selectedStill);
+  // Mirrors the branch in generateVideo: an opening card and the
+  // screen-replace engine both go out as reference-to-video calls.
+  const videoSlot = opensCard || s.video.engine === "screen-replace" ? "screenReplace" : "animate";
 
   // An opening clip is a different call — the inside spread rides along as a
   // second reference so Seedance reveals the real artwork, not an invented one.
@@ -75,6 +79,8 @@ export function Step3Motion() {
               </p>
             </div>
           )}
+
+          <ModelPicker slot={videoSlot} />
 
           <Panel title="Motion" aside={<span className="sticker">{motions.length} options</span>}>
             <div className="space-y-4">
