@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { uploadToFal } from "@/lib/client-api";
 import type { Asset } from "@/lib/studio-types";
 import {
@@ -10,7 +10,7 @@ import {
   buildScenePrompt,
   CARD_SIZES,
   DEVICES,
-  ETHNICITIES,
+  IMAGE_RESOLUTIONS,
   LIGHTING,
   LOOKS,
   FRAMINGS,
@@ -20,19 +20,12 @@ import {
 } from "@/lib/options";
 import { useStudio, uid } from "../studio-store";
 import { Uploader } from "../Uploader";
-import { AssetTile } from "../AssetTile";
+import { BackgroundPanel } from "../BackgroundPanel";
 import { ModelPicker } from "../ModelPicker";
+import { DetailsPanel, SubjectFields } from "../SubjectStyling";
 import { ScreenAligner } from "../ScreenAligner";
 import { Button, Chip, Field, Select, Stepper, cx, useToast } from "../ui";
 import { Panel, ResultsGrid, SectionHead } from "./shared";
-
-/** Formats fal accepts and GPT-Image-2 handles cleanly as a reference. */
-const PASTEABLE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
-
-const sizeTag = (bytes: number) =>
-  bytes < 1024 * 1024
-    ? `${Math.max(1, Math.round(bytes / 1024))}KB`
-    : `${(bytes / 1024 / 1024).toFixed(1)}MB`;
 
 export function Step2Scene() {
   const s = useStudio();
@@ -40,7 +33,6 @@ export function Step2Scene() {
   const { base } = s;
   const [showPrompt, setShowPrompt] = useState(false);
   const [aligning, setAligning] = useState<Asset | null>(null);
-  const [pasteProgress, setPasteProgress] = useState<number | null>(null);
 
   /**
    * Scenes rendered in an earlier session (or shot elsewhere) can be dropped
@@ -77,94 +69,6 @@ export function Step2Scene() {
       toast((err as Error).message, "error");
     }
   };
-
-  /**
-   * A location photo the card gets composited into. Once one is selected it
-   * *is* the scene — every control that would describe a setting is locked,
-   * because asking the model to honour both is asking it to re-shoot the photo.
-   */
-  const uploadBackground = async (
-    file: File,
-    onProgress: (pct: number) => void,
-    opts: { label?: string; extraTags?: string[] } = {},
-  ) => {
-    if (!s.keyConnected) {
-      s.openKeyDialog();
-      return;
-    }
-    try {
-      const url = await uploadToFal(file, onProgress);
-      const asset: Asset = {
-        id: uid(),
-        kind: "background",
-        url,
-        contentType: file.type,
-        label: opts.label ?? file.name.replace(/\.\w+$/, ""),
-        tags: ["background", ...(opts.extraTags ?? []), sizeTag(file.size)],
-        createdAt: Date.now(),
-        surface: s.surface,
-      };
-      s.addAssets([asset]);
-      s.setBackgroundId(asset.id);
-      toast("Background set — it now defines the scene.", "success");
-    } catch (err) {
-      toast((err as Error).message, "error");
-    }
-  };
-
-  const handlePaste = async (files: File[]) => {
-    setPasteProgress(0);
-    try {
-      for (const file of files) {
-        const stamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-        const named = new File(
-          [file],
-          `pasted-background-${Date.now()}.${file.type.split("/")[1] ?? "png"}`,
-          { type: file.type },
-        );
-        await uploadBackground(named, setPasteProgress, {
-          label: `Pasted · ${stamp}`,
-          extraTags: ["pasted"],
-        });
-      }
-    } finally {
-      setPasteProgress(null);
-    }
-  };
-
-  const canPaste = pasteProgress === null && !s.keyDialogOpen;
-
-  const latest = useRef({ handlePaste, toast, canPaste });
-  useEffect(() => {
-    latest.current = { handlePaste, toast, canPaste };
-  });
-
-  useEffect(() => {
-    const onPaste = (e: ClipboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
-
-      const { handlePaste: run, toast: notify, canPaste: allowed } = latest.current;
-      if (!allowed) return;
-
-      const images = Array.from(e.clipboardData?.items ?? [])
-        .filter((i) => i.kind === "file" && i.type.startsWith("image/"))
-        .map((i) => i.getAsFile())
-        .filter((f): f is File => f !== null);
-
-      if (!images.length) return;
-      e.preventDefault();
-
-      const usable = images.filter((f) => PASTEABLE_TYPES.includes(f.type));
-      if (!usable.length) {
-        notify(`That's a ${images[0].type || "unknown"} image. Paste a PNG, JPEG, WebP or GIF.`, "error");
-        return;
-      }
-      void run(usable);
-    };
-    document.addEventListener("paste", onPaste);
-    return () => document.removeEventListener("paste", onPaste);
-  }, []);
 
   const devices = DEVICES.filter((d) => d.surface === s.surface);
   const scenes = useMemo(
@@ -203,6 +107,9 @@ export function Step2Scene() {
     lookId: base.lookId,
     presenceId: base.presenceId,
     ethnicityId: base.ethnicityId,
+    genderId: base.genderId,
+    ageId: base.ageId,
+    details: base.details,
     audienceId: base.audienceId,
     framingId: base.framingId,
     aspect: base.aspectIds[0] ?? "9:16",
@@ -269,55 +176,7 @@ export function Step2Scene() {
             </Field>
           </Panel>
 
-          <Panel
-            title="Your own background"
-            aside={
-              <span className={cx("sticker", locked && "border-stamp-200 bg-stamp-50 text-stamp-700")}>
-                {locked ? "Defining the scene" : "Optional"}
-              </span>
-            }
-          >
-            <div className="space-y-4">
-              <p className="text-xs leading-relaxed text-ink-faint">
-                Drop in a photo of a real place and the card gets composited into it — same
-                framing, same light, same everything. Selecting one locks the scene controls
-                below; deselect it to go back to describing a scene.
-              </p>
-
-              <Uploader
-                emoji="🏞️"
-                accept="image/png,image/jpeg,image/webp,image/gif"
-                title={locked ? "Swap the background" : "Drop, browse or paste a background"}
-                subtitle="A finished photograph of the location. The card is placed into it — nothing else about the shot changes."
-                pasteable
-                externalProgress={pasteProgress}
-                onFile={uploadBackground}
-              />
-
-              {backgrounds.length > 0 && (
-                <div className="grid grid-cols-3 gap-2.5">
-                  {backgrounds.map((a) => (
-                    <AssetTile
-                      key={a.id}
-                      asset={a}
-                      selectable
-                      selected={s.backgroundId === a.id}
-                      onSelect={() => s.setBackgroundId(s.backgroundId === a.id ? null : a.id)}
-                      onRemove={() => s.removeAsset(a.id)}
-                    />
-                  ))}
-                </div>
-              )}
-
-              {backgrounds.length > 0 && !locked && (
-                <p className="rounded-2xl bg-canvas-2 px-3.5 py-2.5 text-xs leading-relaxed text-ink-soft">
-                  <span className="font-bold text-ink">None selected.</span> The scene controls
-                  below are live and the shot is built from scratch. Tick a background to use it
-                  instead.
-                </p>
-              )}
-            </div>
-          </Panel>
+          <BackgroundPanel subject="card" />
 
           <Panel
             title="The scene"
@@ -426,27 +285,11 @@ export function Step2Scene() {
                 </Field>
               </div>
 
-              {/* Hidden with no people in shot — an ethnicity control that steers
-                  nobody is just a way to make the model invent someone. */}
-              {base.presenceId !== "none" && (
-                <Field
-                  label="Ethnicity"
-                  hint="No faces are ever shown, so this carries through skin tone, hands and hair."
-                >
-                  <Select
-                    value={base.ethnicityId}
-                    onChange={(ethnicityId) => s.setBase({ ethnicityId })}
-                    options={ETHNICITIES.map((e) => ({
-                      id: e.id,
-                      label: e.label,
-                      emoji: e.emoji,
-                      hint: e.hint,
-                    }))}
-                  />
-                </Field>
-              )}
+              <SubjectFields />
             </div>
           </Panel>
+
+          <DetailsPanel />
 
           <Panel
             title="Camera angles"
@@ -500,7 +343,7 @@ export function Step2Scene() {
 
           <Panel title="Output">
             <div className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <Field label="Variations per combo" hint="Each is a separate render — GPT-Image-2 has no seed input, so re-rolls are how you get variety.">
                   <Stepper
                     value={base.variations}
@@ -508,6 +351,18 @@ export function Step2Scene() {
                     min={1}
                     max={6}
                     suffix="per combo"
+                  />
+                </Field>
+                <Field label="Resolution" hint="Short edge of each render.">
+                  <Select
+                    value={base.imageResolution}
+                    onChange={(id) => s.setBase({ imageResolution: id as typeof base.imageResolution })}
+                    options={IMAGE_RESOLUTIONS.map((r) => ({
+                      id: r.id,
+                      label: r.label,
+                      emoji: r.emoji,
+                      hint: r.hint,
+                    }))}
                   />
                 </Field>
                 <Field label="Quality">

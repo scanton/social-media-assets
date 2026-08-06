@@ -2,7 +2,6 @@
 
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 import {
-  ASPECTS,
   buildAnimatePrompt,
   buildCardOpenPrompt,
   buildOneShotPrompt,
@@ -10,6 +9,7 @@ import {
   buildScreenReplacePrompt,
   byId,
   DEVICES,
+  imageSizeFor,
   MOTIONS,
   SCENES,
   type AspectId,
@@ -268,7 +268,9 @@ export function StudioProvider({ children }: { children: ReactNode }) {
    * × variation rather than multiplying by angles that can't be honoured.
    */
   const backgroundAsset = assets.find((a) => a.id === backgroundId && a.kind === "background");
-  const usingBackground = surface === "print" && Boolean(backgroundAsset);
+  // Both products can be composited into a supplied photograph now: printed
+  // cards through the scene still, digital cards straight into the clip.
+  const usingBackground = Boolean(backgroundAsset);
   const basePlanCount =
     (usingBackground ? 1 : base.angleIds.length) * base.aspectIds.length * base.variations;
 
@@ -337,7 +339,6 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     const specs: JobSpec[] = [];
 
     for (const aspectId of base.aspectIds) {
-      const aspect = ASPECTS.find((a) => a.id === aspectId)!;
       for (const angleId of angleIds) {
         for (let v = 1; v <= base.variations; v++) {
           const prompt = buildScenePrompt({
@@ -349,6 +350,9 @@ export function StudioProvider({ children }: { children: ReactNode }) {
             lookId: base.lookId,
             presenceId: base.presenceId,
             ethnicityId: base.ethnicityId,
+            genderId: base.genderId,
+            ageId: base.ageId,
+            details: base.details,
             audienceId: base.audienceId,
             framingId: base.framingId,
             aspect: aspectId,
@@ -368,7 +372,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
               .join(" "),
           });
 
-          const size = { width: aspect.width, height: aspect.height };
+          const size = imageSizeFor(aspectId, base.imageResolution);
 
           specs.push({
             label: `${shotLabel} · ${aspectId} · v${v}`,
@@ -705,17 +709,30 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       lookId: base.lookId,
       presenceId: base.presenceId,
       ethnicityId: base.ethnicityId,
+      genderId: base.genderId,
+      ageId: base.ageId,
+      details: base.details,
       audienceId: base.audienceId,
       framingId: base.framingId,
       motionId: video.motionId,
       hasInside: Boolean(inside),
+      hasBackground: !isPrint && usingBackground,
       extraNotes: [base.notes, video.notes].filter(Boolean).join(" "),
     });
 
     const device = byId(DEVICES, base.deviceId);
+    /*
+     * Seedance's reference-to-video takes images and video together, so a
+     * digital card can be dropped into a real location the same way a printed
+     * one is: the photograph goes in as @Image1, the card clip as @Video1.
+     */
+    const useBackground = !isPrint && usingBackground;
     const references = isPrint
       ? { image_urls: opensCard ? [front!.url, inside!.url] : [front!.url] }
-      : { video_urls: [clip!.url] };
+      : {
+          ...(useBackground ? { image_urls: [backgroundAsset!.url] } : {}),
+          video_urls: [clip!.url],
+        };
 
     void runner.run([
       {
@@ -737,6 +754,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
             label: `${device?.label ?? "Scene"} · ${motion?.label ?? "motion"}`,
             tags: [
               isPrint ? "printed card" : "digital card",
+              ...(useBackground ? ["your background"] : []),
               video.resolution,
               ...(opensCard ? ["opens"] : []),
             ],
@@ -746,8 +764,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       },
     ]);
   }, [
-    assets, base, cardFrontId, cardInsideId, cardVideoId, finishVideo,
-    keyConnected, modelFor, runner, surface, toast, video,
+    assets, backgroundAsset, base, cardFrontId, cardInsideId, cardVideoId, finishVideo,
+    keyConnected, modelFor, runner, surface, toast, usingBackground, video,
   ]);
 
   const value = useMemo<StudioValue>(

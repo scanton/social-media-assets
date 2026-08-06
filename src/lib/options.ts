@@ -762,6 +762,58 @@ export const ASPECTS: {
   { id: "3:4", label: "3:4 Portrait", channel: "Pinterest / ads", width: 1824, height: 2432 },
 ];
 
+/* ----------------------- IMAGE RESOLUTION ------------------------ */
+
+export type ImageResolutionId = "720p" | "1080p" | "1440p" | "4k";
+
+/** Short edge of the render. The long edge follows from the orientation. */
+export const IMAGE_RESOLUTIONS: (Option & { id: ImageResolutionId; shortEdge: number })[] = [
+  { id: "720p", label: "720p", emoji: "\u26a1", hint: "Fastest and cheapest", prompt: "", shortEdge: 720 },
+  { id: "1080p", label: "1080p", emoji: "\u2696\ufe0f", hint: "Balanced", prompt: "", shortEdge: 1080 },
+  { id: "1440p", label: "1440p", emoji: "\ud83d\udd0d", hint: "Sharper detail", prompt: "", shortEdge: 1440 },
+  { id: "4k", label: "4K", emoji: "\ud83d\udc8e", hint: "Slowest, most expensive", prompt: "", shortEdge: 2160 },
+];
+
+/*
+ * GPT-Image-2 rejects sizes outside these bounds outright, and the floor is the
+ * one that bites: a 720p square is 518k pixels, comfortably under it. So the
+ * tier is a target rather than a promise, and the result is nudged into range.
+ */
+const MIN_IMAGE_PIXELS = 655_360;
+const MAX_IMAGE_PIXELS = 8_294_400;
+const MAX_IMAGE_EDGE = 3840;
+
+/**
+ * Concrete pixel dimensions for an orientation at a given tier.
+ *
+ * ASPECTS carries the ratio; the tier decides the scale. Rounding is always
+ * upward to the next multiple of 16 (which the model also requires) so it can
+ * only ever push away from the pixel floor, never back under it.
+ */
+export function imageSizeFor(
+  aspectId: AspectId,
+  tier: ImageResolutionId,
+): { width: number; height: number } {
+  const aspect = ASPECTS.find((a) => a.id === aspectId) ?? ASPECTS[0];
+  const ratio = aspect.width / aspect.height;
+  const shortEdge = IMAGE_RESOLUTIONS.find((r) => r.id === tier)?.shortEdge ?? 1080;
+
+  let w = ratio >= 1 ? shortEdge * ratio : shortEdge;
+  let h = ratio >= 1 ? shortEdge : shortEdge / ratio;
+
+  const scale = (by: number) => {
+    w *= by;
+    h *= by;
+  };
+  if (w * h < MIN_IMAGE_PIXELS) scale(Math.sqrt(MIN_IMAGE_PIXELS / (w * h)));
+  if (w * h > MAX_IMAGE_PIXELS) scale(Math.sqrt(MAX_IMAGE_PIXELS / (w * h)));
+  const longest = Math.max(w, h);
+  if (longest > MAX_IMAGE_EDGE) scale(MAX_IMAGE_EDGE / longest);
+
+  const to16 = (n: number) => Math.min(MAX_IMAGE_EDGE, Math.ceil(n / 16) * 16);
+  return { width: to16(w), height: to16(h) };
+}
+
 /* --------------------------- LIGHTING ---------------------------- */
 
 export const LIGHTING: Option[] = [
@@ -914,26 +966,426 @@ export const ETHNICITIES: Option[] = [
   },
 ];
 
-/**
- * Nothing at all when no ethnicity is chosen, or when the shot has no people in
- * it — describing the skin tone of an empty room is how prompts start inventing
- * a person to satisfy the instruction.
- */
-function ethnicityClause(ethnicityId: string | undefined, presenceId: string): string | undefined {
-  if (!ethnicityId || ethnicityId === "unspecified") return undefined;
-  if (presenceId === "none") return undefined;
+/* ------------------------ GENDER AND AGE ------------------------- */
 
-  const choice = byId(ETHNICITIES, ethnicityId);
-  if (!choice?.prompt) return undefined;
+export type SubjectGenderId = "unspecified" | "female" | "male";
+export type SubjectAgeId = "adult" | "teen" | "child";
+
+export const SUBJECT_GENDERS: (Option & { id: SubjectGenderId })[] = [
+  { id: "unspecified", label: "Any", emoji: "✴️", hint: "Let the model decide", prompt: "" },
+  {
+    id: "female",
+    label: "Female",
+    emoji: "👩",
+    prompt:
+      "the primary subject is female, reading as such through the shape of the hands and wrists, the wardrobe, the jewellery and the styling rather than through any facial feature",
+  },
+  {
+    id: "male",
+    label: "Male",
+    emoji: "👨",
+    prompt:
+      "the primary subject is male, with visibly larger hands, broader wrists and forearms, and menswear styling and grooming",
+  },
+];
+
+export const SUBJECT_AGES: (Option & { id: SubjectAgeId })[] = [
+  { id: "adult", label: "Adult", emoji: "🧑", prompt: "" },
+  {
+    id: "teen",
+    label: "Teen",
+    emoji: "🎒",
+    prompt:
+      "the subject is a teenager — slighter hands and wrists than an adult's, dressed in ordinary age-appropriate everyday clothing",
+  },
+  {
+    id: "child",
+    label: "Child",
+    emoji: "🧸",
+    /*
+     * Written defensively on purpose. This is a greeting-card product, so a
+     * child holding a card is an ordinary shot to want — but "child" plus a
+     * scene list that includes a bathroom and a bedroom is exactly the
+     * combination worth being explicit about rather than leaving to chance.
+     */
+    prompt:
+      "the subject is a young child — small hands and short arms, at a child's height relative to the furniture around them. The child is fully and modestly dressed in ordinary everyday clothing throughout: no swimwear, no underwear, no bath, bed or bathroom setting, and nothing suggestive in the framing or posing. This is a wholesome family greeting-card photograph",
+  },
+];
+
+/* ------------------------ STYLING DETAILS ------------------------ */
+
+export type DetailOption = Option & {
+  /** Subject genders this suits. Omitted means all of them. */
+  gender?: SubjectGenderId[];
+  /** Subject ages this suits. Omitted means all of them. */
+  age?: SubjectAgeId[];
+};
+
+export type DetailCategory = {
+  id: string;
+  label: string;
+  emoji: string;
+  hint?: string;
+  options: DetailOption[];
+};
+
+/**
+ * The small stuff that makes a scene look art-directed rather than generated.
+ *
+ * Everything here is deliberately on the hands, wrists and forearms, because
+ * that is the part of a person these shots actually show — a necklace is wasted
+ * on a frame cropped at the shoulders, but a manicure is right in the middle of
+ * it, next to the card.
+ *
+ * Options carry `gender` and `age` filters so the picker can't offer a French
+ * manicure to a man or a tattoo sleeve to a five-year-old. Every category leads
+ * with an "unspecified" entry that emits nothing.
+ */
+export const DETAIL_CATEGORIES: DetailCategory[] = [
+  {
+    id: "nails",
+    label: "Nails",
+    emoji: "💅",
+    hint: "Right beside the card in almost every shot.",
+    options: [
+      { id: "unspecified", label: "Any", prompt: "" },
+      {
+        id: "bare",
+        label: "Short and bare",
+        prompt: "short, neat, unpainted nails with a natural finish",
+      },
+      {
+        id: "french",
+        label: "French tips",
+        gender: ["unspecified", "female"],
+        age: ["adult", "teen"],
+        prompt: "a classic French manicure — clean bright white tips over a soft pink bed",
+      },
+      {
+        id: "glitter",
+        label: "Glitter",
+        gender: ["unspecified", "female"],
+        age: ["adult", "teen"],
+        prompt: "glitter nail polish that catches the light, with visible sparkle in the highlights",
+      },
+      {
+        id: "chrome",
+        label: "Chrome / glazed",
+        gender: ["unspecified", "female"],
+        age: ["adult", "teen"],
+        prompt: "chrome glazed-doughnut nails with a pearlescent mirror finish",
+      },
+      {
+        id: "red",
+        label: "Glossy red",
+        gender: ["unspecified", "female"],
+        age: ["adult", "teen"],
+        prompt: "glossy cherry-red nails with a wet-looking high-shine finish",
+      },
+      {
+        id: "almond-nude",
+        label: "Long almond nude",
+        gender: ["unspecified", "female"],
+        age: ["adult", "teen"],
+        prompt: "long almond-shaped nails in a warm nude tone",
+      },
+      {
+        id: "airbrush",
+        label: "Airbrushed art",
+        gender: ["unspecified", "female"],
+        age: ["adult", "teen"],
+        prompt:
+          "airbrushed nail art with a soft colour gradient and fine hand-painted detail on a couple of accent nails",
+      },
+      {
+        id: "dark",
+        label: "Dark polish",
+        age: ["adult", "teen"],
+        prompt: "short nails in a deep near-black polish",
+      },
+    ],
+  },
+  {
+    id: "tattoos",
+    label: "Tattoos",
+    emoji: "🏴",
+    hint: "On the forearms and hands, where the frame can see them.",
+    options: [
+      { id: "unspecified", label: "Any", prompt: "" },
+      { id: "none", label: "None", prompt: "no tattoos on any visible skin" },
+      {
+        id: "fine-line",
+        label: "Fine-line",
+        age: ["adult", "teen"],
+        prompt: "delicate fine-line tattoos in thin black linework on the forearm and the back of the hand",
+      },
+      {
+        id: "floral",
+        label: "Botanical",
+        age: ["adult", "teen"],
+        prompt: "botanical floral tattoo work trailing up the forearm",
+      },
+      {
+        id: "traditional",
+        label: "American traditional",
+        age: ["adult"],
+        prompt: "bold American-traditional tattoos with heavy black outlines and a limited red-and-green palette",
+      },
+      {
+        id: "blackwork",
+        label: "Blackwork / geometric",
+        age: ["adult"],
+        prompt: "blackwork geometric tattoos in solid black with sharp negative space",
+      },
+      {
+        id: "script",
+        label: "Script lettering",
+        age: ["adult"],
+        prompt: "a small script lettering tattoo on the inner forearm",
+      },
+      {
+        id: "sleeve",
+        label: "Full sleeve",
+        age: ["adult"],
+        prompt: "a dense full tattoo sleeve running the length of the forearm",
+      },
+    ],
+  },
+  {
+    id: "wrist",
+    label: "Wrist",
+    emoji: "⌚",
+    options: [
+      { id: "unspecified", label: "Any", prompt: "" },
+      { id: "none", label: "Bare wrist", prompt: "bare wrists with nothing worn on them" },
+      {
+        id: "beaded",
+        label: "Beaded friendship stack",
+        prompt: "a stack of colourful beaded friendship bracelets",
+      },
+      {
+        id: "gold-chain",
+        label: "Fine gold chain",
+        gender: ["unspecified", "female"],
+        prompt: "a fine gold chain bracelet",
+      },
+      {
+        id: "charm",
+        label: "Charm bracelet",
+        gender: ["unspecified", "female"],
+        prompt: "a charm bracelet with small dangling charms",
+      },
+      {
+        id: "tennis",
+        label: "Tennis bracelet",
+        gender: ["unspecified", "female"],
+        age: ["adult"],
+        prompt: "a slim diamond tennis bracelet",
+      },
+      {
+        id: "cuff",
+        label: "Metal cuff",
+        prompt: "a chunky brushed-metal cuff",
+      },
+      {
+        id: "watch-leather",
+        label: "Leather watch",
+        age: ["adult", "teen"],
+        prompt: "a leather-strap wristwatch",
+      },
+      {
+        id: "watch-smart",
+        label: "Smartwatch",
+        prompt: "a smartwatch on a woven sport band",
+      },
+      {
+        id: "scrunchie",
+        label: "Scrunchie",
+        gender: ["unspecified", "female"],
+        prompt: "a fabric scrunchie worn around the wrist",
+      },
+      {
+        id: "friendship-thread",
+        label: "Woven thread",
+        age: ["teen", "child"],
+        prompt: "a hand-woven embroidery-thread friendship bracelet",
+      },
+    ],
+  },
+  {
+    id: "rings",
+    label: "Rings",
+    emoji: "💍",
+    options: [
+      { id: "unspecified", label: "Any", prompt: "" },
+      { id: "none", label: "No rings", age: ["adult", "teen", "child"], prompt: "no rings on any finger" },
+      {
+        id: "stacked",
+        label: "Stacked delicate",
+        gender: ["unspecified", "female"],
+        age: ["adult", "teen"],
+        prompt: "several delicate stacked rings across two or three fingers",
+      },
+      {
+        id: "statement",
+        label: "Statement ring",
+        age: ["adult", "teen"],
+        prompt: "one bold statement ring with a large stone",
+      },
+      {
+        id: "signet",
+        label: "Signet ring",
+        age: ["adult"],
+        prompt: "a heavy signet ring on the little finger",
+      },
+      {
+        id: "band",
+        label: "Wedding band",
+        age: ["adult"],
+        prompt: "a plain metal wedding band",
+      },
+    ],
+  },
+  {
+    id: "extras",
+    label: "Other accessories",
+    emoji: "🧣",
+    hint: "Anything else that dresses the frame.",
+    options: [
+      { id: "unspecified", label: "Any", prompt: "" },
+      {
+        id: "layered-necklaces",
+        label: "Layered necklaces",
+        gender: ["unspecified", "female"],
+        age: ["adult", "teen"],
+        prompt: "layered fine gold necklaces at the collarbone",
+      },
+      {
+        id: "hoops",
+        label: "Gold hoops",
+        gender: ["unspecified", "female"],
+        age: ["adult", "teen"],
+        prompt: "gold hoop earrings",
+      },
+      {
+        id: "cap",
+        label: "Baseball cap",
+        prompt: "a baseball cap worn low",
+      },
+      {
+        id: "sunglasses",
+        label: "Sunglasses up top",
+        age: ["adult", "teen"],
+        prompt: "sunglasses pushed up on top of the head",
+      },
+      {
+        id: "scarf",
+        label: "Knit scarf",
+        prompt: "a chunky knit scarf looped at the neck",
+      },
+      {
+        id: "tote",
+        label: "Canvas tote",
+        age: ["adult", "teen"],
+        prompt: "a canvas tote bag over the shoulder",
+      },
+      {
+        id: "cardigan",
+        label: "Oversized cardigan",
+        prompt: "an oversized knit cardigan with the sleeves pushed up the forearms",
+      },
+      {
+        id: "friendship-pins",
+        label: "Enamel pins",
+        age: ["teen", "child"],
+        prompt: "a scatter of enamel pins on a denim jacket or bag strap",
+      },
+    ],
+  },
+];
+
+const fitsSubject = (o: DetailOption, gender: SubjectGenderId, age: SubjectAgeId) =>
+  (!o.gender || o.gender.includes(gender)) && (!o.age || o.age.includes(age));
+
+/** The options a category can offer for this subject. Never returns an empty list. */
+export function detailOptionsFor(
+  category: DetailCategory,
+  gender: SubjectGenderId,
+  age: SubjectAgeId,
+): DetailOption[] {
+  return category.options.filter((o) => o.id === "unspecified" || fitsSubject(o, gender, age));
+}
+
+/**
+ * The stored pick for a category, or "unspecified" when it no longer fits.
+ *
+ * Gender and age can change after a detail was chosen, so a stored id has to be
+ * re-checked rather than trusted — otherwise switching the subject to a child
+ * would quietly keep a tattoo sleeve on them.
+ */
+export function resolveDetail(
+  category: DetailCategory,
+  details: Record<string, string> | undefined,
+  gender: SubjectGenderId,
+  age: SubjectAgeId,
+): string {
+  const stored = details?.[category.id];
+  if (!stored) return "unspecified";
+  const option = category.options.find((o) => o.id === stored);
+  if (!option || !fitsSubject(option, gender, age)) return "unspecified";
+  return option.id;
+}
+
+/* ------------------------ THE PEOPLE CLAUSE ---------------------- */
+
+export type SubjectSelection = {
+  presenceId: string;
+  ethnicityId?: string;
+  genderId?: SubjectGenderId;
+  ageId?: SubjectAgeId;
+  details?: Record<string, string>;
+};
+
+/**
+ * Everything about the people in the shot, as one block.
+ *
+ * Emits nothing when the shot has no people in it — describing the manicure of
+ * an empty room is how a prompt talks itself into inventing someone to wear it.
+ */
+function subjectClause(sel: SubjectSelection): string | undefined {
+  if (sel.presenceId === "none") return undefined;
+
+  const gender = sel.genderId ?? "unspecified";
+  const age = sel.ageId ?? "adult";
+
+  const ethnicity = byId(ETHNICITIES, sel.ethnicityId ?? "");
+  const hasEthnicity = Boolean(ethnicity?.prompt);
+
+  const details = DETAIL_CATEGORIES.map((category) => {
+    const id = resolveDetail(category, sel.details, gender, age);
+    return category.options.find((o) => o.id === id)?.prompt;
+  }).filter((p): p is string => Boolean(p));
+
+  const parts = [
+    byId(SUBJECT_GENDERS, gender)?.prompt,
+    byId(SUBJECT_AGES, age)?.prompt,
+    ethnicity?.prompt,
+    ...details,
+  ].filter((p): p is string => Boolean(p && p.trim()));
+
+  if (!parts.length) return undefined;
 
   return joinPrompts([
-    choice.prompt,
+    ...parts,
     // Without this the model reaches for a face to carry the description, and
     // every PRESENCE option has already ruled that out.
-    "no face is shown in this shot, so this has to read through the skin tone of the hands, forearms, shoulders and any visible hair",
-    choice.id === "diverse"
-      ? "keep the difference between them obvious at a glance"
-      : "keep it consistent for every person in the shot",
+    "no face is shown in this shot, so all of this has to read through the hands, wrists, forearms, shoulders, wardrobe and any visible hair",
+    hasEthnicity
+      ? ethnicity!.id === "diverse"
+        ? "keep the difference between the people obvious at a glance"
+        : "keep it consistent for every person in the shot"
+      : undefined,
   ]);
 }
 
@@ -974,6 +1426,10 @@ export type SceneSelection = {
   presenceId: string;
   /** Who the people in the scene read as — see ETHNICITIES. */
   ethnicityId?: string;
+  genderId?: SubjectGenderId;
+  ageId?: SubjectAgeId;
+  /** Category id → option id, from DETAIL_CATEGORIES. */
+  details?: Record<string, string>;
   audienceId: string;
   framingId: string;
   aspect: AspectId;
@@ -1067,15 +1523,19 @@ function cardOnSurfaceClause(surface: SurfaceKind): string {
  * fixes where the camera is, but nothing in it says how big the card should be,
  * and left unsaid the card comes back as a detail in the corner.
  */
-const BACKGROUND_SCENE_CLAUSE = [
-  "CRITICAL REQUIREMENT: the supplied location photograph is the scene, and it is already finished",
-  "keep it exactly as it is — same framing, same crop, same camera position and perspective, same lighting direction and colour, same depth of field, same surfaces, props and people",
-  "do not re-stage it, re-light it, re-shoot it from another angle, extend its edges, or add or remove anything from it beyond the card itself",
-  "place the printed greeting card into that photograph as a real physical object, resting on, standing on or held against something that is genuinely there",
-  "match its scale, perspective and contact shadows to the surfaces already in the photograph, and let the photograph's own light fall across it, so it reads as having been there when the shutter fired",
-  "the card picks up that photograph's grain, white balance, exposure and depth of field",
-  "the card is still the subject: place it near the centre of frame and large enough that its printed artwork is sharp and legible at a glance while someone is scrolling, while staying a physically plausible size for the surfaces and distances in the photograph",
-].join(". ");
+function backgroundSceneClause(surface: SurfaceKind): string {
+  const subject = surface === "print" ? "printed greeting card" : "device";
+  const payload = surface === "print" ? "its printed artwork is" : "what is playing on its screen is";
+  return [
+    "CRITICAL REQUIREMENT: the supplied location photograph is the scene, and it is already finished",
+    "keep it exactly as it is — same framing, same crop, same camera position and perspective, same lighting direction and colour, same depth of field, same surfaces, props and people",
+    `do not re-stage it, re-light it, re-shoot it from another angle, extend its edges, or add or remove anything from it beyond the ${subject} itself`,
+    `place the ${subject} into that photograph as a real physical object, resting on, standing on or held against something that is genuinely there`,
+    "match its scale, perspective and contact shadows to the surfaces already in the photograph, and let the photograph's own light fall across it, so it reads as having been there when the shutter fired",
+    `the ${subject} picks up that photograph's grain, white balance, exposure and depth of field`,
+    `the ${subject} is still the subject: place it near the centre of frame and large enough that ${payload} sharp and legible at a glance while someone is scrolling, while staying a physically plausible size for the surfaces and distances in the photograph`,
+  ].join(". ");
+}
 
 /** Compile the scene prompt for GPT-Image-2 (text-to-image or edit). */
 export function buildScenePrompt(sel: SceneSelection): string {
@@ -1104,7 +1564,7 @@ export function buildScenePrompt(sel: SceneSelection): string {
     referenceKeyClause(refs) ??
       (bg && refs.length === 1 ? `One reference image is supplied: ${refs[0]}` : undefined),
     subjectLine,
-    bg ? BACKGROUND_SCENE_CLAUSE : undefined,
+    bg ? backgroundSceneClause(sel.surface) : undefined,
     /*
      * Everything the background photograph already decides. Emitting these
      * alongside it would ask the model to re-shoot the photo it was told to
@@ -1112,7 +1572,15 @@ export function buildScenePrompt(sel: SceneSelection): string {
      */
     bg ? undefined : scene?.prompt,
     bg ? undefined : presence?.prompt,
-    bg ? undefined : ethnicityClause(sel.ethnicityId, sel.presenceId),
+    bg
+      ? undefined
+      : subjectClause({
+          presenceId: sel.presenceId,
+          ethnicityId: sel.ethnicityId,
+          genderId: sel.genderId,
+          ageId: sel.ageId,
+          details: sel.details,
+        }),
     bg ? undefined : angle?.prompt,
     bg ? undefined : framingClause(sel.framingId, sel.surface),
     bg ? undefined : light?.prompt,
@@ -1595,6 +2063,12 @@ export function buildOneShotPrompt(sel: {
   presenceId: string;
   /** Who the people in the scene read as — see ETHNICITIES. */
   ethnicityId?: string;
+  genderId?: SubjectGenderId;
+  ageId?: SubjectAgeId;
+  /** Category id → option id, from DETAIL_CATEGORIES. */
+  details?: Record<string, string>;
+  /** The user supplied a location photograph; it becomes @Image1. */
+  hasBackground?: boolean;
   audienceId: string;
   framingId: string;
   motionId: string;
@@ -1615,7 +2089,13 @@ export function buildOneShotPrompt(sel: {
   const setting = [
     scene?.prompt,
     presence?.prompt,
-    ethnicityClause(sel.ethnicityId, sel.presenceId),
+    subjectClause({
+      presenceId: sel.presenceId,
+      ethnicityId: sel.ethnicityId,
+      genderId: sel.genderId,
+      ageId: sel.ageId,
+      details: sel.details,
+    }),
     angle?.prompt,
     framingClause(sel.framingId, sel.surface),
     light?.prompt,
@@ -1655,9 +2135,19 @@ export function buildOneShotPrompt(sel: {
     ]);
   }
 
+  const bg = Boolean(sel.hasBackground);
+
   return joinPrompts([
-    `A photorealistic live-action clip of ${device?.prompt ?? "a smartphone"}`,
-    ...setting,
+    bg
+      ? "@Image1 is a photograph of a real location. @Video1 is a HeartStamp greeting-card animation"
+      : undefined,
+    bg
+      ? `A photorealistic live-action clip: ${device?.prompt ?? "a smartphone"} placed into the location photograph in @Image1`
+      : `A photorealistic live-action clip of ${device?.prompt ?? "a smartphone"}`,
+    bg ? backgroundSceneClause("screen") : undefined,
+    // Everything the photograph already decides. Emitting these alongside it
+    // would ask the model to re-shoot the shot it was told to preserve.
+    ...(bg ? [] : setting),
     "@Video1 is a HeartStamp greeting-card animation playing full-screen on that device. It must appear genuinely displayed on the screen, filling it edge to edge, from the very first frame of the clip",
     "Lock it to the screen with correct perspective and keystone for the whole clip — it must never slide, drift, detach or change",
     "Give it believable emissive screen brightness plus the scene's own reflections, so it reads as displayed rather than pasted on",

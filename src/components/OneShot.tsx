@@ -6,7 +6,6 @@ import {
   AUDIENCES,
   buildOneShotPrompt,
   DEVICES,
-  ETHNICITIES,
   FRAMINGS,
   LIGHTING,
   LOOKS,
@@ -20,7 +19,9 @@ import { usableMotions } from "@/lib/persisted-store";
 import { canStampVideo } from "@/lib/video-logo";
 import { useStudio } from "./studio-store";
 import { Button, Chip, Field, Select, Switch, cx } from "./ui";
+import { BackgroundPanel } from "./BackgroundPanel";
 import { ModelPicker } from "./ModelPicker";
+import { DetailsPanel, SubjectFields } from "./SubjectStyling";
 import { Panel, ResultsGrid, SectionHead } from "./steps/shared";
 
 /**
@@ -45,6 +46,10 @@ export function OneShot() {
   const front = s.assets.find((a) => a.id === s.cardFrontId && a.kind === "card-art");
   const inside = s.assets.find((a) => a.id === s.cardInsideId && a.kind === "card-art");
   const videos = s.assets.filter((a) => a.kind === "video");
+  // A supplied photograph is the scene here too — Seedance takes it as @Image1
+  // alongside the card clip, so the scene controls stop applying.
+  const background = s.assets.find((a) => a.id === s.backgroundId && a.kind === "background");
+  const locked = Boolean(background);
 
   const devices = DEVICES.filter((d) => d.surface === s.surface);
   const scenes = useMemo(
@@ -70,6 +75,10 @@ export function OneShot() {
     lookId: base.lookId,
     presenceId: base.presenceId,
     ethnicityId: base.ethnicityId,
+    genderId: base.genderId,
+    ageId: base.ageId,
+    details: base.details,
+    hasBackground: locked,
     audienceId: base.audienceId,
     framingId: base.framingId,
     motionId: video.motionId,
@@ -121,7 +130,12 @@ export function OneShot() {
               )}
             </>
           ) : (
-            <RefChip label={clip!.label} sub="@Video1" asset={clip!} active video />
+            <>
+              {background && (
+                <RefChip label={background.label} sub="@Image1" asset={background} active />
+              )}
+              <RefChip label={clip!.label} sub="@Video1" asset={clip!} active video />
+            </>
           )}
         </div>
       )}
@@ -131,7 +145,31 @@ export function OneShot() {
           {/* One Seedance-style call with both image and video refs. */}
           <ModelPicker slot="screenReplace" />
 
-          <Panel title="The scene">
+          <BackgroundPanel subject="device" />
+
+          <Panel
+            title="The scene"
+            locked={locked}
+            lockNote={
+              locked ? (
+                <>
+                  <span className="font-bold">
+                    Locked — &ldquo;{background!.label}&rdquo; is the scene.
+                  </span>{" "}
+                  Setting, device framing, lighting, film look and who&apos;s in frame all come
+                  from the photograph now.{" "}
+                  <button
+                    type="button"
+                    onClick={() => s.setBackgroundId(null)}
+                    className="focus-stamp font-bold text-stamp-600 underline underline-offset-2"
+                  >
+                    Deselect it
+                  </button>{" "}
+                  to describe a scene instead.
+                </>
+              ) : undefined
+            }
+          >
             <div className="space-y-4">
               <Field label="Audience">
                 <div className="flex flex-wrap gap-2">
@@ -216,27 +254,11 @@ export function OneShot() {
                 />
               </Field>
 
-              {/* Hidden with no people in shot — an ethnicity control that steers
-                  nobody is just a way to make the model invent someone. */}
-              {base.presenceId !== "none" && (
-                <Field
-                  label="Ethnicity"
-                  hint="No faces are ever shown, so this carries through skin tone, hands and hair."
-                >
-                  <Select
-                    value={base.ethnicityId}
-                    onChange={(ethnicityId) => s.setBase({ ethnicityId })}
-                    options={ETHNICITIES.map((e) => ({
-                      id: e.id,
-                      label: e.label,
-                      emoji: e.emoji,
-                      hint: e.hint,
-                    }))}
-                  />
-                </Field>
-              )}
+              <SubjectFields />
             </div>
           </Panel>
+
+          <DetailsPanel />
 
           <Panel title="Motion" aside={<span className="sticker">{motions.length} options</span>}>
             <div className="grid grid-cols-2 gap-2">

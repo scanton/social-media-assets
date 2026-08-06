@@ -6,15 +6,23 @@ import {
   ASPECTS,
   AUDIENCES,
   CARD_SIZES,
+  DETAIL_CATEGORIES,
   DEVICES,
   ETHNICITIES,
   FRAMINGS,
+  IMAGE_RESOLUTIONS,
+  resolveDetail,
+  SUBJECT_AGES,
+  SUBJECT_GENDERS,
   LIGHTING,
   LOOKS,
   MOTIONS,
   PRESENCE,
   SCENES,
   type AspectId,
+  type ImageResolutionId,
+  type SubjectAgeId,
+  type SubjectGenderId,
   type SurfaceKind,
 } from "@/lib/options";
 import type { Asset, AssetKind, CardPanel } from "@/lib/studio-types";
@@ -28,6 +36,10 @@ export type BaseConfig = {
   presenceId: string;
   /** Who the people in the scene read as. Ignored when presenceId is "none". */
   ethnicityId: string;
+  genderId: SubjectGenderId;
+  ageId: SubjectAgeId;
+  /** Styling details, category id → option id. See DETAIL_CATEGORIES. */
+  details: Record<string, string>;
   /** How much of the frame the product fills. */
   framingId: string;
   /** The card's real-world size — see CARD_SIZES. Printed cards only. */
@@ -36,6 +48,8 @@ export type BaseConfig = {
   aspectIds: AspectId[];
   /** Renders per angle × orientation combo. */
   variations: number;
+  /** Short edge of each render — see IMAGE_RESOLUTIONS. */
+  imageResolution: ImageResolutionId;
   /** Burn the HeartStamp emblem into the bottom-right corner of each still. */
   logo: boolean;
   quality: "auto" | "low" | "medium" | "high";
@@ -85,20 +99,24 @@ export const DEFAULT_BASE: BaseConfig = {
   lookId: "iphone",
   presenceId: "hands",
   ethnicityId: "unspecified",
+  genderId: "unspecified",
+  ageId: "adult",
+  details: {},
   framingId: "hero",
   cardSizeId: "5x7",
   angleIds: ["pov"],
   aspectIds: ["9:16"],
   variations: 1,
+  imageResolution: "720p",
   logo: true,
-  quality: "high",
+  quality: "medium",
   notes: "",
 };
 
 export const DEFAULT_VIDEO: VideoConfig = {
   engine: "animate",
   motionId: "slow-push",
-  resolution: "1080p",
+  resolution: "720p",
   duration: "auto",
   aspectRatio: "auto",
   generateAudio: false,
@@ -118,6 +136,29 @@ const DEFAULTS: Persisted = {
 };
 
 const has = (list: { id: string }[], id: string) => list.some((o) => o.id === id);
+
+/**
+ * Drops any styling detail that no longer suits the subject.
+ *
+ * Gender and age are editable after the fact, so a stored pick has to be
+ * re-checked rather than trusted — otherwise switching the subject to a child
+ * would quietly keep a tattoo sleeve on them.
+ */
+function sanitizeDetails(
+  details: Record<string, string> | undefined,
+  genderId: string,
+  ageId: string,
+): Record<string, string> {
+  const gender = (has(SUBJECT_GENDERS, genderId) ? genderId : DEFAULT_BASE.genderId) as SubjectGenderId;
+  const age = (has(SUBJECT_AGES, ageId) ? ageId : DEFAULT_BASE.ageId) as SubjectAgeId;
+
+  const out: Record<string, string> = {};
+  for (const category of DETAIL_CATEGORIES) {
+    const id = resolveDetail(category, details, gender, age);
+    if (id !== "unspecified") out[category.id] = id;
+  }
+  return out;
+}
 
 export const hasInsideSpread = (assets: Asset[]) =>
   assets.some((a) => a.kind === "card-art" && a.panel === "inside");
@@ -220,6 +261,12 @@ function sanitize(p: RawPersisted): Persisted {
       cardSizeId: has(CARD_SIZES, p.base.cardSizeId) ? p.base.cardSizeId : DEFAULT_BASE.cardSizeId,
       presenceId: has(PRESENCE, p.base.presenceId) ? p.base.presenceId : DEFAULT_BASE.presenceId,
       ethnicityId: has(ETHNICITIES, p.base.ethnicityId) ? p.base.ethnicityId : DEFAULT_BASE.ethnicityId,
+      genderId: has(SUBJECT_GENDERS, p.base.genderId) ? p.base.genderId : DEFAULT_BASE.genderId,
+      ageId: has(SUBJECT_AGES, p.base.ageId) ? p.base.ageId : DEFAULT_BASE.ageId,
+      details: sanitizeDetails(p.base.details, p.base.genderId, p.base.ageId),
+      imageResolution: has(IMAGE_RESOLUTIONS, p.base.imageResolution)
+        ? p.base.imageResolution
+        : DEFAULT_BASE.imageResolution,
       lightingId: has(LIGHTING, p.base.lightingId) ? p.base.lightingId : DEFAULT_BASE.lightingId,
       lookId: has(LOOKS, p.base.lookId) ? p.base.lookId : DEFAULT_BASE.lookId,
       audienceId: has(AUDIENCES, p.base.audienceId) ? p.base.audienceId : DEFAULT_BASE.audienceId,
