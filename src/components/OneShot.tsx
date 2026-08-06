@@ -6,6 +6,7 @@ import {
   AUDIENCES,
   buildOneShotPrompt,
   DEVICES,
+  ETHNICITIES,
   FRAMINGS,
   LIGHTING,
   LOOKS,
@@ -68,6 +69,7 @@ export function OneShot() {
     lightingId: base.lightingId,
     lookId: base.lookId,
     presenceId: base.presenceId,
+    ethnicityId: base.ethnicityId,
     audienceId: base.audienceId,
     framingId: base.framingId,
     motionId: video.motionId,
@@ -213,6 +215,26 @@ export function OneShot() {
                   options={PRESENCE.map((p) => ({ id: p.id, label: p.label, emoji: p.emoji }))}
                 />
               </Field>
+
+              {/* Hidden with no people in shot — an ethnicity control that steers
+                  nobody is just a way to make the model invent someone. */}
+              {base.presenceId !== "none" && (
+                <Field
+                  label="Ethnicity"
+                  hint="No faces are ever shown, so this carries through skin tone, hands and hair."
+                >
+                  <Select
+                    value={base.ethnicityId}
+                    onChange={(ethnicityId) => s.setBase({ ethnicityId })}
+                    options={ETHNICITIES.map((e) => ({
+                      id: e.id,
+                      label: e.label,
+                      emoji: e.emoji,
+                      hint: e.hint,
+                    }))}
+                  />
+                </Field>
+              )}
             </div>
           </Panel>
 

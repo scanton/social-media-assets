@@ -10,6 +10,7 @@ import {
   buildScenePrompt,
   CARD_SIZES,
   DEVICES,
+  ETHNICITIES,
   LIGHTING,
   LOOKS,
   FRAMINGS,
@@ -201,6 +202,7 @@ export function Step2Scene() {
     lightingId: base.lightingId,
     lookId: base.lookId,
     presenceId: base.presenceId,
+    ethnicityId: base.ethnicityId,
     audienceId: base.audienceId,
     framingId: base.framingId,
     aspect: base.aspectIds[0] ?? "9:16",
@@ -423,6 +425,26 @@ export function Step2Scene() {
                   />
                 </Field>
               </div>
+
+              {/* Hidden with no people in shot — an ethnicity control that steers
+                  nobody is just a way to make the model invent someone. */}
+              {base.presenceId !== "none" && (
+                <Field
+                  label="Ethnicity"
+                  hint="No faces are ever shown, so this carries through skin tone, hands and hair."
+                >
+                  <Select
+                    value={base.ethnicityId}
+                    onChange={(ethnicityId) => s.setBase({ ethnicityId })}
+                    options={ETHNICITIES.map((e) => ({
+                      id: e.id,
+                      label: e.label,
+                      emoji: e.emoji,
+                      hint: e.hint,
+                    }))}
+                  />
+                </Field>
+              )}
             </div>
           </Panel>
 

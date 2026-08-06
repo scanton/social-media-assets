@@ -7,6 +7,7 @@ import {
   AUDIENCES,
   CARD_SIZES,
   DEVICES,
+  ETHNICITIES,
   FRAMINGS,
   LIGHTING,
   LOOKS,
@@ -25,6 +26,8 @@ export type BaseConfig = {
   lightingId: string;
   lookId: string;
   presenceId: string;
+  /** Who the people in the scene read as. Ignored when presenceId is "none". */
+  ethnicityId: string;
   /** How much of the frame the product fills. */
   framingId: string;
   /** The card's real-world size — see CARD_SIZES. Printed cards only. */
@@ -81,6 +84,7 @@ export const DEFAULT_BASE: BaseConfig = {
   lightingId: "window",
   lookId: "iphone",
   presenceId: "hands",
+  ethnicityId: "unspecified",
   framingId: "hero",
   cardSizeId: "5x7",
   angleIds: ["pov"],
@@ -215,6 +219,7 @@ function sanitize(p: RawPersisted): Persisted {
       framingId: has(FRAMINGS, p.base.framingId) ? p.base.framingId : DEFAULT_BASE.framingId,
       cardSizeId: has(CARD_SIZES, p.base.cardSizeId) ? p.base.cardSizeId : DEFAULT_BASE.cardSizeId,
       presenceId: has(PRESENCE, p.base.presenceId) ? p.base.presenceId : DEFAULT_BASE.presenceId,
+      ethnicityId: has(ETHNICITIES, p.base.ethnicityId) ? p.base.ethnicityId : DEFAULT_BASE.ethnicityId,
       lightingId: has(LIGHTING, p.base.lightingId) ? p.base.lightingId : DEFAULT_BASE.lightingId,
       lookId: has(LOOKS, p.base.lookId) ? p.base.lookId : DEFAULT_BASE.lookId,
       audienceId: has(AUDIENCES, p.base.audienceId) ? p.base.audienceId : DEFAULT_BASE.audienceId,

@@ -813,6 +813,130 @@ export const PRESENCE: Option[] = [
   },
 ];
 
+/* -------------------------- ETHNICITY ---------------------------- */
+
+/**
+ * Who the people in the scene read as.
+ *
+ * The awkward constraint: no PRESENCE option ever shows a face, and printed
+ * cards forbid faces outright. So none of this can lean on facial features — it
+ * has to carry through the skin tone, hands, forearms, hair and shoulders that
+ * are actually in frame, and each fragment is written to do that.
+ *
+ * Skin tones are given as ranges rather than single values. Any of these groups
+ * spans a wide range in reality, and naming one point produces a caricature.
+ */
+export const ETHNICITIES: Option[] = [
+  {
+    id: "unspecified",
+    label: "Any / unspecified",
+    emoji: "🌍",
+    hint: "Let the model decide",
+    prompt: "",
+  },
+  {
+    id: "diverse",
+    label: "Mixed group",
+    emoji: "🤝",
+    hint: "Several ethnicities in one shot",
+    prompt:
+      "the people in frame are visibly a mix of ethnicities, with genuinely different skin tones and hair textures between them rather than one look repeated",
+  },
+  {
+    id: "black",
+    label: "Black / African",
+    emoji: "🧑🏿",
+    prompt:
+      "the people in frame are Black, of African or African-diaspora descent, with skin tones from warm brown through to deep brown and natural coiled, curly, locd or braided hair",
+  },
+  {
+    id: "east-asian",
+    label: "East Asian",
+    emoji: "🧑🏻",
+    prompt:
+      "the people in frame are East Asian, with fair to light-tan skin tones and straight dark hair",
+  },
+  {
+    id: "south-asian",
+    label: "South Asian",
+    emoji: "🧑🏽",
+    prompt:
+      "the people in frame are South Asian, with light brown through to deep brown skin tones and thick dark hair, straight or wavy",
+  },
+  {
+    id: "southeast-asian",
+    label: "Southeast Asian",
+    emoji: "🧑🏽",
+    prompt:
+      "the people in frame are Southeast Asian, with light tan through to warm brown skin tones and dark hair",
+  },
+  {
+    id: "hispanic",
+    label: "Hispanic / Latino",
+    emoji: "🧑🏽",
+    prompt:
+      "the people in frame are Hispanic or Latino, with olive through to warm brown skin tones and dark hair, straight, wavy or curly",
+  },
+  {
+    id: "middle-eastern",
+    label: "Middle Eastern / North African",
+    emoji: "🧑🏽",
+    prompt:
+      "the people in frame are Middle Eastern or North African, with olive through to warm brown skin tones and dark hair",
+  },
+  {
+    id: "indigenous",
+    label: "Indigenous American",
+    emoji: "🧑🏽",
+    prompt:
+      "the people in frame are Indigenous American, with warm brown skin tones and straight dark hair",
+  },
+  {
+    id: "pacific-islander",
+    label: "Pacific Islander",
+    emoji: "🧑🏾",
+    prompt:
+      "the people in frame are Pacific Islander, with warm brown through to deep brown skin tones and thick dark hair",
+  },
+  {
+    id: "white",
+    label: "White / European",
+    emoji: "🧑🏼",
+    prompt:
+      "the people in frame are White, of European descent, with fair through to light olive skin tones",
+  },
+  {
+    id: "mixed-heritage",
+    label: "Mixed heritage",
+    emoji: "🧑🏽",
+    prompt:
+      "the people in frame are of mixed heritage, with medium brown skin tones and hair that is neither straight nor tightly coiled",
+  },
+];
+
+/**
+ * Nothing at all when no ethnicity is chosen, or when the shot has no people in
+ * it — describing the skin tone of an empty room is how prompts start inventing
+ * a person to satisfy the instruction.
+ */
+function ethnicityClause(ethnicityId: string | undefined, presenceId: string): string | undefined {
+  if (!ethnicityId || ethnicityId === "unspecified") return undefined;
+  if (presenceId === "none") return undefined;
+
+  const choice = byId(ETHNICITIES, ethnicityId);
+  if (!choice?.prompt) return undefined;
+
+  return joinPrompts([
+    choice.prompt,
+    // Without this the model reaches for a face to carry the description, and
+    // every PRESENCE option has already ruled that out.
+    "no face is shown in this shot, so this has to read through the skin tone of the hands, forearms, shoulders and any visible hair",
+    choice.id === "diverse"
+      ? "keep the difference between them obvious at a glance"
+      : "keep it consistent for every person in the shot",
+  ]);
+}
+
 /** Catch-all for the class of error the city-street scene exposed. */
 const PLAUSIBLE_PLACEMENT_CLAUSE =
   "Everyone and everything sits where it plausibly and safely would in that setting — people on footpaths rather than in traffic, seated where there is seating, standing where there is room to stand";
@@ -848,6 +972,8 @@ export type SceneSelection = {
   lightingId: string;
   lookId: string;
   presenceId: string;
+  /** Who the people in the scene read as — see ETHNICITIES. */
+  ethnicityId?: string;
   audienceId: string;
   framingId: string;
   aspect: AspectId;
@@ -986,6 +1112,7 @@ export function buildScenePrompt(sel: SceneSelection): string {
      */
     bg ? undefined : scene?.prompt,
     bg ? undefined : presence?.prompt,
+    bg ? undefined : ethnicityClause(sel.ethnicityId, sel.presenceId),
     bg ? undefined : angle?.prompt,
     bg ? undefined : framingClause(sel.framingId, sel.surface),
     bg ? undefined : light?.prompt,
@@ -1466,6 +1593,8 @@ export function buildOneShotPrompt(sel: {
   lightingId: string;
   lookId: string;
   presenceId: string;
+  /** Who the people in the scene read as — see ETHNICITIES. */
+  ethnicityId?: string;
   audienceId: string;
   framingId: string;
   motionId: string;
@@ -1486,6 +1615,7 @@ export function buildOneShotPrompt(sel: {
   const setting = [
     scene?.prompt,
     presence?.prompt,
+    ethnicityClause(sel.ethnicityId, sel.presenceId),
     angle?.prompt,
     framingClause(sel.framingId, sel.surface),
     light?.prompt,
