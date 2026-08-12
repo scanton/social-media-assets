@@ -6,8 +6,10 @@ import {
   buildCardOpenPrompt,
   buildOneShotPrompt,
   buildScenePrompt,
+  buildInsideMessagePrompt,
   buildScreenReplacePrompt,
   byId,
+  CARD_SIZES,
   DEVICES,
   imageSizeFor,
   MOTIONS,
@@ -32,6 +34,17 @@ import { stampVideoLogo } from "@/lib/video-logo";
 import { useToast } from "./ui";
 
 export type { BaseConfig, VideoConfig };
+
+/** What the inside-message panel collects. See buildInsideMessagePrompt. */
+export type InsideMessageSpec = {
+  salutation: string;
+  message: string;
+  signature: string;
+  styleId: string;
+  inkId: string;
+  placementId: string;
+  notes: string;
+};
 
 /* ------------------------------- store ------------------------------ */
 
@@ -71,6 +84,7 @@ type StudioValue = {
 
   basePlanCount: number;
   generateScenes: () => void;
+  generateInsideMessage: (spec: InsideMessageSpec) => void;
   generateVideo: () => void;
   generateOneShot: () => void;
 
@@ -464,6 +478,84 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     void runner.run(specs);
   }, [assets, backgroundAsset, base, cardFrontId, keyConnected, modelFor, runner, surface, toast, usingBackground]);
 
+  /* ------------------- writing inside the card ----------------------- */
+
+  /**
+   * Renders the message and signature onto the inside spread.
+   *
+   * A separate pass on purpose. Doing it here means the video model is handed a
+   * spread that already carries the handwriting and is told only to reproduce
+   * what it sees — rather than being asked to invent lettering while the card is
+   * mid-open, which is the moment perspective and lighting are changing fastest.
+   *
+   * With a spread uploaded this edits it and everything already printed must
+   * survive; without one the whole interior is generated blank and written on.
+   */
+  const generateInsideMessage = useCallback(
+    (spec: InsideMessageSpec) => {
+      if (!keyConnected) {
+        setKeyDialogOpen(true);
+        return;
+      }
+      if (!spec.salutation.trim() && !spec.message.trim() && !spec.signature.trim()) {
+        toast("Write something first — a salutation, a message or a signature.", "error");
+        return;
+      }
+
+      const spread = assets.find((a) => a.id === cardInsideId && a.kind === "card-art");
+      const hasSpread = Boolean(spread);
+
+      const prompt = buildInsideMessagePrompt({
+        ...spec,
+        hasSpread,
+        cardSizeId: base.cardSizeId,
+        extraNotes: spec.notes,
+      });
+
+      // An open spread is landscape; match the card's real proportions so the
+      // model isn't also deciding the shape of the paper.
+      const card = CARD_SIZES.find((c) => c.id === base.cardSizeId) ?? CARD_SIZES[0];
+      const [openW, openH] = card.open;
+      const size = imageSizeFor(openW >= openH ? "16:9" : "4:5", base.imageResolution);
+
+      void runner.run([
+        {
+          label: spec.signature.trim() ? `Inside · ${spec.signature.trim().slice(0, 20)}` : "Inside message",
+          kind: "card-art",
+          slot: hasSpread ? "compositeImage" : "baseImage",
+          model: modelFor(hasSpread ? "compositeImage" : "baseImage"),
+          input: {
+            prompt,
+            ...(hasSpread ? { image_urls: [spread!.url] } : {}),
+            image_size: size,
+            quality: base.quality,
+            num_images: 1,
+            output_format: "png",
+          },
+          toAssets: (data, jobId) => {
+            const images = (data as { images?: FalImage[] }).images ?? [];
+            return images.map((img, i) => ({
+              id: `${jobId}-${i}`,
+              kind: "card-art" as const,
+              url: img.url,
+              contentType: img.content_type,
+              width: img.width,
+              height: img.height,
+              label: spec.signature.trim()
+                ? `Signed · ${spec.signature.trim().slice(0, 20)}`
+                : "Inside message",
+              tags: ["inside spread", "handwritten", spec.styleId],
+              createdAt: Date.now(),
+              prompt,
+              panel: "inside" as const,
+            }));
+          },
+        },
+      ]);
+    },
+    [assets, base.cardSizeId, base.imageResolution, base.quality, cardInsideId, keyConnected, modelFor, runner, toast],
+  );
+
   /* -------------------------- step 3: video -------------------------- */
 
   /**
@@ -798,6 +890,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       cancelAll: runner.cancelAll,
       basePlanCount,
       generateScenes,
+      generateInsideMessage,
       generateVideo,
       generateOneShot,
       keyConnected,
@@ -815,7 +908,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       cardFrontId, setCardFrontId, cardInsideId, setCardInsideId,
       cardVideoId, setCardVideoId, backgroundId, setBackgroundId, baseId, setBaseId,
       runner.jobs, runner.busy, runner.cancelAll, basePlanCount,
-      generateScenes, generateVideo, generateOneShot,
+      generateScenes, generateInsideMessage, generateVideo, generateOneShot,
       keyConnected, keyDialogOpen, keyHint, confettiKey,
     ],
   );

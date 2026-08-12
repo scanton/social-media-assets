@@ -6,6 +6,7 @@ import type { Asset, CardPanel } from "@/lib/studio-types";
 import { useStudio, uid } from "../studio-store";
 import { Uploader } from "../Uploader";
 import { AssetTile } from "../AssetTile";
+import { HandwrittenMessage } from "../HandwrittenMessage";
 import { Button, cx, usePasteShortcut, useToast } from "../ui";
 import { SectionHead } from "./shared";
 
@@ -294,6 +295,8 @@ export function Step1Card() {
               </div>
             </div>
           )}
+
+          <HandwrittenMessage />
 
           <div className="rounded-2xl border border-hairline bg-canvas-2/70 p-4">
             <p className="text-sm leading-relaxed text-ink-soft">

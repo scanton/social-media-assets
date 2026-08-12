@@ -1337,6 +1337,234 @@ export function resolveDetail(
   return option.id;
 }
 
+/* ----------------------- HANDWRITING ----------------------------- */
+
+/**
+ * Handwriting styles for a message written inside a printed card.
+ *
+ * These are prompt descriptions, not fonts. GPT-Image-2 renders legible,
+ * correctly-spelled text, so the message is generated as part of the image
+ * rather than drawn on a canvas and pasted on — which keeps the ink sitting on
+ * the stock with the paper's own texture, lighting and slight imperfection
+ * instead of looking like a flat overlay.
+ *
+ * Each `prompt` describes how the hand *moves*, not just how it looks: pressure,
+ * slant, letter spacing and consistency are what separate a convincing hand from
+ * a font pretending to be one.
+ */
+export type HandwritingStyle = Option & {
+  /** Who the hand reads as, for grouping the picker. */
+  gender: "any" | "feminine" | "masculine";
+};
+
+export const HANDWRITING_STYLES: HandwritingStyle[] = [
+  {
+    id: "neat",
+    label: "Neat everyday",
+    hint: "Tidy, legible, unfussy",
+    emoji: "🖊️",
+    gender: "any",
+    prompt:
+      "neat, tidy everyday handwriting with consistent letter height and even spacing, upright to very slightly slanted, written at a comfortable unhurried pace",
+  },
+  {
+    id: "chicken-scratch",
+    label: "Chicken scratch",
+    hint: "Hurried, cramped, barely legible",
+    emoji: "🐔",
+    gender: "any",
+    prompt:
+      "hurried chicken-scratch handwriting — cramped, spiky, uneven letter heights, inconsistent spacing and letters that trail off at the end of words, clearly written in a rush, but still readable",
+  },
+  {
+    id: "scrawl",
+    label: "Messy scrawl",
+    hint: "Heavy, jagged, pressed hard",
+    emoji: "✍️",
+    gender: "masculine",
+    prompt:
+      "a heavy messy scrawl pressed hard into the paper, jagged angular strokes, letters varying in size and baseline wandering noticeably, mostly disconnected letters",
+  },
+  {
+    id: "marker",
+    label: "Bold marker",
+    hint: "Thick felt-tip strokes",
+    emoji: "🖍️",
+    gender: "masculine",
+    prompt:
+      "bold confident handwriting in thick felt-tip marker, chunky strokes of even weight with blunt stroke ends, generously sized letters",
+  },
+  {
+    id: "architect",
+    label: "Architect's block",
+    hint: "Even, drafted capitals",
+    emoji: "📐",
+    gender: "any",
+    prompt:
+      "precise architect's hand-lettering in neat block capitals, remarkably even letter heights and spacing, drafted and deliberate, thin consistent stroke weight",
+  },
+  {
+    id: "girly",
+    label: "Girly script",
+    hint: "Round, looping, bouncy",
+    emoji: "🎀",
+    gender: "feminine",
+    prompt:
+      "round bubbly feminine handwriting with wide generous loops, a bouncy baseline, slight forward lean and little circles used to dot the letter i",
+  },
+  {
+    id: "breezy",
+    label: "Breezy print",
+    hint: "Light, airy, upright",
+    emoji: "🌤️",
+    gender: "feminine",
+    prompt:
+      "light airy printed handwriting, upright and unjoined, delicate thin strokes with generous space between letters and words",
+  },
+  {
+    id: "elegant",
+    label: "Elegant calligraphy",
+    hint: "Formal copperplate",
+    emoji: "🕊️",
+    gender: "feminine",
+    prompt:
+      "elegant formal copperplate calligraphy with a pronounced slant, flowing joined letters, and clear thick-and-thin stroke contrast between downstrokes and upstrokes",
+  },
+  {
+    id: "classic",
+    label: "Classic cursive",
+    hint: "Old-fashioned joined hand",
+    emoji: "📜",
+    gender: "any",
+    prompt:
+      "old-fashioned joined cursive of the kind taught in school decades ago, every letter connected, steady rhythm and a gentle consistent slant",
+  },
+  {
+    id: "playful",
+    label: "Playful",
+    hint: "Bubbly and childlike",
+    emoji: "🧸",
+    gender: "any",
+    prompt:
+      "playful childlike handwriting, oversized rounded letters, wobbly baseline, cheerfully inconsistent sizing as though written quickly and happily",
+  },
+];
+
+export const INK_COLOURS: Option[] = [
+  { id: "blue", label: "Ballpoint blue", emoji: "🔵", prompt: "ordinary blue ballpoint pen ink" },
+  { id: "black", label: "Black ink", emoji: "⚫", prompt: "black ink from a fine liner pen" },
+  { id: "graphite", label: "Pencil", emoji: "✏️", prompt: "soft grey graphite pencil" },
+  { id: "red", label: "Red ink", emoji: "🔴", prompt: "red ballpoint pen ink" },
+  { id: "gold", label: "Gold pen", emoji: "🟡", prompt: "metallic gold gel pen that catches the light" },
+];
+
+/** Where on the open spread the message is written. */
+export const MESSAGE_PLACEMENTS: Option[] = [
+  {
+    id: "lower-right",
+    label: "Lower right",
+    hint: "Where a card is normally signed",
+    emoji: "↘️",
+    prompt:
+      "in the open, unprinted area on the LOWER RIGHT of the open card — the lower half of the right-hand inside panel",
+  },
+  {
+    id: "right",
+    label: "Right page",
+    emoji: "➡️",
+    prompt: "filling the open, unprinted area of the right-hand inside panel",
+  },
+  {
+    id: "left",
+    label: "Left page",
+    emoji: "⬅️",
+    prompt: "filling the open, unprinted area of the left-hand inside panel",
+  },
+  {
+    id: "spread",
+    label: "Across both pages",
+    emoji: "↔️",
+    prompt:
+      "spread across both inside panels, flowing over the centre fold without any words being lost in the crease",
+  },
+];
+
+export type InsideMessageSelection = {
+  salutation: string;
+  message: string;
+  signature: string;
+  styleId: string;
+  inkId: string;
+  placementId: string;
+  /** False when there is no uploaded spread and the interior is made from scratch. */
+  hasSpread: boolean;
+  cardSizeId?: string;
+  extraNotes?: string;
+};
+
+/**
+ * Compiles the prompt that writes a message inside the card.
+ *
+ * Three things carry the whole result, and each is stated in its own paragraph
+ * rather than buried in a list:
+ *
+ *   1. The exact words. Quoted verbatim, one line per block, with an explicit
+ *      instruction not to correct, rephrase or re-punctuate them. Left loose,
+ *      models paraphrase — and a paraphrased signature is worse than no message.
+ *   2. That it is handwriting, not type. Named as pen-on-paper and described by
+ *      how the hand moves, because "handwritten font" is what produces the
+ *      even, mechanical lettering that gives the game away.
+ *   3. Where it goes, and what must not be touched. The artwork already printed
+ *      on the spread has to survive untouched, which is the same guarantee the
+ *      card-artwork rules make everywhere else in this file.
+ */
+export function buildInsideMessagePrompt(sel: InsideMessageSelection): string {
+  const style = byId(HANDWRITING_STYLES, sel.styleId) ?? HANDWRITING_STYLES[0];
+  const ink = byId(INK_COLOURS, sel.inkId) ?? INK_COLOURS[0];
+  const placement = byId(MESSAGE_PLACEMENTS, sel.placementId) ?? MESSAGE_PLACEMENTS[0];
+  const card = CARD_SIZES.find((c) => c.id === sel.cardSizeId) ?? CARD_SIZES[0];
+
+  const quoted = (label: string, text: string) =>
+    text.trim() ? `${label}: "${text.trim().replace(/\s*\n\s*/g, " / ")}"` : undefined;
+
+  const lines = [
+    quoted("SALUTATION", sel.salutation),
+    quoted("MESSAGE", sel.message),
+    quoted("SIGN-OFF", sel.signature),
+  ].filter(Boolean) as string[];
+
+  return joinPrompts([
+    sel.hasSpread
+      ? "The supplied image is the printed inside spread of a folded greeting card, lying open and flat, photographed square-on"
+      : `A folded greeting card lying open and flat, photographed square-on, showing both blank inside panels of a ${card.open[0]} × ${card.open[1]} inch open spread on warm off-white card stock with a soft centre crease`,
+
+    "TASK: write a personal handwritten message onto this open card. Change nothing else about the image",
+
+    // 1. The words, verbatim.
+    `Write exactly these words, spelled and punctuated exactly as given, on separate lines in this order — ${lines.join(" | ")}`,
+    "Reproduce that text character for character. Do not correct it, rephrase it, translate it, abbreviate it, re-punctuate it, add words of your own or leave any word out. Every letter must be clearly legible and correctly spelled",
+    "A forward slash in the text above marks a line break, not a character to draw",
+
+    // 2. Handwriting, not type.
+    `CRITICAL: this must read as genuine handwriting put on the paper by a human hand with a pen — not as a typeface, not as a "handwriting font", and not as digital text pasted onto the photograph`,
+    `The hand is ${style.prompt}`,
+    `It is written in ${ink.prompt}, with the natural variation of real pen on paper: stroke weight that thickens and thins with pressure, tiny wobbles in the line, letters that are never twice identical, and a baseline that drifts very slightly rather than sitting perfectly level`,
+    "The ink sits into the paper's surface and takes the same lighting, focus and grain as the rest of the photograph",
+
+    // 3. Placement, and what must survive.
+    `Place the writing ${placement.prompt}`,
+    "Keep it inside the card's edges with a comfortable margin, and never let it run over the centre fold in a way that hides a word",
+    "Size the writing so the whole message fits comfortably in that area without crowding, shrinking to a cramped block, or running off the card",
+    sel.hasSpread
+      ? "ABSOLUTE RULE — everything already printed on this spread stays exactly as it is: same artwork, same colours, same typography, same layout, same position. Do not redraw, recolour, restyle, move, crop, re-typeset or cover any of it. The handwritten message is the only thing added to the image, and it goes in empty space that is already free of artwork"
+      : "Both inside panels are otherwise completely blank — no printed artwork, no borders, no decorative elements, no lines or grid",
+
+    "No watermarks, no captions, no logos, and no text anywhere in the image other than what is specified above",
+    sel.extraNotes?.trim(),
+  ]);
+}
+
+
 /* ------------------------ THE PEOPLE CLAUSE ---------------------- */
 
 export type SubjectSelection = {
