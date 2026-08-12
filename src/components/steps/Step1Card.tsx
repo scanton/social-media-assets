@@ -5,6 +5,7 @@ import { readVideoDuration, uploadToFal } from "@/lib/client-api";
 import type { Asset, CardPanel } from "@/lib/studio-types";
 import { useStudio, uid } from "../studio-store";
 import { Uploader } from "../Uploader";
+import { AssetThumb } from "../AssetThumb";
 import { AssetTile } from "../AssetTile";
 import { HandwrittenMessage } from "../HandwrittenMessage";
 import { Button, cx, usePasteShortcut, useToast } from "../ui";
@@ -395,8 +396,10 @@ function PanelSlot({
 
       {asset ? (
         <div className="flex items-center gap-3 rounded-2xl border border-stamp-300 bg-white p-3">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={asset.url} alt="" className="h-20 w-20 rounded-xl object-cover ring-1 ring-hairline" />
+          <AssetThumb
+            url={asset.url}
+            className="h-20 w-20 rounded-xl object-cover ring-1 ring-hairline"
+          />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold text-ink">{asset.label}</p>
             <p className="mt-0.5 text-xs text-ink-faint">Selected — replace it by dropping another below.</p>

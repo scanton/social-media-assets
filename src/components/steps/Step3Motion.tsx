@@ -13,6 +13,7 @@ import { canStampVideo } from "@/lib/video-logo";
 import { useStudio } from "../studio-store";
 import { AssetTile } from "../AssetTile";
 import { Button, Chip, Field, Select, Switch, cx } from "../ui";
+import { AssetThumb } from "../AssetThumb";
 import { ModelPicker } from "../ModelPicker";
 import { Panel, ResultsGrid, SectionHead } from "./shared";
 
@@ -67,10 +68,8 @@ export function Step3Motion() {
         <div className="space-y-5">
           {opensCard && (
             <div className="flex items-center gap-3 rounded-2xl border border-stamp-200 bg-stamp-50 px-4 py-3">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={inside!.url}
-                alt=""
+              <AssetThumb
+                url={inside!.url}
                 className="h-12 w-16 shrink-0 rounded-lg object-cover ring-1 ring-stamp-200"
               />
               <p className="text-xs leading-relaxed text-stamp-800">

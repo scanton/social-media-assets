@@ -6,6 +6,7 @@ import { signOutAction } from "@/app/actions";
 import type { StudioUser } from "@/auth";
 import { BRAND } from "@/lib/brand";
 import { SURFACES, type SurfaceKind } from "@/lib/options";
+import { useExpiredUrls } from "@/lib/asset-health";
 import { StudioProvider, useStudio } from "./studio-store";
 import { KeyDialog } from "./KeyDialog";
 import { AssetTile } from "./AssetTile";
@@ -13,7 +14,7 @@ import { Step1Card } from "./steps/Step1Card";
 import { Step2Scene } from "./steps/Step2Scene";
 import { Step3Motion } from "./steps/Step3Motion";
 import { OneShot } from "./OneShot";
-import { Backdrop, Button, Confetti, StampMark, ToastProvider, cx } from "./ui";
+import { Backdrop, Button, Confetti, StampMark, ToastProvider, cx, useToast } from "./ui";
 
 type Step = { n: number; label: string; emoji: string };
 
@@ -291,6 +292,8 @@ function StudioShell({
         </div>
       )}
 
+      <ExpiredAssetsBanner />
+
       {/* ------------------------------- main ------------------------------- */}
       <main className="mx-auto max-w-[110rem] px-4 py-8 sm:px-6 sm:py-10">
         <div key={`${s.surface}-${s.step}`} className="animate-rise">
@@ -337,6 +340,57 @@ const ROLL_FILTERS = [
   { id: "video", label: "Video" },
   { id: "card-art", label: "Uploads" },
 ] as const;
+
+/**
+ * Offers to clear out assets fal has dropped.
+ *
+ * Only appears once something has actually failed to load *and* been confirmed
+ * gone by lib/asset-health.ts — never on a guess about age, and never for an
+ * asset that is merely unreachable right now. Removal stays a click rather than
+ * happening automatically, because a roll quietly emptying itself on load would
+ * be worse than a few dead tiles.
+ */
+function ExpiredAssetsBanner() {
+  const s = useStudio();
+  const toast = useToast();
+  const expired = useExpiredUrls();
+  const [dismissed, setDismissed] = useState(false);
+
+  const affected = s.assets.filter((a) => expired.includes(a.url)).length;
+  if (!affected || dismissed) return null;
+
+  return (
+    <div className="border-b border-amber-200 bg-amber-50 px-4 py-2.5 sm:px-6">
+      <div className="mx-auto flex max-w-[110rem] flex-wrap items-center justify-between gap-3">
+        <p className="text-xs font-medium leading-relaxed text-amber-900">
+          🗓️ {affected} item{affected === 1 ? "" : "s"} in your roll{" "}
+          {affected === 1 ? "is" : "are"}{" "}
+          no longer on fal&apos;s CDN — generated media is dropped after a while, and
+          {affected === 1 ? " it can't " : " they can't "}be recovered.
+        </p>
+        <div className="flex shrink-0 gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              const removed = s.removeAssetsByUrl(expired);
+              toast(`Removed ${removed} expired item${removed === 1 ? "" : "s"}.`, "success");
+            }}
+          >
+            Remove {affected === 1 ? "it" : "them"}
+          </Button>
+          <button
+            type="button"
+            onClick={() => setDismissed(true)}
+            className="focus-stamp rounded-full px-2 text-xs font-bold text-amber-900/70 hover:text-amber-900"
+          >
+            Not now
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function AssetRoll({ open, onClose }: { open: boolean; onClose: () => void }) {
   const s = useStudio();

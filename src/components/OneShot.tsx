@@ -19,6 +19,7 @@ import { usableMotions } from "@/lib/persisted-store";
 import { canStampVideo } from "@/lib/video-logo";
 import { useStudio } from "./studio-store";
 import { Button, Chip, Field, Select, Switch, cx } from "./ui";
+import { AssetThumb } from "./AssetThumb";
 import { BackgroundPanel } from "./BackgroundPanel";
 import { ModelPicker } from "./ModelPicker";
 import { DetailsPanel, SubjectFields } from "./SubjectStyling";
@@ -467,16 +468,9 @@ function RefChip({
       )}
     >
       {video ? (
-        <video
-          src={asset.url}
-          className="h-9 w-9 rounded-lg object-cover"
-          muted
-          playsInline
-          preload="metadata"
-        />
+        <AssetThumb url={asset.url} className="h-9 w-9 rounded-lg object-cover" video />
       ) : (
-        /* eslint-disable-next-line @next/next/no-img-element */
-        <img src={asset.url} alt="" className="h-9 w-9 rounded-lg object-cover" />
+        <AssetThumb url={asset.url} className="h-9 w-9 rounded-lg object-cover" />
       )}
       <span className="min-w-0">
         <span className={cx("block max-w-40 truncate text-[11px] font-bold", active ? "text-stamp-800" : "text-ink")}>

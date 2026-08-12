@@ -4,6 +4,7 @@ import { useState } from "react";
 import { downloadUrl } from "@/lib/client-api";
 import type { Asset } from "@/lib/studio-types";
 import { isVideo } from "@/lib/studio-types";
+import { reportAssetError, reportAssetOk, useAssetHealth } from "@/lib/asset-health";
 import { LavaHearts } from "./LavaHearts";
 import { cx } from "./ui";
 
@@ -40,6 +41,11 @@ export function AssetTile({
   const [zoom, setZoom] = useState(false);
   const video = isVideo(asset);
 
+  // fal drops media after a while, so a tile from last week points at nothing.
+  // Rendering a broken <img> is the one outcome worth avoiding.
+  const health = useAssetHealth(asset.url);
+  const missing = health === "gone" || health === "unreachable" || health === "checking";
+
   return (
     <>
       <div
@@ -51,7 +57,23 @@ export function AssetTile({
         )}
       >
         <div className="relative aspect-4/5 overflow-hidden bg-canvas-2">
-          {video ? (
+          {missing ? (
+            <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-canvas-2 px-3 text-center">
+              <span className="text-2xl opacity-40">{health === "checking" ? "⏳" : "🗓️"}</span>
+              <p className="text-[11px] font-bold leading-snug text-ink-faint">
+                {health === "checking"
+                  ? "Checking…"
+                  : health === "gone"
+                    ? "Expired on fal"
+                    : "Can't load right now"}
+              </p>
+              {health === "gone" && (
+                <p className="text-[10px] leading-snug text-ink-faint">
+                  fal no longer has this file
+                </p>
+              )}
+            </div>
+          ) : video ? (
             <video
               src={asset.url}
               className="h-full w-full object-cover"
@@ -59,6 +81,8 @@ export function AssetTile({
               loop
               playsInline
               preload="metadata"
+              onError={() => reportAssetError(asset.url)}
+              onLoadedData={() => reportAssetOk(asset.url)}
               onMouseEnter={(e) => void e.currentTarget.play().catch(() => {})}
               onMouseLeave={(e) => {
                 e.currentTarget.pause();
@@ -71,6 +95,8 @@ export function AssetTile({
               src={asset.url}
               alt={asset.label}
               loading="lazy"
+              onError={() => reportAssetError(asset.url)}
+              onLoad={() => reportAssetOk(asset.url)}
               className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
             />
           )}
@@ -116,6 +142,7 @@ export function AssetTile({
 
           {/* Hover action bar */}
           <div className="pointer-events-none absolute inset-x-0 bottom-0 flex translate-y-2 items-center justify-end gap-1.5 bg-gradient-to-t from-ink/70 to-transparent p-2 opacity-0 transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">
+            {!missing && (
             <button
               type="button"
               onClick={() => setZoom(true)}
@@ -123,7 +150,8 @@ export function AssetTile({
             >
               Preview
             </button>
-            {onAlign && asset.cardUrl && (
+            )}
+            {!missing && onAlign && asset.cardUrl && (
               <button
                 type="button"
                 onClick={onAlign}
@@ -136,12 +164,14 @@ export function AssetTile({
                 Align
               </button>
             )}
-            <a
-              href={downloadUrl(asset.url, filenameFor(asset))}
-              className="pointer-events-auto rounded-full bg-stamp-600 px-2.5 py-1 text-[11px] font-bold text-white shadow-sm transition-transform hover:scale-105"
-            >
-              Download
-            </a>
+            {!missing && (
+              <a
+                href={downloadUrl(asset.url, filenameFor(asset))}
+                className="pointer-events-auto rounded-full bg-stamp-600 px-2.5 py-1 text-[11px] font-bold text-white shadow-sm transition-transform hover:scale-105"
+              >
+                Download
+              </a>
+            )}
             {onRemove && (
               <button
                 type="button"

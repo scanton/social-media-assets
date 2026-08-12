@@ -37,7 +37,6 @@ export type { BaseConfig, VideoConfig };
 
 /** What the inside-message panel collects. See buildInsideMessagePrompt. */
 export type InsideMessageSpec = {
-  salutation: string;
   message: string;
   signature: string;
   styleId: string;
@@ -59,6 +58,7 @@ type StudioValue = {
   assets: Asset[];
   addAssets: (a: Asset[]) => void;
   removeAsset: (id: string) => void;
+  removeAssetsByUrl: (urls: string[]) => number;
   updateAsset: (id: string, patch: Partial<Asset>) => void;
   clearAssets: () => void;
 
@@ -202,6 +202,48 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         ? { video: { ...current.video, motionId: firstUsableMotion(assets, current.surface) } }
         : {}),
     });
+  }, []);
+
+  /**
+   * Drops every asset pointing at a URL fal no longer has.
+   *
+   * Selections are repaired the same way a single removal does it, in one write
+   * rather than N — clearing a slot that referenced an expired file is the part
+   * that matters, since otherwise the next render fails on a 404 with an error
+   * that says nothing about why.
+   */
+  const removeAssetsByUrl = useCallback((urls: string[]) => {
+    if (!urls.length) return 0;
+    const dead = new Set(urls);
+    const current = getPersisted();
+    const doomed = current.assets.filter((a) => dead.has(a.url));
+    if (!doomed.length) return 0;
+
+    const assets = current.assets.filter((a) => !dead.has(a.url));
+    const gone = new Set(doomed.map((a) => a.id));
+
+    const nextOf = (kind: Asset["kind"]) =>
+      assets.filter((a) => a.kind === kind).sort((a, b) => b.createdAt - a.createdAt)[0]?.id ?? null;
+    const nextPanel = (panel: "front" | "inside") =>
+      assets
+        .filter((a) => a.kind === "card-art" && a.panel === panel)
+        .sort((a, b) => b.createdAt - a.createdAt)[0]?.id ?? null;
+    const keep = <T extends string | null>(id: T, fallback: () => T) =>
+      id && gone.has(id) ? fallback() : id;
+
+    updatePersisted({
+      assets,
+      cardFrontId: keep(current.cardFrontId, () => nextPanel("front")),
+      cardInsideId: keep(current.cardInsideId, () => nextPanel("inside")),
+      cardVideoId: keep(current.cardVideoId, () => nextOf("card-video")),
+      // A background locks the scene controls, so it is cleared rather than swapped.
+      backgroundId: current.backgroundId && gone.has(current.backgroundId) ? null : current.backgroundId,
+      baseId: keep(current.baseId, () => nextOf("base")),
+      ...(motionUsable(current.video.motionId, assets, current.surface)
+        ? {}
+        : { video: { ...current.video, motionId: firstUsableMotion(assets, current.surface) } }),
+    });
+    return doomed.length;
   }, []);
 
   const updateAsset = useCallback((id: string, patch: Partial<Asset>) => {
@@ -497,8 +539,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         setKeyDialogOpen(true);
         return;
       }
-      if (!spec.salutation.trim() && !spec.message.trim() && !spec.signature.trim()) {
-        toast("Write something first — a salutation, a message or a signature.", "error");
+      if (!spec.message.trim() && !spec.signature.trim()) {
+        toast("Write something first — a message or a signature.", "error");
         return;
       }
 
@@ -869,6 +911,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       assets,
       addAssets,
       removeAsset,
+      removeAssetsByUrl,
       updateAsset,
       clearAssets,
       base,
@@ -903,7 +946,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       confettiKey,
     }),
     [
-      step, setStep, surface, setSurface, assets, addAssets, removeAsset, updateAsset, clearAssets,
+      step, setStep, surface, setSurface, assets, addAssets, removeAsset, removeAssetsByUrl, updateAsset, clearAssets,
       base, setBase, video, setVideo,
       cardFrontId, setCardFrontId, cardInsideId, setCardInsideId,
       cardVideoId, setCardVideoId, backgroundId, setBackgroundId, baseId, setBaseId,

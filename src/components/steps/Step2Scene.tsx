@@ -20,6 +20,7 @@ import {
 } from "@/lib/options";
 import { useStudio, uid } from "../studio-store";
 import { Uploader } from "../Uploader";
+import { AssetThumb } from "../AssetThumb";
 import { BackgroundPanel } from "../BackgroundPanel";
 import { ModelPicker } from "../ModelPicker";
 import { DetailsPanel, SubjectFields } from "../SubjectStyling";
@@ -434,10 +435,8 @@ export function Step2Scene() {
                     )}
                   >
                     {hasCard ? (
-                      /* eslint-disable-next-line @next/next/no-img-element */
-                      <img
-                        src={cardAsset!.url}
-                        alt=""
+                      <AssetThumb
+                        url={cardAsset!.url}
                         className="h-9 w-9 shrink-0 rounded-lg object-cover ring-1 ring-hairline"
                       />
                     ) : (
@@ -462,10 +461,8 @@ export function Step2Scene() {
 
                   {locked && (
                     <div className="mt-2 flex items-center gap-2 rounded-2xl border border-stamp-200 bg-stamp-50 px-2.5 py-2">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={background!.url}
-                        alt=""
+                      <AssetThumb
+                        url={background!.url}
                         className="h-9 w-9 shrink-0 rounded-lg object-cover ring-1 ring-stamp-200"
                       />
                       <span className="min-w-0">
