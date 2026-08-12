@@ -1490,7 +1490,6 @@ export const MESSAGE_PLACEMENTS: Option[] = [
 ];
 
 export type InsideMessageSelection = {
-  salutation: string;
   message: string;
   signature: string;
   styleId: string;
@@ -1528,7 +1527,6 @@ export function buildInsideMessagePrompt(sel: InsideMessageSelection): string {
     text.trim() ? `${label}: "${text.trim().replace(/\s*\n\s*/g, " / ")}"` : undefined;
 
   const lines = [
-    quoted("SALUTATION", sel.salutation),
     quoted("MESSAGE", sel.message),
     quoted("SIGN-OFF", sel.signature),
   ].filter(Boolean) as string[];

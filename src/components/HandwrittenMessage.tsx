@@ -29,7 +29,6 @@ export function HandwrittenMessage() {
   const [showPrompt, setShowPrompt] = useState(false);
 
   const [spec, setSpec] = useState<InsideMessageSpec>({
-    salutation: "",
     message: "",
     signature: "",
     styleId: "neat",
@@ -41,9 +40,7 @@ export function HandwrittenMessage() {
 
   const spread = s.assets.find((a) => a.id === s.cardInsideId && a.kind === "card-art");
   const written = s.assets.filter((a) => a.kind === "card-art" && a.tags.includes("handwritten"));
-  const hasContent = Boolean(
-    spec.salutation.trim() || spec.message.trim() || spec.signature.trim(),
-  );
+  const hasContent = Boolean(spec.message.trim() || spec.signature.trim());
 
   const live = s.jobs.filter(
     (j) => j.kind === "card-art" && j.state !== "done" && j.state !== "cancelled",
@@ -80,21 +77,12 @@ export function HandwrittenMessage() {
 
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="space-y-4">
-            <Field label="Salutation">
-              <input
-                value={spec.salutation}
-                onChange={(e) => patch({ salutation: e.target.value })}
-                placeholder="Dear Mom,"
-                className={input}
-              />
-            </Field>
-
             <Field label="Message">
               <textarea
                 value={spec.message}
                 onChange={(e) => patch({ message: e.target.value })}
-                rows={4}
-                placeholder="Hope your day is every bit as wonderful as you are. Can't wait to see you next month!"
+                rows={6}
+                placeholder={"Dear Mom,\n\nHope your day is every bit as wonderful as you are. Can't wait to see you next month!"}
                 className={cx(input, "resize-none leading-relaxed")}
               />
             </Field>
@@ -171,7 +159,7 @@ export function HandwrittenMessage() {
             onClick={() => s.generateInsideMessage(spec)}
             loading={s.busy}
             disabled={!hasContent}
-            title={hasContent ? undefined : "Write a salutation, message or signature first"}
+            title={hasContent ? undefined : "Write a message or signature first"}
           >
             {s.busy ? "Writing…" : "Write the message"}
           </Button>
