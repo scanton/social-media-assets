@@ -6,7 +6,7 @@ import { signOutAction } from "@/app/actions";
 import type { StudioUser } from "@/auth";
 import { BRAND } from "@/lib/brand";
 import { SURFACES, type SurfaceKind } from "@/lib/options";
-import { useExpiredUrls } from "@/lib/asset-health";
+import { sweepAssets, useExpiredUrls } from "@/lib/asset-health";
 import { StudioProvider, useStudio } from "./studio-store";
 import { KeyDialog } from "./KeyDialog";
 import { AssetTile } from "./AssetTile";
@@ -394,7 +394,34 @@ function ExpiredAssetsBanner() {
 
 function AssetRoll({ open, onClose }: { open: boolean; onClose: () => void }) {
   const s = useStudio();
+  const toast = useToast();
   const [filter, setFilter] = useState<(typeof ROLL_FILTERS)[number]["id"]>("all");
+  const [sweeping, setSweeping] = useState(false);
+
+  /**
+   * Checks the whole roll, then drops whatever fal has lost.
+   *
+   * A sweep rather than a read of what's already known: passive detection only
+   * catches tiles that rendered and failed, so anything behind a filter or below
+   * the fold would survive a "remove all". Assets that already loaded once are
+   * skipped, so this is usually far cheaper than one request per asset.
+   */
+  const removeExpired = async () => {
+    setSweeping(true);
+    try {
+      const expired = await sweepAssets(s.assets.map((a) => a.url));
+      if (!expired.length) {
+        toast(`Nothing to clean up — all ${s.assets.length} items are still on fal.`, "success");
+        return;
+      }
+      const removed = s.removeAssetsByUrl(expired);
+      toast(`Removed ${removed} expired item${removed === 1 ? "" : "s"}.`, "success");
+    } catch {
+      toast("Couldn't check the roll just now. Try again in a moment.", "error");
+    } finally {
+      setSweeping(false);
+    }
+  };
 
   const shown = s.assets.filter((a) => {
     if (filter === "all") return true;
@@ -461,7 +488,16 @@ function AssetRoll({ open, onClose }: { open: boolean; onClose: () => void }) {
         </div>
 
         {s.assets.length > 0 && (
-          <div className="border-t border-hairline p-4">
+          <div className="space-y-2 border-t border-hairline p-4">
+            <Button
+              variant="outline"
+              className="w-full"
+              loading={sweeping}
+              onClick={removeExpired}
+              title="Check every item against fal and drop the ones it no longer has"
+            >
+              {sweeping ? "Checking the roll…" : "Remove expired items"}
+            </Button>
             <Button
               variant="danger"
               className="w-full"

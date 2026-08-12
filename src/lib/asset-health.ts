@@ -25,6 +25,15 @@ export type AssetHealth = "ok" | "checking" | "gone" | "unreachable";
 const health = new Map<string, AssetHealth>();
 const listeners = new Set<() => void>();
 
+/*
+ * URLs proven to exist, either by loading in an <img> or by passing a check.
+ * Kept apart from `health` because the UI already treats "unknown" as fine, so
+ * recording a success needs no re-render — and a roll of thirty images all
+ * loading at once would otherwise publish thirty times for no visible change.
+ * Its real job is letting a sweep skip everything already known good.
+ */
+const verifiedOk = new Set<string>();
+
 /** Recomputed on write so `useSyncExternalStore` sees a stable reference. */
 let goneSnapshot: string[] = [];
 
@@ -45,6 +54,17 @@ function subscribe(onChange: () => void) {
 const MAX_CONCURRENT = 4;
 const queue: string[] = [];
 let active = 0;
+/**
+ * Wakes everyone awaiting a particular URL once its check lands. A list, not a
+ * single callback: a sweep and a failed tile can both be waiting on one URL.
+ */
+const waiters = new Map<string, (() => void)[]>();
+
+function awaitUrl(url: string): Promise<void> {
+  return new Promise((resolve) => {
+    waiters.set(url, [...(waiters.get(url) ?? []), resolve]);
+  });
+}
 
 async function verify(url: string) {
   try {
@@ -56,10 +76,13 @@ async function verify(url: string) {
     // 401) is inconclusive, and inconclusive must never mean "delete".
     const gone = res.status === 404 || res.status === 403 || res.status === 410;
     health.set(url, gone ? "gone" : res.ok ? "ok" : "unreachable");
+    if (res.ok) verifiedOk.add(url);
   } catch {
     health.set(url, "unreachable");
   } finally {
     publish();
+    waiters.get(url)?.forEach((r) => r());
+    waiters.delete(url);
     active--;
     pump();
   }
@@ -93,11 +116,49 @@ export function reportAssetError(url: string) {
   pump();
 }
 
-/** Marks an asset healthy again — used when a load succeeds after a retry. */
+/** An asset that rendered is an asset that exists. */
 export function reportAssetOk(url: string) {
-  if (health.get(url) === "ok" || !health.has(url)) return;
+  verifiedOk.add(url);
+  // Only worth a re-render if it had previously been marked as a problem.
+  if (!health.has(url) || health.get(url) === "ok") return;
   health.set(url, "ok");
   publish();
+}
+
+/**
+ * Checks every asset that has not already proven itself, and resolves to the
+ * URLs fal no longer has.
+ *
+ * Only ever run from an explicit "remove expired" press. Passive detection can
+ * only find assets whose tiles happened to render and fail, which misses
+ * anything behind a filter or below the fold — so a sweep is what makes
+ * "remove all expired" mean all of them.
+ */
+export async function sweepAssets(urls: string[]): Promise<string[]> {
+  const candidates = [...new Set(urls)].filter(
+    (u) => /^https?:/i.test(u) && !verifiedOk.has(u) && health.get(u) !== "gone",
+  );
+
+  const waits: Promise<void>[] = [];
+  for (const url of candidates) {
+    const status = health.get(url);
+    if (status === "checking") {
+      // Already in flight from a failed tile — join that check rather than
+      // queueing a second request for the same file.
+      waits.push(awaitUrl(url));
+      continue;
+    }
+    health.set(url, "checking");
+    waits.push(awaitUrl(url));
+    queue.push(url);
+  }
+
+  if (waits.length) publish();
+  // Draining has to start before awaiting, or the promises above never settle.
+  pump();
+  await Promise.all(waits);
+
+  return urls.filter((u) => health.get(u) === "gone");
 }
 
 const getHealth = (url: string) => (): AssetHealth => health.get(url) ?? "ok";
