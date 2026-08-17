@@ -1,11 +1,11 @@
 # HeartStamp Asset Studio
 
-Generate social-media assets for HeartStamp printed (POD) and 3D digital greeting cards.
+Generate social-media assets for HeartStamp printed (POD) and digital greeting cards.
 Base lifestyle images → card composites → TikTok / Reels / Pinterest video.
 
 What you're selling picks the pipeline — the buttons in the header are the choice.
 
-**Digital 3D Card** — two steps, one Seedance call, no still.
+**Digital Card** — two steps, one Seedance call, no still.
 
 | Step | What it does | Model |
 | --- | --- | --- |

@@ -22,7 +22,7 @@ export const SURFACES: (Option & { kind: SurfaceKind })[] = [
   {
     id: "digital",
     kind: "screen",
-    label: "Digital 3D Card",
+    label: "Digital Card",
     emoji: "📱",
     hint: "Your card animation playing on a device — straight to video",
     prompt: "",

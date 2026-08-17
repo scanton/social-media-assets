@@ -205,7 +205,7 @@ export function Step1Card() {
         blurb={
           isPrint
             ? "Upload the printed front panel. Add the full inside spread too and step 3 can open the card and reveal it."
-            : "Upload the 3D card animation that plays on the device. Everything else is set up on the next page."
+            : "Upload the digital card animation that plays on the device. Everything else is set up on the next page."
         }
       />
 
@@ -312,7 +312,7 @@ export function Step1Card() {
           <div className="card-surface mx-auto max-w-2xl p-5">
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
-                <h3 className="font-display text-base font-bold text-ink">3D card clip</h3>
+                <h3 className="font-display text-base font-bold text-ink">Digital card clip</h3>
                 <p className="mt-0.5 text-xs text-ink-faint">
                   MP4 or MOV, 2–15 seconds, up to 720p. This plays on the device in the video.
                 </p>

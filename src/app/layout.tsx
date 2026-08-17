@@ -18,7 +18,7 @@ const outfit = Outfit({
 export const metadata: Metadata = {
   title: "HeartStamp Asset Studio",
   description:
-    "Generate lifestyle base images and social videos for HeartStamp printed and 3D digital greeting cards.",
+    "Generate lifestyle base images and social videos for HeartStamp printed and digital greeting cards.",
   robots: { index: false, follow: false },
 };
 
