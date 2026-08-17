@@ -44,7 +44,7 @@ export async function composeScene(opts: {
   quad?: Quad | null;
   withLogo: boolean;
 }): Promise<ComposeResult> {
-  const [render, card, logo] = await Promise.all([
+  const [render, card, logos] = await Promise.all([
     loadImage(opts.renderUrl, "scene"),
     opts.cardUrl ? loadImage(opts.cardUrl, "card") : Promise.resolve(null),
     opts.withLogo ? heartStampLogo() : Promise.resolve(null),
@@ -53,7 +53,8 @@ export async function composeScene(opts: {
   const canvas = document.createElement("canvas");
   canvas.width = render.width;
   canvas.height = render.height;
-  const ctx = canvas.getContext("2d");
+  // Readable because paintLogo measures the corner's brightness before drawing.
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) throw new Error("Canvas is unavailable in this browser.");
 
   ctx.drawImage(render, 0, 0);
@@ -86,7 +87,7 @@ export async function composeScene(opts: {
     }
   }
 
-  if (logo) paintLogo(ctx, logo, canvas.width, canvas.height);
+  if (logos) paintLogo(ctx, logos, canvas.width, canvas.height);
 
   render.close();
   card?.close();

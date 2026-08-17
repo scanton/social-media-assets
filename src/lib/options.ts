@@ -156,7 +156,7 @@ export const DEVICES: (Option & {
     emoji: "🕯️",
     defaultAspect: "4:5",
     prompt:
-      "a printed folded greeting card standing open on a table like a tent, front panel angled toward the camera, soft contact shadow on the surface",
+      "a printed folded greeting card standing upright on a table, closed and leaning back against a small prop so it stays shut, front panel angled toward the camera, soft contact shadow on the surface",
   },
   {
     id: "card-flatlay",
@@ -1818,6 +1818,9 @@ export function buildScenePrompt(sel: SceneSelection): string {
     sel.hasCard ? cardOnSurfaceClause(sel.surface) : blankSurfaceClause(sel.surface),
     // Scenes here always show the card folded, front panel out.
     sel.surface === "print" ? cardScaleClause(sel.cardSizeId ?? CARD_SIZES[0].id, false) : undefined,
+    // The still is always of a shut card; step 3 is what opens it.
+    sel.surface === "print" ? CARD_CLOSED_CLAUSE : undefined,
+    sel.surface === "print" ? FLAT_CARD_CLAUSE : undefined,
     // Carried over from the one-shot experiments: artwork depicting an envelope
     // was being built as a real envelope holding the card.
     sel.surface === "print" ? PRINT_CONTAINMENT_CLAUSE : undefined,
@@ -2201,6 +2204,37 @@ const SCREEN_CONTAINMENT_CLAUSE = [
  * back with the envelope from the card's own illustration stuck to the front of
  * the physical card.
  */
+/**
+ * The card in a scene still must be shut, with no gap along the fold.
+ *
+ * A still with the card cracked slightly open hands the video model an
+ * ambiguous starting state: it has to decide what the sliver of inside is, and
+ * it answers by inventing one — usually before the opening motion has started.
+ * Closing it in the still removes the question.
+ */
+const CARD_CLOSED_CLAUSE = [
+  "ABSOLUTE RULE — the greeting card is completely closed in this photograph",
+  "its two halves are pressed flat together along the fold with no gap of any kind: no wedge of light between them, no glimpse of the inside, no corner lifting or curling away from the other half, and no separation anywhere along the opening edge",
+  "only the printed front panel is visible; the inside of the card is not shown at all, not even a sliver of it",
+  "the card reads as one solid closed rectangle of folded stock, as if it had just come out of its envelope",
+].join(". ");
+
+/**
+ * A greeting card is one folded sheet, not a book.
+ *
+ * Video models reach for a familiar object when something opens, and the
+ * familiar object with a printed cover is a book — so cards come back with
+ * pages stacked inside, a bound spine, or artwork printed on leaves that turn.
+ * Stating the panel count outright is what stops it.
+ */
+const FLAT_CARD_CLAUSE = [
+  "ABSOLUTE RULE — this is an ordinary folded greeting card, never a book, a booklet, a notebook or a multi-page card",
+  "it is a single sheet of card stock folded exactly once, which gives it exactly four surfaces and no more: the printed front, the two inside panels, and the plain back",
+  "there are no pages inside it, no extra leaves or sheets, no stack of paper, no bound spine, no stitching, staples or rings, and nothing tucked, glued or inserted between its halves",
+  "if it opens, it opens once and lies flat as a single inside spread — there is nothing further to turn, and no page ever lifts, curls or flips inside it",
+  "the stock is thick enough to hold its own shape and has visible thickness only at its cut edges",
+].join(". ");
+
 const PRINT_CONTAINMENT_CLAUSE = [
   "ABSOLUTE RULE — everything in the supplied artwork is flat printed ink on the card and nothing more",
   "whatever that artwork depicts — envelopes, letters, stamps, flowers, objects, hands, people — exists only as part of the printed image, inside the card's own edges",
@@ -2236,6 +2270,7 @@ export function buildAnimatePrompt(opts: {
     scene ? `Keep the environment consistent: ${scene.prompt}` : undefined,
     `Whatever artwork is already on ${surfaceNoun} must stay perfectly locked to that surface with correct perspective for the whole clip — it must never slide, flicker, warp or change`,
     opts.surface === "print" ? PRINT_CONTAINMENT_CLAUSE : SCREEN_CONTAINMENT_CLAUSE,
+    opts.surface === "print" ? FLAT_CARD_CLAUSE : undefined,
     opts.surface === "print" ? undefined : NO_TOUCH_CLAUSE,
     opts.surface === "print" ? NO_FACES_CLAUSE : undefined,
     "Preserve the exact identity, wardrobe, framing and lighting of the source photograph",
@@ -2260,6 +2295,7 @@ export function buildScreenReplacePrompt(opts: {
     "Lock the played footage to the surface with correct perspective and keystone for the entire clip — it must never slide, drift or detach",
     "Match the scene's brightness, colour temperature and reflections so the footage looks natively displayed, not pasted on",
     opts.surface === "print" ? PRINT_CONTAINMENT_CLAUSE : SCREEN_CONTAINMENT_CLAUSE,
+    opts.surface === "print" ? FLAT_CARD_CLAUSE : undefined,
     opts.surface === "print" ? undefined : NO_TOUCH_CLAUSE,
     motion?.prompt,
     "Preserve the exact subject, wardrobe, environment, framing and lighting of @Image1",
@@ -2348,6 +2384,7 @@ export function buildOneShotPrompt(sel: {
       "@Image1 is the artwork printed on its front. That artwork covers one hundred percent of that panel — top edge to bottom edge, left edge to right edge — and is reproduced exactly: same composition, same colours, same typography, same layout, nothing added, removed, moved or cropped",
       "No part of the card is ever covered, overlapped, obscured or interrupted by anything. Nothing is tucked into it, slipped over it, clipped to it, laid across it, wrapped around it or propped in front of it",
       "Whatever the artwork depicts — people, objects, letters, envelopes, flowers — is flat printed ink inside that rectangle. None of it becomes a real object in the scene, gains depth or its own shadow, or appears anywhere outside the card",
+      FLAT_CARD_CLAUSE,
       device?.involvesEnvelope || motion?.involvesEnvelope ? undefined : NO_ENVELOPE_CLAUSE,
       opensCard
         ? "@Image2 is the artwork printed across the full inside spread — left and right inside panels together. The card starts closed showing @Image1; as it opens, the inside shows exactly @Image2 across both panels with the centre fold down the middle, reproduced just as faithfully, and holds steady and readable at the end"
@@ -2414,6 +2451,7 @@ export function buildCardOpenPrompt(opts: {
     scene ? `Keep the environment consistent: ${scene.prompt}` : undefined,
     "Preserve the exact identity, wardrobe, framing and lighting of @Image1",
     PRINT_CONTAINMENT_CLAUSE,
+    FLAT_CARD_CLAUSE,
     NO_FACES_CLAUSE,
     "Realistic physics and paper motion. No text overlays, no captions, no watermarks, no logos, no scene cuts",
     opts.extraNotes?.trim(),

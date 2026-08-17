@@ -1,84 +1,80 @@
 "use client";
 
+/**
+ * The HeartStamp wordmark, stamped into the bottom-right corner.
+ *
+ * Two pre-coloured variants rather than one recoloured at runtime: the source
+ * SVG paints its lettering with `currentColor`, which resolves to black when an
+ * SVG is loaded through an <img> and has no CSS context to inherit from. Baking
+ * the colours into two files removes that trap entirely — see
+ * public/TextLogo-on-dark.svg and public/TextLogo-on-light.svg, both generated
+ * from public/TextLogo.svg.
+ */
 
-/** The emblem in public/. Spaces are fine once encoded. */
-export const LOGO_SRC = "/HS_Logo_Emblem_White%20on%20Red.png";
+export const LOGO_SRC = {
+  /** White lettering, pink heart — for dark corners. */
+  onDark: "/TextLogo-on-dark.svg",
+  /** Black lettering, red heart — for light corners. */
+  onLight: "/TextLogo-on-light.svg",
+} as const;
 
-/** Width of the *visible* mark as a fraction of the image's shorter edge. */
-const LOGO_SCALE = 0.11;
+export type LogoVariant = keyof typeof LOGO_SRC;
+export type LogoSet = Record<LogoVariant, ImageBitmap>;
+
+/** Width of the wordmark as a fraction of the image's shorter edge. */
+const LOGO_SCALE = 0.28;
 /** Margin from the right/bottom edges, as a fraction of the shorter edge. */
-const LOGO_MARGIN = 0.045;
-
-let logoPromise: Promise<ImageBitmap> | null = null;
+const LOGO_MARGIN = 0.04;
 
 /**
- * Finds the opaque bounds of the artwork, so transparent padding around the
- * emblem doesn't shrink it.
- *
- * The supplied PNGs disagree on this — the 3959px master carries ~30% padding
- * while the old 85px export had none — so trimming is what keeps LOGO_SCALE
- * meaning "how wide the heart is" no matter which file is dropped in.
- *
- * The scan runs on a 256px copy and the box is mapped back up; at full res
- * that's accurate to a fraction of a percent and avoids reading 60 MB of pixels.
+ * Rasterise width. The wordmark is 140×35, so this is 8× — comfortably above
+ * the largest size it is ever drawn at (0.28 of a 3840px edge is ~1075px), which
+ * keeps the lettering crisp instead of relying on how a given browser scales an
+ * SVG during drawImage.
  */
-function opaqueBounds(bitmap: ImageBitmap): { x: number; y: number; w: number; h: number } | null {
-  const probe = 256;
-  const scale = Math.min(1, probe / Math.max(bitmap.width, bitmap.height));
-  const pw = Math.max(1, Math.round(bitmap.width * scale));
-  const ph = Math.max(1, Math.round(bitmap.height * scale));
+const RASTER_WIDTH = 1120;
 
+/**
+ * Above this relative luminance the corner counts as light, and the dark
+ * wordmark is used. Set above 0.5 deliberately: white lettering survives a
+ * mid-tone far better than black does, so the tie goes to the light logo.
+ */
+const LIGHT_CORNER_THRESHOLD = 0.62;
+
+let logoPromise: Promise<LogoSet> | null = null;
+
+/**
+ * Rasterises one SVG variant at a fixed size.
+ *
+ * Goes through an <img> rather than createImageBitmap(blob): SVG support in
+ * createImageBitmap is uneven across browsers, while <img> has decoded SVG
+ * everywhere for years.
+ */
+async function rasterise(src: string): Promise<ImageBitmap> {
+  const img = new Image();
+  img.src = src;
+  await img.decode().catch(() => {
+    throw new Error(`Could not load the HeartStamp logo (${src}).`);
+  });
+
+  const ratio = (img.naturalHeight || 35) / (img.naturalWidth || 140);
   const canvas = document.createElement("canvas");
-  canvas.width = pw;
-  canvas.height = ph;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  if (!ctx) return null;
+  canvas.width = RASTER_WIDTH;
+  canvas.height = Math.round(RASTER_WIDTH * ratio);
 
-  ctx.drawImage(bitmap, 0, 0, pw, ph);
-  const { data } = ctx.getImageData(0, 0, pw, ph);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas is unavailable in this browser.");
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-  let minX = pw;
-  let minY = ph;
-  let maxX = -1;
-  let maxY = -1;
-  for (let y = 0; y < ph; y++) {
-    for (let x = 0; x < pw; x++) {
-      if (data[(y * pw + x) * 4 + 3] > 8) {
-        if (x < minX) minX = x;
-        if (x > maxX) maxX = x;
-        if (y < minY) minY = y;
-        if (y > maxY) maxY = y;
-      }
-    }
-  }
-  if (maxX < 0) return null; // fully transparent — leave it alone
-
-  const inv = 1 / scale;
-  const x = Math.max(0, Math.floor(minX * inv));
-  const y = Math.max(0, Math.floor(minY * inv));
-  return {
-    x,
-    y,
-    w: Math.min(bitmap.width - x, Math.ceil((maxX - minX + 1) * inv)),
-    h: Math.min(bitmap.height - y, Math.ceil((maxY - minY + 1) * inv)),
-  };
+  return createImageBitmap(canvas);
 }
 
-/** Loads (once per page) the emblem, cropped to its visible bounds. */
-function loadLogo(): Promise<ImageBitmap> {
-  logoPromise ??= fetch(LOGO_SRC)
-    .then((res) => {
-      if (!res.ok) throw new Error(`Could not load the HeartStamp logo (${res.status}).`);
-      return res.blob();
-    })
-    .then(async (blob) => {
-      const full = await createImageBitmap(blob);
-      const box = opaqueBounds(full);
-      if (!box || (box.w === full.width && box.h === full.height)) return full;
-      const trimmed = await createImageBitmap(full, box.x, box.y, box.w, box.h);
-      full.close();
-      return trimmed;
-    })
+/** Loads both variants, once per page. */
+function loadLogos(): Promise<LogoSet> {
+  logoPromise ??= Promise.all([rasterise(LOGO_SRC.onDark), rasterise(LOGO_SRC.onLight)])
+    .then(([onDark, onLight]) => ({ onDark, onLight }))
     .catch((err) => {
       logoPromise = null; // let a later attempt retry
       throw err;
@@ -86,22 +82,80 @@ function loadLogo(): Promise<ImageBitmap> {
   return logoPromise;
 }
 
-/** Loads the emblem, cropped to its visible bounds. Shared with the compositor. */
-export const heartStampLogo = loadLogo;
+export const heartStampLogo = loadLogos;
 
-/** Draws the emblem into the bottom-right corner of an already-drawn canvas. */
-export function paintLogo(
+/** Where the wordmark lands, in canvas pixels. */
+function logoRect(logo: ImageBitmap, width: number, height: number) {
+  const shortEdge = Math.min(width, height);
+  const w = Math.round(shortEdge * LOGO_SCALE);
+  const h = Math.round(w * (logo.height / logo.width));
+  const margin = Math.round(shortEdge * LOGO_MARGIN);
+  return { x: width - w - margin, y: height - h - margin, w, h };
+}
+
+/**
+ * Decides which wordmark the bottom-right corner needs.
+ *
+ * Reads the pixels the logo is about to cover and averages their relative
+ * luminance (Rec. 709 on gamma-corrected sRGB — near enough for a threshold, and
+ * far cheaper than linearising every sample). Sampling is on a grid rather than
+ * every pixel: a few hundred samples settle the question, and reading a
+ * 1000×250 block off a 4K frame does not.
+ *
+ * Must be called *before* the logo is drawn, or it measures its own output.
+ */
+export function pickLogoVariant(
   ctx: CanvasRenderingContext2D,
   logo: ImageBitmap,
   width: number,
   height: number,
-) {
-  const shortEdge = Math.min(width, height);
-  const logoWidth = Math.round(shortEdge * LOGO_SCALE);
-  const logoHeight = Math.round(logoWidth * (logo.height / logo.width));
-  const margin = Math.round(shortEdge * LOGO_MARGIN);
+): LogoVariant {
+  const { x, y, w, h } = logoRect(logo, width, height);
+
+  let data: Uint8ClampedArray;
+  try {
+    data = ctx.getImageData(x, y, Math.max(1, w), Math.max(1, h)).data;
+  } catch {
+    // A tainted canvas can't be read. White-on-dark is the safer default: it
+    // carries the brand colour and stays legible on all but the palest corners.
+    return "onDark";
+  }
+
+  const pixels = w * h;
+  const step = Math.max(1, Math.floor(pixels / 400));
+
+  let total = 0;
+  let counted = 0;
+  for (let i = 0; i < pixels; i += step) {
+    const p = i * 4;
+    total += (0.2126 * data[p] + 0.7152 * data[p + 1] + 0.0722 * data[p + 2]) / 255;
+    counted++;
+  }
+
+  const luminance = counted ? total / counted : 0;
+  return luminance > LIGHT_CORNER_THRESHOLD ? "onLight" : "onDark";
+}
+
+/**
+ * Draws the wordmark into the bottom-right corner of an already-drawn canvas.
+ *
+ * Pass `variant` to force one. The video path does exactly that: measuring every
+ * frame would let the logo flip colour mid-clip the moment something bright
+ * moved through the corner.
+ */
+export function paintLogo(
+  ctx: CanvasRenderingContext2D,
+  logos: LogoSet,
+  width: number,
+  height: number,
+  variant?: LogoVariant,
+): LogoVariant {
+  const chosen = variant ?? pickLogoVariant(ctx, logos.onDark, width, height);
+  const logo = logos[chosen];
+  const { x, y, w, h } = logoRect(logo, width, height);
 
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(logo, width - logoWidth - margin, height - logoHeight - margin, logoWidth, logoHeight);
+  ctx.drawImage(logo, x, y, w, h);
+  return chosen;
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { downloadUrl, uploadToFal } from "@/lib/client-api";
-import { heartStampLogo, paintLogo } from "@/lib/watermark";
+import { heartStampLogo, paintLogo, pickLogoVariant, type LogoVariant } from "@/lib/watermark";
 
 /*
  * Burns the HeartStamp emblem into a finished clip, in the browser.
@@ -10,7 +10,7 @@ import { heartStampLogo, paintLogo } from "@/lib/watermark";
  * full-frame transparent overlay; it returned a video with no logo on it and
  * the endpoint's handling of image tracks isn't documented anywhere reachable.
  * This route is fully testable instead: decode the clip, redraw every frame
- * through a canvas with the emblem painted on, and record the canvas straight
+ * through a canvas with the wordmark painted on, and record the canvas straight
  * back out to MP4. Same paintLogo() the stills use, so placement matches.
  */
 
@@ -138,12 +138,12 @@ export async function renderStampedVideo(
     if (!w || !h) throw new Error("The rendered clip has no video track.");
 
     onProgress?.({ stage: "Preparing" });
-    const logo = await heartStampLogo();
+    const logos = await heartStampLogo();
 
     const canvas = document.createElement("canvas");
     canvas.width = w;
     canvas.height = h;
-    const ctx = canvas.getContext("2d", { alpha: false });
+    const ctx = canvas.getContext("2d", { alpha: false, willReadFrequently: true });
     if (!ctx) throw new Error("Canvas is unavailable in this browser.");
 
     // 0 fps = manual mode: a frame is emitted only when we ask, which keeps the
@@ -179,10 +179,21 @@ export async function renderStampedVideo(
       recorder.onstop = () => resolve();
     });
 
+    /*
+     * The light/dark choice is made once, on the first frame, and then held for
+     * the whole clip.
+     *
+     * Measuring every frame would be correct per-frame and wrong overall: a
+     * hand or a bright prop drifting through the corner would flip the lettering
+     * between white and black mid-shot, which reads as a glitch rather than as
+     * contrast handling.
+     */
+    let variant: LogoVariant | null = null;
     let painted = 0;
     const paint = () => {
       ctx.drawImage(video, 0, 0, w, h);
-      paintLogo(ctx, logo, w, h);
+      variant ??= pickLogoVariant(ctx, logos.onDark, w, h);
+      paintLogo(ctx, logos, w, h, variant);
       videoTrack.requestFrame();
       painted++;
     };
