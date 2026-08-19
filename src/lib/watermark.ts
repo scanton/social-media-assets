@@ -9,12 +9,16 @@
  * the colours into two files removes that trap entirely — see
  * public/TextLogo-on-dark.svg and public/TextLogo-on-light.svg, both generated
  * from public/TextLogo.svg.
+ *
+ * The heart is always the opposite tone to the lettering it sits beside — red
+ * next to white, pink next to black. Pairing pink with white washed both out
+ * against a dark frame, which is the mistake this arrangement corrects.
  */
 
 export const LOGO_SRC = {
-  /** White lettering, pink heart — for dark corners. */
+  /** White lettering, red heart — for dark corners. */
   onDark: "/TextLogo-on-dark.svg",
-  /** Black lettering, red heart — for light corners. */
+  /** Black lettering, pink heart — for light corners. */
   onLight: "/TextLogo-on-light.svg",
 } as const;
 
