@@ -2230,9 +2230,17 @@ const CARD_CLOSED_CLAUSE = [
 const FLAT_CARD_CLAUSE = [
   "ABSOLUTE RULE — this is an ordinary folded greeting card, never a book, a booklet, a notebook or a multi-page card",
   "it is a single sheet of card stock folded exactly once, which gives it exactly four surfaces and no more: the printed front, the two inside panels, and the plain back",
-  "there are no pages inside it, no extra leaves or sheets, no stack of paper, no bound spine, no stitching, staples or rings, and nothing tucked, glued or inserted between its halves",
-  "if it opens, it opens once and lies flat as a single inside spread — there is nothing further to turn, and no page ever lifts, curls or flips inside it",
-  "the stock is thick enough to hold its own shape and has visible thickness only at its cut edges",
+  "held open, it is exactly two leaves in total — one on the left, one on the right — joined only at the centre fold, with nothing between them and nothing behind them",
+  /*
+   * The edges are where this actually failed. A model that has otherwise
+   * understood "one folded sheet" still draws a sheaf of page edges down the
+   * outer sides, because that is what the edge of an open printed thing looks
+   * like to it. So the edges get called out by name.
+   */
+  "the outer left and right edges of the open card are each ONE single clean cut edge of ONE sheet: no stack of page edges, no row of layered leaves, no sheaf or block of paper, no second sheet peeking out from behind or beneath either panel",
+  "seen edge-on the card is one thin line of stock about as thick as a postcard, never a block, never a spine, and never a stepped stack of edges",
+  "there are no pages inside it, no extra leaves or sheets, no bound spine, no stitching, staples or rings, and nothing tucked, glued or inserted between its halves",
+  "it opens once and lies flat as a single inside spread — there is nothing further to turn, and no page ever lifts, curls, fans or flips inside it",
 ].join(". ");
 
 const PRINT_CONTAINMENT_CLAUSE = [
@@ -2444,6 +2452,12 @@ export function buildCardOpenPrompt(opts: {
     "Bring @Image1 to life as a short, natural-looking live-action clip",
     "@Image1 is the scene with the greeting card closed, its printed front showing",
     "@Image2 is the artwork printed across the full inside spread of that same card — the left and right inside panels together",
+    /*
+     * Before the motion, not after it. Buried below the action this lost to the
+     * model's prior that a printed thing which opens is a book, and clips came
+     * back with a stack of page edges down the outer sides of the card.
+     */
+    FLAT_CARD_CLAUSE,
     motion?.prompt,
     "As the card opens, the inside must show exactly the artwork from @Image2: same composition, same colours, same typography, same layout across both panels. Reproduce it faithfully — do not redesign it, re-letter it, recolour it or invent any inside content of your own",
     "Map it to the open card with correct perspective, following the centre fold and any curl in the paper, and let the scene's own light fall across it. It must read as genuinely printed on that stock",
@@ -2451,7 +2465,6 @@ export function buildCardOpenPrompt(opts: {
     scene ? `Keep the environment consistent: ${scene.prompt}` : undefined,
     "Preserve the exact identity, wardrobe, framing and lighting of @Image1",
     PRINT_CONTAINMENT_CLAUSE,
-    FLAT_CARD_CLAUSE,
     NO_FACES_CLAUSE,
     "Realistic physics and paper motion. No text overlays, no captions, no watermarks, no logos, no scene cuts",
     opts.extraNotes?.trim(),
