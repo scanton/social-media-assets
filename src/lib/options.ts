@@ -2069,7 +2069,7 @@ export const MOTIONS: (Option & {
     label: "Slow reveal",
     emoji: "🎥",
     prompt:
-      "the card opens slowly and deliberately while the camera pushes in at the same pace, the inside spread growing to fill the frame; one smooth continuous move, no hurry",
+      "the camera pushes in slowly and continuously while the card opens, the inside spread growing to fill the frame; one smooth unbroken move, the camera unhurried even as the card itself opens briskly",
   },
   {
     id: "open-and-linger",
@@ -2227,6 +2227,26 @@ const CARD_CLOSED_CLAUSE = [
  * pages stacked inside, a bound spine, or artwork printed on leaves that turn.
  * Stating the panel count outright is what stops it.
  */
+/**
+ * How an opening clip is paced.
+ *
+ * Left to itself the model starts opening almost immediately, so the front
+ * panel — the artwork somebody actually bought — is gone before a viewer can
+ * read it. Stated as three unequal beats with proportions attached, because
+ * "hold for a beat" means nothing to a model that has no sense of how long the
+ * clip is.
+ *
+ * The open itself is deliberately the shortest beat: the reveal is what earns
+ * attention, but watching hands work a piece of paper is not.
+ */
+const CARD_OPEN_PACING_CLAUSE = [
+  "TIMING — this clip has three beats and they are deliberately unequal",
+  "FIRST, roughly the opening quarter of the clip: the card is closed and completely still, its printed front square to the camera and fully readable. Nothing moves — no lifting corner, no fingers flexing the panel, no early peel. Hold long enough that a viewer can actually read the front before anything happens",
+  "THEN the open itself, and this is the shortest of the three beats: one brisk, decisive movement that gets the card open without dawdling or ceremony",
+  "FINALLY, and for all of the remaining time, hold on the open inside spread, square to the camera and readable. This is the longest beat and the clip ends on it — the card never closes again and nothing further happens",
+  "the inside is never shown before the open, and the card is never re-closed after it",
+].join(". ");
+
 const FLAT_CARD_CLAUSE = [
   "ABSOLUTE RULE — this is an ordinary folded greeting card, never a book, a booklet, a notebook or a multi-page card",
   "it is a single sheet of card stock folded exactly once, which gives it exactly four surfaces and no more: the printed front, the two inside panels, and the plain back",
@@ -2400,6 +2420,7 @@ export function buildOneShotPrompt(sel: {
       `Now the shot: ${device?.prompt ?? "the card held upright, front facing the camera"}`,
       ...setting,
       motion?.prompt,
+      opensCard ? CARD_OPEN_PACING_CLAUSE : undefined,
       "The printed artwork follows any curl or flex in the paper and takes the scene's own light, so it reads as genuinely printed on stock",
       "Realistic physics and paper motion, with believable card weight and stiffness. No text overlays, no captions, no watermarks, no logos, no scene cuts",
       sel.extraNotes?.trim(),
@@ -2459,6 +2480,7 @@ export function buildCardOpenPrompt(opts: {
      */
     FLAT_CARD_CLAUSE,
     motion?.prompt,
+    CARD_OPEN_PACING_CLAUSE,
     "As the card opens, the inside must show exactly the artwork from @Image2: same composition, same colours, same typography, same layout across both panels. Reproduce it faithfully — do not redesign it, re-letter it, recolour it or invent any inside content of your own",
     "Map it to the open card with correct perspective, following the centre fold and any curl in the paper, and let the scene's own light fall across it. It must read as genuinely printed on that stock",
     "Keep the printed front from @Image1 exactly as it is for as long as it is visible; the same physical card is simply being opened",
