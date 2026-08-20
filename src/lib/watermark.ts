@@ -143,9 +143,10 @@ export function pickLogoVariant(
 /**
  * Draws the wordmark into the bottom-right corner of an already-drawn canvas.
  *
- * Pass `variant` to force one. The video path does exactly that: measuring every
- * frame would let the logo flip colour mid-clip the moment something bright
- * moved through the corner.
+ * Pass `variant` to force one. The video path does exactly that, measuring the
+ * clip's last frame and holding that choice throughout: measuring every frame
+ * would let the logo flip colour mid-clip the moment something bright moved
+ * through the corner, and the last frame is the one the mark has to work on.
  */
 export function paintLogo(
   ctx: CanvasRenderingContext2D,

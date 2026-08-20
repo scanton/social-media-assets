@@ -1,7 +1,13 @@
 "use client";
 
 import { downloadUrl, uploadToFal } from "@/lib/client-api";
-import { heartStampLogo, paintLogo, pickLogoVariant, type LogoVariant } from "@/lib/watermark";
+import {
+  heartStampLogo,
+  paintLogo,
+  pickLogoVariant,
+  type LogoSet,
+  type LogoVariant,
+} from "@/lib/watermark";
 
 /*
  * Burns the HeartStamp emblem into a finished clip, in the browser.
@@ -77,6 +83,74 @@ function makeTicker() {
       fallback = null;
     },
   };
+}
+
+/**
+ * Seeks and waits for the frame to actually be there.
+ *
+ * Resolves on `seeked` rather than after setting currentTime, because the frame
+ * isn't decoded until then and drawImage would otherwise copy whatever was on
+ * screen before. The timeout is a safety valve: a decoder that never fires the
+ * event must not hang the whole stamping pass.
+ */
+function seekTo(video: HTMLVideoElement, time: number, timeoutMs = 4000): Promise<boolean> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      video.removeEventListener("seeked", onSeeked);
+      clearTimeout(timer);
+      resolve(ok);
+    };
+    const onSeeked = () => finish(true);
+    const timer = setTimeout(() => finish(false), timeoutMs);
+
+    video.addEventListener("seeked", onSeeked);
+    try {
+      video.currentTime = time;
+    } catch {
+      finish(false);
+    }
+  });
+}
+
+/**
+ * Chooses the wordmark colour from the clip's LAST frame, then rewinds.
+ *
+ * The end of the clip is where the mark has to work: it is the call to action,
+ * the frame that sits on screen while someone decides whether to act, and the
+ * one a paused or looping player lingers on. A clip that starts dark and ends
+ * bright — which is common once a card opens toward a light inside spread —
+ * would otherwise get white lettering chosen against the opening frame and then
+ * vanish exactly when it matters.
+ *
+ * Falls back to whatever frame is currently decoded if the clip can't be sought,
+ * which is the old first-frame behaviour rather than no logo at all.
+ */
+async function variantFromLastFrame(
+  video: HTMLVideoElement,
+  ctx: CanvasRenderingContext2D,
+  logos: LogoSet,
+  w: number,
+  h: number,
+): Promise<LogoVariant> {
+  const measureHere = () => {
+    ctx.drawImage(video, 0, 0, w, h);
+    return pickLogoVariant(ctx, logos.onDark, w, h);
+  };
+
+  const duration = video.duration;
+  if (!Number.isFinite(duration) || duration <= 0) return measureHere();
+
+  // A hair before the end: seeking to exactly `duration` can land past the last
+  // decodable frame and yield a blank or stale one.
+  const sought = await seekTo(video, Math.max(0, duration - 0.08));
+  if (!sought) return measureHere();
+
+  const variant = measureHere();
+  await seekTo(video, 0);
+  return variant;
 }
 
 const sameOrigin = (url: string) => {
@@ -180,19 +254,22 @@ export async function renderStampedVideo(
     });
 
     /*
-     * The light/dark choice is made once, on the first frame, and then held for
-     * the whole clip.
+     * One colour for the whole clip, decided by the last frame.
      *
-     * Measuring every frame would be correct per-frame and wrong overall: a
-     * hand or a bright prop drifting through the corner would flip the lettering
-     * between white and black mid-shot, which reads as a glitch rather than as
-     * contrast handling.
+     * Measuring every frame would be right per-frame and wrong overall — a hand
+     * or a bright prop crossing the corner would flip the lettering mid-shot,
+     * which reads as a glitch. So it is measured once and held.
+     *
+     * The measurement happens here, before recording starts, because frames are
+     * encoded in order: by the time the last frame arrives, every earlier frame
+     * has already been stamped. variantFromLastFrame seeks to the end, reads the
+     * corner, and rewinds to zero.
      */
-    let variant: LogoVariant | null = null;
+    const variant = await variantFromLastFrame(video, ctx, logos, w, h);
+
     let painted = 0;
     const paint = () => {
       ctx.drawImage(video, 0, 0, w, h);
-      variant ??= pickLogoVariant(ctx, logos.onDark, w, h);
       paintLogo(ctx, logos, w, h, variant);
       videoTrack.requestFrame();
       painted++;
