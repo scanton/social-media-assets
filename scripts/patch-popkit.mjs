@@ -94,6 +94,94 @@ const PATCHES = [
     },
   },
   {
+    file: "media.js",
+    marker: "const holed = !still",
+    why: "a video well's frame painted over the clip it was supposed to frame",
+    apply(s) {
+      return s
+        .replace(
+          "  const cid = 'wm' + Math.random().toString(36).slice(2, 8);\n",
+          "  const cid = 'wm' + Math.random().toString(36).slice(2, 8);\n" +
+          "  const mid = 'wa' + Math.random().toString(36).slice(2, 8);\n",
+        )
+        .replace(
+          "  let y = L.textY;\n  let copy = '';\n",
+          "  /* A clip is drawn THROUGH the frame, so the frame needs a hole.\n" +
+          "\n" +
+          "     wellFrame fills its whole body, media aperture included, and an\n" +
+          "     opaque body is opaque whatever sits behind it: the canvas the\n" +
+          "     render route composites on, or a <video> under the DOM node in\n" +
+          "     the editor. Both drew the clip first and then painted this\n" +
+          "     straight over it, so a video well came out an empty cream box\n" +
+          "     in the builder AND in the export. Nothing ever cut the hole the\n" +
+          "     render route's own comment claimed was there.\n" +
+          "\n" +
+          "     `still` is the poster for a clip and the picture for a still, so\n" +
+          "     its absence is exactly the case where nothing gets painted into\n" +
+          "     the aperture here and something behind needs to show through. */\n" +
+          "  const holed = !still;\n" +
+          "  const aperture = holed\n" +
+          "    ? `<mask id=\"${mid}\" maskUnits=\"userSpaceOnUse\" x=\"0\" y=\"0\"\n" +
+          "         width=\"${L.outerW}\" height=\"${L.outerH}\">\n" +
+          "         <rect width=\"${L.outerW}\" height=\"${L.outerH}\" fill=\"#fff\"/>\n" +
+          "         <rect x=\"${L.mediaX}\" y=\"${L.mediaY}\" width=\"${L.mediaW}\"\n" +
+          "           height=\"${L.mediaH}\" rx=\"${L.radius}\" fill=\"#000\"/>\n" +
+          "       </mask>`\n" +
+          "    : '';\n" +
+          "\n" +
+          "  let y = L.textY;\n  let copy = '';\n",
+        )
+        .replace(
+          "<g${spin}>${frame}${media}${copy}${badgeEl}</g>",
+          // The frame alone: the copy sits below the aperture and the badge
+          // sits inside it, and neither should be cut out of the picture.
+          "<g${spin}>${aperture}" +
+          "${holed ? `<g mask=\"url(#${mid})\">${frame}</g>` : frame}" +
+          "${media}${copy}${badgeEl}</g>",
+        );
+    },
+  },
+  {
+    file: "media.js",
+    marker: "const textPad",
+    why: "a well's caption sat as flush to the keyline as the picture above it",
+    apply(s) {
+      return s
+        .replace(
+          "  const capLines = caption ? wrapText(caption, fs, Math.round(mediaW * 0.94), 'sans') : [];\n",
+          "  /* A picture may sit flush to the frame; type may not.\n" +
+          "\n" +
+          "     `pad` is an eleven-pixel inset on a 1080 canvas and the keyline\n" +
+          "     eats seven of it, which leaves a caption four pixels of air and\n" +
+          "     reads as a printing error. The media still wants `pad` - its edge\n" +
+          "     IS its edge - so the copy gets its own, wider inset rather than\n" +
+          "     widening both together. Half an em either side, measured off the\n" +
+          "     caption's own size so it holds at any canvas and any scale.\n" +
+          "\n" +
+          "     `mediaW + pad * 2` is the frame width, which is not named until\n" +
+          "     after this line because the box is sized around its wrapped copy. */\n" +
+          "  const textPad = pad + Math.round(fs * 0.5);\n" +
+          "  const capLines = caption\n" +
+          "    ? wrapText(caption, fs, mediaW + pad * 2 - textPad * 2, 'sans')\n" +
+          "    : [];\n",
+        )
+        .replace("    textX: pad, textY:", "    textPad, textX: textPad, textY:")
+        // renderWell lays the same copy out in HTML. Leaving it on `pad` would
+        // make the two renderers disagree about where a caption starts, which
+        // is the exact drift wellLayout exists to prevent.
+        .replace(
+          "  const { S, key, fs, mediaW, mediaH, lip, pad, lineH, capLines, kickFs, w, h } =",
+          "  const { S, key, fs, mediaW, mediaH, lip, pad, textPad, lineH, capLines, kickFs, w, h } =",
+        )
+        .replace(
+          '<div style="position:absolute;left:${pad}px;top:${pad + mediaH + lip + Math.round(fs * 0.34)}px;\n' +
+          '      width:${mediaW}px;',
+          '<div style="position:absolute;left:${textPad}px;top:${pad + mediaH + lip + Math.round(fs * 0.34)}px;\n' +
+          '      width:${w - textPad * 2}px;',
+        );
+    },
+  },
+  {
     file: "finish.js",
     marker: "export function outerReach",
     why: "medallion crop under-counted the border's outward reach",
@@ -188,6 +276,31 @@ const PATCHES = [
         "  return { svg, W: vb[2], H: vb[3], viewBox: vb, lines, capW: cap ? cap.W : 0, capH, medSize };",
         "  const arrowsAt = arrows.map(a => ({ x: f(a.x - vb[0]), y: f(a.y - vb[1]), r: f(a.r) }));\n" +
         "  return { svg, W: vb[2], H: vb[3], viewBox: vb, lines, capW: cap ? cap.W : 0, capH, medSize, arrows: arrowsAt };",
+      );
+    },
+  },
+  {
+    file: "motion.js",
+    marker: "HOUSE PREFERENCE",
+    why: "the pop was too quick to read; HeartStamp runs it half again as long",
+    apply(s) {
+      return s.replace(
+        "/** Entrance and exit, in seconds. Inside the 7-and-5-frame budget at 30fps. */\n" +
+        "export const POP_IN_S = 0.30;\nexport const POP_OUT_S = 0.22;",
+        "/* HOUSE PREFERENCE, not a fix.\n" +
+        "\n" +
+        "   motion-and-feedback.md budgets 7 and 5 frames at 30fps and the kit\n" +
+        "   already spends a little over that. These are 1.5x the kit's own,\n" +
+        "   which puts them past that envelope deliberately: at 0.30s the\n" +
+        "   overshoot is real but too quick to perceive as character, which is\n" +
+        "   the whole reason for having a spring rather than a cut.\n" +
+        "\n" +
+        "   windows() still caps the pair at four fifths of the beat, so a\n" +
+        "   short arrow compresses them in proportion rather than overrunning.\n" +
+        "\n" +
+        "   Anyone replaying these patches into a .skill should think twice\n" +
+        "   about this one: it is taste, and it is ours. */\n" +
+        "export const POP_IN_S = 0.45;\nexport const POP_OUT_S = 0.33;",
       );
     },
   },

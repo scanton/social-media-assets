@@ -142,7 +142,21 @@ export function wellLayout(spec = {}, C) {
   /* the caption is measured and wrapped before the frame is sized, so
      the box always fits its own copy. */
   const lineH = Math.round(fs * 1.18);
-  const capLines = caption ? wrapText(caption, fs, Math.round(mediaW * 0.94), 'sans') : [];
+  /* A picture may sit flush to the frame; type may not.
+
+     `pad` is an eleven-pixel inset on a 1080 canvas and the keyline
+     eats seven of it, which leaves a caption four pixels of air and
+     reads as a printing error. The media still wants `pad` - its edge
+     IS its edge - so the copy gets its own, wider inset rather than
+     widening both together. Half an em either side, measured off the
+     caption's own size so it holds at any canvas and any scale.
+
+     `mediaW + pad * 2` is the frame width, which is not named until
+     after this line because the box is sized around its wrapped copy. */
+  const textPad = pad + Math.round(fs * 0.5);
+  const capLines = caption
+    ? wrapText(caption, fs, mediaW + pad * 2 - textPad * 2, 'sans')
+    : [];
   const capH = caption ? capLines.length * lineH + Math.round(fs * 0.34) : 0;
   const kickFs = Math.round(fs * 0.7);
   const kickH = kicker ? Math.round(kickFs * 1.7) : 0;
@@ -159,7 +173,7 @@ export function wellLayout(spec = {}, C) {
     radius: shape === 'disc' ? Math.min(w, h) / 2 : parseInt(S.radius, 10),
     capLines, capH, lineH, kickFs, kickH,
     /* the copy block, under the media and its lip */
-    textX: pad, textY: pad + mediaH + lip + Math.round(fs * 0.34),
+    textPad, textX: textPad, textY: pad + mediaH + lip + Math.round(fs * 0.34),
     /* the frame, and the box including its extrude */
     w, h, sx, sy, outerW: w + sx, outerH: h + sy,
   };
@@ -182,6 +196,7 @@ export function wellSvg(spec = {}, C) {
 
   const still = kind === 'video' ? poster : src;
   const cid = 'wm' + Math.random().toString(36).slice(2, 8);
+  const mid = 'wa' + Math.random().toString(36).slice(2, 8);
   const font = "'PK Stack',sans-serif";
 
   const media = still
@@ -189,6 +204,29 @@ export function wellSvg(spec = {}, C) {
          rx="${L.radius}"/></clipPath>
        <g clip-path="url(#${cid})"><image href="${still}" x="${L.mediaX}" y="${L.mediaY}"
          width="${L.mediaW}" height="${L.mediaH}" preserveAspectRatio="xMidYMid slice"/></g>`
+    : '';
+
+  /* A clip is drawn THROUGH the frame, so the frame needs a hole.
+
+     wellFrame fills its whole body, media aperture included, and an
+     opaque body is opaque whatever sits behind it: the canvas the
+     render route composites on, or a <video> under the DOM node in
+     the editor. Both drew the clip first and then painted this
+     straight over it, so a video well came out an empty cream box
+     in the builder AND in the export. Nothing ever cut the hole the
+     render route's own comment claimed was there.
+
+     `still` is the poster for a clip and the picture for a still, so
+     its absence is exactly the case where nothing gets painted into
+     the aperture here and something behind needs to show through. */
+  const holed = !still;
+  const aperture = holed
+    ? `<mask id="${mid}" maskUnits="userSpaceOnUse" x="0" y="0"
+         width="${L.outerW}" height="${L.outerH}">
+         <rect width="${L.outerW}" height="${L.outerH}" fill="#fff"/>
+         <rect x="${L.mediaX}" y="${L.mediaY}" width="${L.mediaW}"
+           height="${L.mediaH}" rx="${L.radius}" fill="#000"/>
+       </mask>`
     : '';
 
   let y = L.textY;
@@ -226,7 +264,7 @@ export function wellSvg(spec = {}, C) {
 
   const spin = tilt ? ` transform="rotate(${tilt} ${L.outerW / 2} ${L.outerH / 2})"` : '';
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${L.outerW}" height="${L.outerH}"
-    viewBox="0 0 ${L.outerW} ${L.outerH}" fill="none"><g${spin}>${frame}${media}${copy}${badgeEl}</g></svg>`;
+    viewBox="0 0 ${L.outerW} ${L.outerH}" fill="none"><g${spin}>${aperture}${holed ? `<g mask="url(#${mid})">${frame}</g>` : frame}${media}${copy}${badgeEl}</g></svg>`;
 }
 
 export function renderWell(spec = {}, C, target = 'dom') {
@@ -239,7 +277,7 @@ export function renderWell(spec = {}, C, target = 'dom') {
 
   /* one source of geometry, shared with wellSvg */
   const L = wellLayout(spec, C);
-  const { S, key, fs, mediaW, mediaH, lip, pad, lineH, capLines, kickFs, w, h } =
+  const { S, key, fs, mediaW, mediaH, lip, pad, textPad, lineH, capLines, kickFs, w, h } =
     { ...L, S: L.shape };
 
   const frame = wellFrame({ w, h, key, ink: INK, fill, extrude, radius: shape === 'disc' ? 999 : parseInt(S.radius) });
@@ -259,8 +297,8 @@ export function renderWell(spec = {}, C, target = 'dom') {
     <img src="${uri(frame)}" style="position:absolute;left:0;top:0;width:${w + 11}px;height:${h + 13}px;"/>
     <div style="position:absolute;left:${pad}px;top:${pad}px;display:flex;">${media}</div>
     ${badgeEl}
-    ${(kicker || caption) ? `<div style="position:absolute;left:${pad}px;top:${pad + mediaH + lip + Math.round(fs * 0.34)}px;
-      width:${mediaW}px;display:flex;flex-direction:column;">
+    ${(kicker || caption) ? `<div style="position:absolute;left:${textPad}px;top:${pad + mediaH + lip + Math.round(fs * 0.34)}px;
+      width:${w - textPad * 2}px;display:flex;flex-direction:column;">
       ${kicker ? `<div style="display:flex;font-family:Stack Sans, system-ui;font-size:${kickFs}px;font-weight:700;
         letter-spacing:0.14em;line-height:${Math.round(kickFs * 1.7)}px;color:${accent};">${esc(kicker.toUpperCase())}</div>` : ''}
       ${capLines.map(l => `<div style="display:flex;font-family:Stack Sans, system-ui;font-size:${fs}px;

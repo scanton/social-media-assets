@@ -26,9 +26,21 @@
 export const SPRING_D = 8;
 export const SPRING_W = 16;
 
-/** Entrance and exit, in seconds. Inside the 7-and-5-frame budget at 30fps. */
-export const POP_IN_S = 0.30;
-export const POP_OUT_S = 0.22;
+/* HOUSE PREFERENCE, not a fix.
+
+   motion-and-feedback.md budgets 7 and 5 frames at 30fps and the kit
+   already spends a little over that. These are 1.5x the kit's own,
+   which puts them past that envelope deliberately: at 0.30s the
+   overshoot is real but too quick to perceive as character, which is
+   the whole reason for having a spring rather than a cut.
+
+   windows() still caps the pair at four fifths of the beat, so a
+   short arrow compresses them in proportion rather than overrunning.
+
+   Anyone replaying these patches into a .skill should think twice
+   about this one: it is taste, and it is ours. */
+export const POP_IN_S = 0.45;
+export const POP_OUT_S = 0.33;
 
 /**
  * The peak of the overshoot, which is how much bigger than final size a nugget

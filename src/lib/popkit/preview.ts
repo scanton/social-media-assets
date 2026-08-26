@@ -28,6 +28,16 @@ export interface BeatPreview {
    * protected-region check and the render route's agree by construction.
    */
   arrows: Array<{ x: number; y: number; r: number }>;
+  /**
+   * The hole a clip shows through, in this preview's own coordinates.
+   *
+   * Only set for a video well, which is the case where the SVG masks its
+   * aperture out and something behind has to fill it. Reported here rather
+   * than recomputed by the caller for the same reason `arrows` is: the editor
+   * and the render route must land the clip in the same place by construction,
+   * not by two functions agreeing.
+   */
+  aperture?: { x: number; y: number; w: number; h: number; radius: number };
 }
 
 /** 1x1 transparent PNG: the media that leaves a shape empty. */
@@ -151,9 +161,18 @@ export function renderBeat(
         };
       }
 
-      const L = wellLayout(beat.well, C) as { outerW: number; outerH: number };
+      const L = wellLayout(beat.well, C) as {
+        outerW: number; outerH: number;
+        mediaX: number; mediaY: number; mediaW: number; mediaH: number; radius: number;
+      };
       const svg = wellSvg(beat.well, C) as string;
-      return { svg, w: L.outerW, h: L.outerH, medSize: 0, capH: 0, arrows: [] };
+      return {
+        svg, w: L.outerW, h: L.outerH, medSize: 0, capH: 0, arrows: [],
+        aperture:
+          beat.well.kind === "video" && beat.well.src
+            ? { x: L.mediaX, y: L.mediaY, w: L.mediaW, h: L.mediaH, radius: L.radius }
+            : undefined,
+      };
     }
 
     const opts = beatToComposeOptions(beat, canvas);

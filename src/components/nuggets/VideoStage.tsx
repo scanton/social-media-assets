@@ -414,7 +414,7 @@ export function VideoStage({
                   // compose() writes explicit width/height onto the SVG, so
                   // without this it renders at its intrinsic canvas size and
                   // spills far outside the wrapper we just measured for it.
-                  "pointer-events-auto absolute cursor-grab touch-none select-none active:cursor-grabbing [&>svg]:h-full [&>svg]:w-full",
+                  "pointer-events-auto absolute cursor-grab touch-none select-none active:cursor-grabbing [&_svg]:h-full [&_svg]:w-full",
                   selectedId === beat.id && "outline-2 outline-offset-4 outline-dashed outline-stamp-400",
                   !live && "opacity-25",
                   drawingRegion && "pointer-events-none",
@@ -428,12 +428,97 @@ export function VideoStage({
                     `translate(${offsetX}px, ${-h / 2}px) rotate(${beat.rotate ?? 0}deg)` +
                     (pop === 1 ? "" : ` scale(${pop.toFixed(4)})`),
                 }}
-                dangerouslySetInnerHTML={{ __html: preview.svg }}
-              />
+              >
+                {/* Under the SVG, showing through the aperture the frame masks
+                    out. Same arrangement the render route composites in. */}
+                {preview.aperture && beat.well?.src && (
+                  <WellClip
+                    src={beat.well.src}
+                    rect={preview.aperture}
+                    scale={w / preview.w}
+                    playing={playing && live}
+                    at={playhead - beat.t}
+                  />
+                )}
+                <span
+                  className="absolute inset-0"
+                  dangerouslySetInnerHTML={{ __html: preview.svg }}
+                />
+              </div>
             );
           })}
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * The clip inside a media well, behind the frame that masks a hole for it.
+ *
+ * Its own component so the element can be driven by a ref without the stage
+ * re-rendering on every frame of playback, and so React keeps one <video> per
+ * beat across renders rather than tearing it down whenever the deck changes.
+ *
+ * WHY IT IS NOT SIMPLY LEFT PLAYING
+ * The render route loops these for the length of the export and takes whatever
+ * frame is up, which is fine when nobody is watching. Here somebody is: a clip
+ * looping under a paused deck reads as a bug, and scrubbing the timeline should
+ * move the clip too or the preview stops being a preview. So it follows the
+ * playhead when parked and runs on its own only while the deck actually plays.
+ */
+function WellClip({
+  src,
+  rect,
+  scale,
+  playing,
+  at,
+}: {
+  src: string;
+  /** The aperture, in canvas px. */
+  rect: { x: number; y: number; w: number; h: number; radius: number };
+  /** Canvas px to screen px. */
+  scale: number;
+  playing: boolean;
+  /** Seconds since the beat opened. */
+  at: number;
+}) {
+  const ref = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const v = ref.current;
+    if (!v) return;
+    if (playing) {
+      void v.play().catch(() => {
+        /* autoplay refused: the poster frame stays, which is not nothing */
+      });
+      return;
+    }
+    v.pause();
+    // Only once there is a duration to wrap against, or seeking is a no-op and
+    // the clip sits on frame 0 for the whole beat.
+    if (v.duration && Number.isFinite(v.duration)) {
+      const want = Math.max(0, at) % v.duration;
+      if (Math.abs(v.currentTime - want) > 0.04) v.currentTime = want;
+    }
+  }, [playing, at]);
+
+  return (
+    <video
+      ref={ref}
+      src={src}
+      muted
+      loop
+      playsInline
+      preload="auto"
+      className="pointer-events-none absolute object-cover"
+      style={{
+        left: rect.x * scale,
+        top: rect.y * scale,
+        width: rect.w * scale,
+        height: rect.h * scale,
+        borderRadius: rect.radius * scale,
+      }}
+    />
   );
 }
