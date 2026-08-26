@@ -328,11 +328,20 @@ export const GLYPH_FRAC_DEFAULT = 1.25;
 /** Cues closer than this collide; the second is silenced. `applySoundRules()`. */
 export const ANTI_CLATTER_MS = 250;
 
-/** Picker order. The default leads; the sentinel for none stays last. */
+/**
+ * Picker order, which is not the same thing as the default.
+ *
+ * Silence leads because it is the most reached-for entry once a deck gets
+ * dense — the sound pack's own advice is that most nuggets in a sequence want
+ * no cue — and hunting to the bottom of the list for it is friction on the
+ * choice people make most. What a new beat OPENS on is `DEFAULT_CUE`, which is
+ * a separate decision and still a bubble pop.
+ */
 export const SOUND_CUES: SoundCue[] = [
+  "silent",
   "bubble-pop-1", "bubble-pop-2",
   "pop-in", "pop-in-alt", "pop-out", "stamp", "paper-slide",
-  "seal", "chime", "tick", "soft-error", "silent",
+  "seal", "chime", "tick", "soft-error",
 ];
 
 /**
