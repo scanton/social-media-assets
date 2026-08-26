@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { getKeyState } from "@/lib/client-api";
 import { signOutAction } from "@/app/actions";
 import type { StudioUser } from "@/auth";
@@ -191,6 +192,7 @@ function StudioShell({
         {/* This is the pipeline choice, not a view toggle, so it gets the weight
             of a real decision rather than a pill. */}
         <div className="mx-auto max-w-[110rem] px-4 pb-3 sm:px-6">
+          <div className="flex flex-wrap items-stretch gap-2">
           <div role="tablist" aria-label="What are we selling?" className="flex flex-wrap gap-2">
             {SURFACES.map((opt) => {
               const active = s.surface === opt.kind;
@@ -220,7 +222,10 @@ function StudioShell({
                     <span className="block text-sm font-bold leading-tight">{opt.label}</span>
                     <span
                       className={cx(
-                        "mt-0.5 hidden text-[11px] font-medium leading-tight sm:block",
+                        // Only at the width the four-item row can hold them.
+                        // Below that the tabs go compact rather than wrapping
+                        // onto a second line.
+                        "mt-0.5 hidden text-[11px] font-medium leading-tight 2xl:block",
                         active ? "text-stamp-100" : "text-ink-faint",
                       )}
                     >
@@ -230,6 +235,38 @@ function StudioShell({
                 </button>
               );
             })}
+          </div>
+
+          {/* Third in the row because it is third in the work: make the clip on
+              one of the two pipelines, then come here to annotate it. It sits
+              OUTSIDE the tablist rather than being a third tab, because it
+              navigates to another page instead of swapping the panel below, and
+              a link answering to `role="tab"` lies to a screen reader about what
+              pressing it does. Styled as the row's third item all the same. */}
+          <Link
+            href="/nuggets"
+            className="focus-stamp group flex items-center gap-2.5 rounded-2xl border border-hairline bg-white px-4 py-2.5 text-left text-ink transition-all duration-200 hover:-translate-y-0.5 hover:border-stamp-300 hover:bg-stamp-50/50 active:scale-[0.98]"
+          >
+            <span className="text-lg leading-none">✨</span>
+            <span className="min-w-0">
+              <span className="block text-sm font-bold leading-tight">PopKit</span>
+              <span className="mt-0.5 hidden text-[11px] font-medium leading-tight text-ink-faint 2xl:block">
+                Add captions, medallions and arrows to a clip
+              </span>
+            </span>
+          </Link>
+          <Link
+            href="/freeform"
+            className="focus-stamp group flex items-center gap-2.5 rounded-2xl border border-hairline bg-white px-4 py-2.5 text-left text-ink transition-all duration-200 hover:-translate-y-0.5 hover:border-stamp-300 hover:bg-stamp-50/50 active:scale-[0.98]"
+          >
+            <span className="text-lg leading-none">🎛️</span>
+            <span className="min-w-0">
+              <span className="block text-sm font-bold leading-tight">Make anything</span>
+              <span className="mt-0.5 hidden text-[11px] font-medium leading-tight text-ink-faint 2xl:block">
+                Any image or video model, your own prompt
+              </span>
+            </span>
+          </Link>
           </div>
         </div>
 

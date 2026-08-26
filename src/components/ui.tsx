@@ -12,8 +12,10 @@ import {
   type ReactNode,
 } from "react";
 
-export const cx = (...parts: (string | false | null | undefined)[]) =>
-  parts.filter(Boolean).join(" ");
+import { HelpTip } from "./HelpTip";
+import { cx } from "./cx";
+
+export { cx };
 
 /* ========================= Platform shortcut ======================== */
 
@@ -96,18 +98,24 @@ export function Field({
   hint,
   children,
   badge,
+  help,
 }: {
   label: string;
   hint?: string;
   badge?: ReactNode;
   children: ReactNode;
+  /** Key into the help registry. Draws a "?" beside the label. */
+  help?: string;
 }) {
   return (
     <div className="group/field">
       <div className="mb-1.5 flex items-baseline justify-between gap-2">
-        <label className="text-[11px] font-bold uppercase tracking-[0.09em] text-ink-faint transition-colors group-focus-within/field:text-stamp-600">
-          {label}
-        </label>
+        <span className="flex min-w-0 items-center gap-1.5">
+          <label className="truncate text-[11px] font-bold uppercase tracking-[0.09em] text-ink-faint transition-colors group-focus-within/field:text-stamp-600">
+            {label}
+          </label>
+          {help && <HelpTip id={help} className="self-center" />}
+        </span>
         {badge}
       </div>
       {children}
@@ -125,18 +133,42 @@ export function Select({
   onChange,
   options,
   placeholder = "Choose…",
+  searchable = false,
+  searchPlaceholder = "Type to filter…",
 }: {
   value: string;
   onChange: (id: string) => void;
   options: SelectOption[];
   placeholder?: string;
+  /**
+   * Puts a filter box at the top of the open list. Worth it past a couple of
+   * dozen options; below that the box is more work than scanning.
+   */
+  searchable?: boolean;
+  searchPlaceholder?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
+  const [query, setQuery] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const listId = useId();
   const selected = options.find((o) => o.id === value);
+
+  /*
+   * The id is searched as well as the label. On the open bench the label is a
+   * friendly title ("Seedance 2.5 Text to Video") and the id is the fal
+   * endpoint ("bytedance/seedance-2.5/…"); people arrive knowing one or the
+   * other, and matching only the label loses everyone who knows the endpoint.
+   */
+  const shown = useMemo(() => {
+    if (!searchable || !query.trim()) return options;
+    const terms = query.trim().toLowerCase().split(/\s+/);
+    return options.filter((o) => {
+      const hay = `${o.label} ${o.id}`.toLowerCase();
+      return terms.every((t) => hay.includes(t));
+    });
+  }, [options, query, searchable]);
 
   useEffect(() => {
     if (!open) return;
@@ -154,12 +186,14 @@ export function Select({
 
   /** Opening always starts the highlight on the current selection. */
   const openList = () => {
+    setQuery("");
     setActive(Math.max(0, options.findIndex((o) => o.id === value)));
     setOpen(true);
   };
 
+  /** Indexes the *filtered* list — the only list the keyboard can see. */
   const commit = (idx: number) => {
-    const opt = options[idx];
+    const opt = shown[idx];
     if (opt) onChange(opt.id);
     setOpen(false);
   };
@@ -176,17 +210,21 @@ export function Select({
       setOpen(false);
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
-      setActive((i) => (i + 1) % options.length);
+      setActive((i) => (shown.length ? (i + 1) % shown.length : 0));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      setActive((i) => (i - 1 + options.length) % options.length);
+      setActive((i) => (shown.length ? (i - 1 + shown.length) % shown.length : 0));
     } else if (e.key === "Home") {
       e.preventDefault();
       setActive(0);
     } else if (e.key === "End") {
       e.preventDefault();
-      setActive(options.length - 1);
-    } else if (e.key === "Enter" || e.key === " ") {
+      setActive(Math.max(0, shown.length - 1));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      commit(active);
+    } else if (e.key === " " && !searchable) {
+      // Space types a space in the filter box; it only commits without one.
       e.preventDefault();
       commit(active);
     }
@@ -227,13 +265,43 @@ export function Select({
       </button>
 
       {open && (
-        <div
-          id={listId}
-          ref={listRef}
-          role="listbox"
-          className="absolute z-40 mt-2 max-h-72 w-full origin-top animate-pop-in overflow-y-auto rounded-2xl border border-hairline bg-white p-1.5 shadow-[0_20px_50px_-16px_rgba(14,14,16,0.28)]"
-        >
-          {options.map((o, i) => {
+        <div className="absolute z-40 mt-2 w-full origin-top animate-pop-in rounded-2xl border border-hairline bg-white p-1.5 shadow-[0_20px_50px_-16px_rgba(14,14,16,0.28)]">
+          {searchable && (
+            /*
+             * Outside the scrolling list, so it stays put while you page
+             * through four hundred models rather than scrolling away.
+             */
+            <div className="p-1 pb-1.5">
+              <input
+                autoFocus
+                value={query}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  // A stale highlight after filtering points at the wrong row,
+                  // and Enter would then pick something you cannot see.
+                  setActive(0);
+                }}
+                onKeyDown={onKeyDown}
+                placeholder={searchPlaceholder}
+                aria-label={searchPlaceholder}
+                aria-controls={listId}
+                className="focus-stamp w-full rounded-xl border border-hairline bg-white px-3 py-2 text-sm transition-colors focus:border-stamp-600"
+              />
+            </div>
+          )}
+
+          <div
+            id={listId}
+            ref={listRef}
+            role="listbox"
+            className="max-h-72 overflow-y-auto"
+          >
+          {searchable && !shown.length && (
+            <p className="px-3 py-4 text-center text-xs text-ink-faint">
+              Nothing matches &ldquo;{query.trim()}&rdquo;.
+            </p>
+          )}
+          {shown.map((o, i) => {
             const isSel = o.id === value;
             return (
               <div
@@ -262,6 +330,13 @@ export function Select({
               </div>
             );
           })}
+          </div>
+
+          {searchable && shown.length > 0 && shown.length < options.length && (
+            <p className="px-3 pb-1 pt-2 text-center text-[11px] tabular-nums text-ink-faint">
+              {shown.length} of {options.length}
+            </p>
+          )}
         </div>
       )}
     </div>
@@ -319,13 +394,20 @@ export function Switch({
   onChange,
   label,
   hint,
+  help,
 }: {
   checked: boolean;
   onChange: (v: boolean) => void;
   label: string;
   hint?: string;
+  help?: string;
 }) {
-  return (
+  /*
+   * The whole row is the switch, so the "?" cannot live inside it — a button
+   * inside a button is invalid, and clicking the tip would also toggle the
+   * setting. It sits over the row's top-right corner instead.
+   */
+  const row = (
     <button
       type="button"
       role="switch"
@@ -350,7 +432,16 @@ export function Switch({
         <span className="block text-sm font-semibold text-ink">{label}</span>
         {hint && <span className="mt-0.5 block text-xs leading-relaxed text-ink-faint">{hint}</span>}
       </span>
+      {help && <span aria-hidden="true" className="w-4 shrink-0" />}
     </button>
+  );
+
+  if (!help) return row;
+  return (
+    <div className="relative">
+      {row}
+      <HelpTip id={help} className="absolute right-3 top-3.5" />
+    </div>
   );
 }
 

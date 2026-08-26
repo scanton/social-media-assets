@@ -57,7 +57,7 @@ export function HandwrittenMessage() {
     "focus-stamp w-full rounded-2xl border border-hairline bg-white px-4 py-3 text-sm transition-colors focus:border-stamp-600";
 
   return (
-    <Panel title="Handwritten message" aside={<span className="sticker">Optional</span>}>
+    <Panel title="Handwritten message" help="hand.panel" aside={<span className="sticker">Optional</span>}>
       <div className="space-y-4">
         <p className="text-xs leading-relaxed text-ink-faint">
           {spread ? (
@@ -77,7 +77,7 @@ export function HandwrittenMessage() {
 
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="space-y-4">
-            <Field label="Message">
+            <Field label="Message" help="hand.message">
               <textarea
                 value={spec.message}
                 onChange={(e) => patch({ message: e.target.value })}
@@ -87,7 +87,7 @@ export function HandwrittenMessage() {
               />
             </Field>
 
-            <Field label="Signature">
+            <Field label="Signature" help="hand.signature">
               <input
                 value={spec.signature}
                 onChange={(e) => patch({ signature: e.target.value })}
@@ -98,7 +98,7 @@ export function HandwrittenMessage() {
           </div>
 
           <div className="space-y-4">
-            <Field label="Handwriting" hint="Grouped by how the hand reads.">
+            <Field label="Handwriting" help="hand.style" hint="Grouped by how the hand reads.">
               <Select
                 value={spec.styleId}
                 onChange={(styleId) => patch({ styleId })}
@@ -112,14 +112,14 @@ export function HandwrittenMessage() {
             </Field>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Pen">
+              <Field label="Pen" help="hand.ink">
                 <Select
                   value={spec.inkId}
                   onChange={(inkId) => patch({ inkId })}
                   options={INK_COLOURS.map((c) => ({ id: c.id, label: c.label, emoji: c.emoji }))}
                 />
               </Field>
-              <Field label="Written">
+              <Field label="Written" help="hand.placement">
                 <Select
                   value={spec.placementId}
                   onChange={(placementId) => patch({ placementId })}
@@ -133,7 +133,7 @@ export function HandwrittenMessage() {
               </Field>
             </div>
 
-            <Field label="Extra direction" hint="Optional. Anything else about the writing.">
+            <Field label="Extra direction" help="scene.extra" hint="Optional. Anything else about the writing.">
               <textarea
                 value={spec.notes}
                 onChange={(e) => patch({ notes: e.target.value })}

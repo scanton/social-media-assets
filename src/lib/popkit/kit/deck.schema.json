@@ -1,0 +1,474 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://heartstamp.com/schemas/popkit-deck-v1.json",
+  "title": "POP KIT Deck JSON",
+  "description": "Contract between the Nugget Builder (assets tool) and the v10 render route. Base shape from references/motion-and-feedback.md; additions are marked in each description.",
+  "type": "object",
+  "required": [
+    "v",
+    "id",
+    "canvas",
+    "fps",
+    "video",
+    "beats"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "v": {
+      "const": 1,
+      "description": "Schema version, so the render route can refuse a deck it predates."
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "canvas": {
+      "enum": [
+        "reels",
+        "youtube",
+        "square",
+        "ios",
+        "desktop"
+      ],
+      "description": "A preset in the kit's tokens.js CANVAS table."
+    },
+    "fps": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "video": {
+      "type": "object",
+      "description": "ADDED in v10. The paired video, same basename as this file. Duration and dimensions let the render route reject a deck paired with the wrong clip.",
+      "required": [
+        "filename",
+        "duration",
+        "width",
+        "height"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "filename": {
+          "type": "string",
+          "minLength": 1
+        },
+        "duration": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "width": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "height": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "beats": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/beat"
+      }
+    },
+    "protectedRegions": {
+      "type": "array",
+      "description": "ADDED in v10. Rectangles an arrow tip must not land on without the wider clearance arrows.md requires.",
+      "items": {
+        "$ref": "#/$defs/protectedRegion"
+      }
+    }
+  },
+  "$defs": {
+    "anchor": {
+      "type": "object",
+      "required": [
+        "x",
+        "y"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "y": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "beat": {
+      "type": "object",
+      "required": [
+        "id",
+        "t",
+        "out",
+        "anchor"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "t": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Entrance, seconds from the start of the video."
+        },
+        "out": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "ADDED in v10. Explicit exit in seconds, so the render route never infers dwell."
+        },
+        "variant": {
+          "type": "string",
+          "description": "Template variant id, e.g. M01. Carried through from the v9 example."
+        },
+        "text": {
+          "type": "string",
+          "maxLength": 120,
+          "description": "Capped at 120 characters per annotation-system.md."
+        },
+        "caption": {
+          "type": "string",
+          "description": "ADDED in v10. Caption shell id, catalogue page K."
+        },
+        "colorway": {
+          "type": "string",
+          "description": "ADDED in v10. One of the 8 colourways."
+        },
+        "align": {
+          "enum": [
+            "left",
+            "center",
+            "right"
+          ],
+          "description": "CLARIFIED in v10. Present in the v9 example but not a compose() option; compose() ignores it. Defined here as which point on the composed cluster the anchor refers to: its left edge, centre, or right edge, vertically centred."
+        },
+        "anchor": {
+          "$ref": "#/$defs/anchor"
+        },
+        "rotate": {
+          "type": "number"
+        },
+        "medallion": {
+          "type": "object",
+          "description": "ADDED in v10. Mirrors compose()'s left/right medallion option; a catalogue ID alone cannot rebuild the call.",
+          "required": [
+            "side",
+            "frame"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "side": {
+              "enum": [
+                "left",
+                "right"
+              ]
+            },
+            "frame": {
+              "type": "string"
+            },
+            "glyph": {
+              "type": "string"
+            },
+            "borders": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "fill": {
+              "type": "string"
+            },
+            "media": {
+              "type": "string",
+              "description": "ADDED in v10. A picture or clip in the shape instead of a flat fill, which media-wells.md calls a well. Always a data URI: there is no asset server, and a deck pointing at one would stop rendering the moment it moved."
+            },
+            "mediaFit": {
+              "type": "string",
+              "description": "ADDED in v10. preserveAspectRatio for the media. Defaults to xMidYMid slice."
+            },
+            "mediaIsVideo": {
+              "type": "boolean",
+              "description": "ADDED in v10. True when media is a clip. An SVG <image> cannot hold one, so a video well is drawn by the renderer rather than by compose(). The skill's render route refuses a deck containing one."
+            },
+            "glyphFrac": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 2,
+              "description": "ADDED in v10. Glyph size as a fraction of the frame's safe box. compose() defaults to 0.86, which on a circle leaves the artwork under half the medallion diameter once the glyph SVG's own halo margin is accounted for."
+            }
+          }
+        },
+        "arrows": {
+          "type": "array",
+          "description": "ADDED in v10. Mirrors compose()'s arrows array. Field names match references/compose-api.md exactly.",
+          "items": {
+            "type": "object",
+            "required": [
+              "name"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "from": {
+                "enum": [
+                  "left",
+                  "right"
+                ]
+              },
+              "edge": {
+                "enum": [
+                  "top",
+                  "bottom",
+                  "left",
+                  "right"
+                ]
+              },
+              "at01": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "anchor": {
+                "type": "number"
+              },
+              "size": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "ADDED in v10. Arrow size in canvas px, overriding scale. A standalone arrow has no medallion to be a multiple of."
+              },
+              "scale": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "gap": {
+                "type": "number",
+                "minimum": 0
+              },
+              "over": {
+                "type": "boolean",
+                "description": "arrows.md: a popup arrow should usually set this false so its tail tucks under the caption. Superseded by layer, which is read first; kept because v9 decks set it."
+              },
+              "layer": {
+                "enum": [
+                  "under",
+                  "mid",
+                  "over"
+                ],
+                "description": "ADDED in v10. Draw layer. under = behind the whole caption (the old over:false), which swallows an arrow lying mostly over the shell. mid = above the shell, below the medallion, still beneath the copy. over = above everything."
+              }
+            }
+          }
+        },
+        "cue": {
+          "enum": [
+            "pop-in",
+            "pop-in-alt",
+            "pop-out",
+            "stamp",
+            "paper-slide",
+            "seal",
+            "chime",
+            "tick",
+            "soft-error",
+            "silent"
+          ],
+          "description": "One of the nine cues in the sound pack, or none."
+        },
+        "haptic": {
+          "const": "none",
+          "description": "Pinned. motion-and-feedback.md: haptics are 'only in the product, never on a social asset'. Kept for forward compatibility only."
+        },
+        "override": {
+          "type": "object",
+          "description": "ADDED in v10. Records a dwell trimmed below its computed floor. motion-and-feedback.md calls such a trim 'a flagged compromise, not routine practice', so it is recorded rather than applied silently.",
+          "required": [
+            "dwellFloor"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "dwellFloor": {
+              "type": "object",
+              "required": [
+                "computed",
+                "actual"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "computed": {
+                  "type": "number"
+                },
+                "actual": {
+                  "type": "number"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "maxTextW": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "ADDED in v10. Wrap width in canvas px; compose()'s main size dial. Defaults to 62% of canvas width, which overflows a vertical frame once a medallion and arrow are attached."
+        },
+        "fontSize": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "ADDED in v10. Overrides the canvas base font size."
+        },
+        "overlap": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 0.9,
+          "description": "ADDED in v10. How far the medallion laps over the caption end; compose() defaults to 0.30. Moves the medallion along the caption without changing its distance from the text."
+        },
+        "captionPadL": {
+          "type": "number",
+          "minimum": 0,
+          "description": "ADDED in v10. Caption padding on the left end only, in px. Sets the medallion-to-text gap, which is otherwise constant regardless of medallion size. Per-end so closing the gap on the medallion's side does not drag the far end in with it."
+        },
+        "captionPadR": {
+          "type": "number",
+          "minimum": 0,
+          "description": "ADDED in v10. Caption padding on the right end only, in px. See captionPadL."
+        },
+        "medallionScale": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 4,
+          "description": "ADDED in v10. Medallion diameter as a multiple of caption height. compose() defaults to 1.52; the builder opens beats at 1.15. Carried here so the render route draws the size that was approved rather than the kit default."
+        },
+        "well": {
+          "type": "object",
+          "description": "ADDED in v10. A media well: a framed hole holding a picture or a clip, drawn by media.js rather than compose(). Wells are not square, so a medallion cannot express one.",
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "template": {
+              "type": "string",
+              "description": "W01..W10, when it came from one of the named formats."
+            },
+            "shape": {
+              "enum": [
+                "disc",
+                "rounded",
+                "wide",
+                "portrait",
+                "square",
+                "polaroid",
+                "crt"
+              ],
+              "description": "Template wells only. Ignored when frame is set."
+            },
+            "kind": {
+              "enum": [
+                "image",
+                "video"
+              ]
+            },
+            "src": {
+              "type": "string",
+              "description": "The picture or clip, as a data URI. There is no asset server."
+            },
+            "poster": {
+              "type": "string",
+              "description": "A still for a clip, used anywhere video cannot be drawn."
+            },
+            "caption": {
+              "type": "string",
+              "maxLength": 120
+            },
+            "kicker": {
+              "type": "string"
+            },
+            "badge": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "text": {
+                  "type": "string"
+                },
+                "bg": {
+                  "type": "string"
+                }
+              }
+            },
+            "size": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 4
+            },
+            "tilt": {
+              "type": "number"
+            },
+            "frame": {
+              "type": "string",
+              "description": "ADDED in v10. A shape well: one of the eighteen medallion frames holding the media, drawn by compose() rather than media.js. Mutually exclusive with template."
+            }
+          }
+        }
+      }
+    },
+    "protectedRegion": {
+      "type": "object",
+      "required": [
+        "id",
+        "x",
+        "y",
+        "w",
+        "h"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "x": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "y": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "w": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        },
+        "h": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        },
+        "from": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Seconds. Omit both from and to for a mark on screen the whole time."
+        },
+        "to": {
+          "type": "number",
+          "minimum": 0
+        },
+        "label": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

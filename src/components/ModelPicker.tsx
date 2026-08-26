@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { MODEL_SLOTS, type ModelSlotId } from "@/lib/models";
 import { loadCatalog, useModelChoices, type CatalogEntry } from "@/lib/model-prefs";
 import { Select, cx } from "./ui";
+import { HelpTip } from "./HelpTip";
 
 /**
  * Lets a step run on a different fal model.
@@ -85,11 +86,13 @@ export function ModelPicker({ slot }: { slot: ModelSlotId }) {
      * card (z-20) while staying under the sticky header (z-40).
      */
     <div className="relative z-30 rounded-2xl border border-hairline bg-canvas-2/60 p-3">
+      {/* Outside the header button, which is the whole row. */}
+      <div className="flex items-center gap-2">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="focus-stamp flex w-full items-center gap-2 text-left"
+        className="focus-stamp flex min-w-0 flex-1 items-center gap-2 text-left"
       >
         <span className="min-w-0 flex-1">
           <span className="block text-[10px] font-bold uppercase tracking-[0.09em] text-ink-faint">
@@ -115,6 +118,8 @@ export function ModelPicker({ slot }: { slot: ModelSlotId }) {
           ▾
         </span>
       </button>
+      <HelpTip id={`model.${slot}`} />
+      </div>
 
       {open && (
         <div className="mt-3 animate-rise space-y-2.5">

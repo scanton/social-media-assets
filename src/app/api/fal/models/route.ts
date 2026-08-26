@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { currentUser } from "@/auth";
-import { compatibleModels } from "@/lib/model-catalog";
+import { categoryModels, compatibleModels, isOpenCategory } from "@/lib/model-catalog";
 import { MODEL_SLOTS, isModelSlotId } from "@/lib/models";
 
 /**
@@ -16,7 +16,30 @@ import { MODEL_SLOTS, isModelSlotId } from "@/lib/models";
 export async function GET(req: Request) {
   if (!(await currentUser())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const slot = new URL(req.url).searchParams.get("slot");
+  const params = new URL(req.url).searchParams;
+
+  /*
+   * Two ways to ask. A slot wants the models that can take a specific payload,
+   * which is what the guided pipelines need. A category wants everything there
+   * is, which is what the freeform page needs: it builds its controls from
+   * whatever the chosen model declares rather than requiring a fixed shape.
+   */
+  const category = params.get("category");
+  if (category) {
+    if (!isOpenCategory(category)) {
+      return NextResponse.json({ error: `Unknown category: ${category}` }, { status: 400 });
+    }
+    try {
+      return NextResponse.json(
+        { category, models: await categoryModels(category), partial: false },
+        { headers: { "Cache-Control": "private, max-age=300" } },
+      );
+    } catch {
+      return NextResponse.json({ category, models: [], partial: true });
+    }
+  }
+
+  const slot = params.get("slot");
   if (!isModelSlotId(slot)) {
     return NextResponse.json({ error: `Unknown slot: ${slot}` }, { status: 400 });
   }

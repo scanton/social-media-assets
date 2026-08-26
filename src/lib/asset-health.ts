@@ -169,7 +169,14 @@ export function useAssetHealth(url: string): AssetHealth {
 }
 
 const getGone = () => goneSnapshot;
-const serverGone = (): string[] => [];
+/*
+ * One frozen array, not a fresh `[]` per call. useSyncExternalStore compares
+ * server and client snapshots by identity, so returning a new empty array each
+ * time reads as "changed" on every render and React warns about the loop it
+ * would cause.
+ */
+const NONE_GONE: string[] = [];
+const serverGone = (): string[] => NONE_GONE;
 
 /** URLs fal has confirmed it no longer has. Safe to remove. */
 export function useExpiredUrls(): string[] {

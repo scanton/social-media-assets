@@ -60,8 +60,9 @@ export function Step3Motion() {
     <div className="space-y-8">
       <SectionHead
         step={3}
+        help="step.motion"
         title="Make it move"
-        blurb="Turn the still into a scroll-stopping clip with Seedance 2.0. Pick a motion — with an inside spread uploaded, the card can open on camera and reveal it."
+        blurb="Turn the still into a scroll-stopping clip with Seedance 2.5. Pick a motion — with an inside spread uploaded, the card can open on camera and reveal it."
       />
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
@@ -81,7 +82,7 @@ export function Step3Motion() {
 
           <ModelPicker slot={videoSlot} />
 
-          <Panel title="Motion" aside={<span className="sticker">{motions.length} options</span>}>
+          <Panel title="Motion" help="motion.motion" aside={<span className="sticker">{motions.length} options</span>}>
             <div className="space-y-4">
               <div>
                 <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.09em] text-ink-faint">
@@ -146,17 +147,17 @@ export function Step3Motion() {
             </div>
           </Panel>
 
-          <Panel title="Output">
+          <Panel title="Output" help="video.output">
             <div className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-3">
-                <Field label="Resolution">
+                <Field label="Resolution" help="video.resolution">
                   <Select
                     value={s.video.resolution}
                     onChange={(v) => s.setVideo({ resolution: v as typeof s.video.resolution })}
                     options={VIDEO_RESOLUTIONS.map((r) => ({ id: r, label: r.toUpperCase() }))}
                   />
                 </Field>
-                <Field label="Duration">
+                <Field label="Duration" help="video.duration">
                   <Select
                     value={s.video.duration}
                     onChange={(duration) => s.setVideo({ duration })}
@@ -166,7 +167,7 @@ export function Step3Motion() {
                     }))}
                   />
                 </Field>
-                <Field label="Aspect">
+                <Field label="Aspect" help="video.aspect">
                   <Select
                     value={s.video.aspectRatio}
                     onChange={(v) => s.setVideo({ aspectRatio: v as typeof s.video.aspectRatio })}
@@ -187,6 +188,7 @@ export function Step3Motion() {
                 checked={s.base.logo && stampable}
                 onChange={(logo) => s.setBase({ logo })}
                 label="Stamp the HeartStamp logo"
+                help="video.logo"
                 hint={
                   stampable
                     ? "Redraws the finished clip through a canvas with the emblem burned into the bottom-right corner. Runs in this tab and takes about as long as the clip."
@@ -198,10 +200,11 @@ export function Step3Motion() {
                 checked={s.video.generateAudio}
                 onChange={(generateAudio) => s.setVideo({ generateAudio })}
                 label="Generate audio"
+                help="video.audio"
                 hint="Seedance can score the clip with ambience and effects at no extra cost. Off is usually right for social — you'll drop a trending sound over it anyway."
               />
 
-              <Field label="Extra direction" hint="Optional notes on the motion.">
+              <Field label="Extra direction" help="scene.extra" hint="Optional notes on the motion.">
                 <textarea
                   value={s.video.notes}
                   onChange={(e) => s.setVideo({ notes: e.target.value })}
@@ -213,7 +216,7 @@ export function Step3Motion() {
             </div>
           </Panel>
 
-          <Panel title="Source still" aside={<span className="sticker">{stills.length}</span>}>
+          <Panel title="Source still" help="video.still" aside={<span className="sticker">{stills.length}</span>}>
             {stills.length ? (
               <div className="grid max-h-80 grid-cols-3 gap-2.5 overflow-y-auto pr-1">
                 {stills.map((a) => (

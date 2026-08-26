@@ -5,15 +5,18 @@ import { AssetTile, PendingTile } from "../AssetTile";
 import { useStudio } from "../studio-store";
 import type { Asset, AssetKind } from "@/lib/studio-types";
 import { cx } from "../ui";
+import { HelpTip } from "../HelpTip";
 
 export function SectionHead({
   step,
   title,
   blurb,
+  help,
 }: {
   step: number;
   title: string;
   blurb: string;
+  help?: string;
 }) {
   // Printed cards run a scene step that digital cards skip.
   const { surface } = useStudio();
@@ -29,9 +32,12 @@ export function SectionHead({
           Step {step} of {total}
         </span>
       </div>
-      <h2 className="mt-3 font-display text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">
-        {title}
-      </h2>
+      <div className="mt-3 flex items-center gap-2.5">
+        <h2 className="font-display text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">
+          {title}
+        </h2>
+        {help && <HelpTip id={help} className="h-5 w-5 text-xs" />}
+      </div>
       <p className="mt-2.5 max-w-2xl text-sm leading-relaxed text-ink-soft">{blurb}</p>
     </header>
   );
@@ -105,8 +111,11 @@ export function Panel({
   aside,
   locked,
   lockNote,
+  help,
 }: {
   title: string;
+  /** Key into the help registry. Draws a "?" beside the panel's title. */
+  help?: string;
   children: ReactNode;
   aside?: ReactNode;
   /** Greys the controls out and takes them out of the tab order entirely. */
@@ -117,7 +126,10 @@ export function Panel({
   return (
     <section className="card-surface p-5 sm:p-6">
       <div className="mb-5 flex items-center justify-between gap-3">
-        <h3 className="font-display text-base font-bold text-ink">{title}</h3>
+        <span className="flex min-w-0 items-center gap-2">
+          <h3 className="font-display text-base font-bold text-ink">{title}</h3>
+          {help && <HelpTip id={help} />}
+        </span>
         {aside}
       </div>
       {lockNote && (

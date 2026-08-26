@@ -1,0 +1,21 @@
+{
+  "source": "heartstamp-pop-kit_v10.skill",
+  "syncedFiles": {
+    "compose.js": "ba98b8925a4b",
+    "tokens.js": "d7acf35a10c0",
+    "frames.js": "dbbb3b152fe2",
+    "finish.js": "07af4d643a49",
+    "arrows2.js": "0eef3d149b01",
+    "captions.js": "a969bab39e84",
+    "measure.js": "79a3ebb7cff6",
+    "feedback.js": "da671ec732ea",
+    "motion.js": "34d37e1fc04e",
+    "media.js": "765eabde7404",
+    "deck-validate.js": "3e395247fe83",
+    "deck.schema.json": "25ac4bd6f457",
+    "widths.json": "15e17002b459",
+    "objects-rich.js": "51ea670844a6",
+    "categories-rich.js": "5fec89d9a63f",
+    "categories-rich-2.js": "702bd4f0b4b7"
+  }
+}

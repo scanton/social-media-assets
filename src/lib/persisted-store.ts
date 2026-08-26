@@ -11,6 +11,8 @@ import {
   ETHNICITIES,
   FRAMINGS,
   IMAGE_RESOLUTIONS,
+  VIDEO_DURATIONS,
+  VIDEO_RESOLUTIONS,
   resolveDetail,
   SUBJECT_AGES,
   SUBJECT_GENDERS,
@@ -280,6 +282,16 @@ function sanitize(p: RawPersisted): Persisted {
       motionId: motionUsable(p.video.motionId, p.assets, p.surface)
         ? p.video.motionId
         : firstUsableMotion(p.assets, p.surface),
+      // A tier that has since left the list, "4k" being the one that just did,
+      // would otherwise sit in the store selecting nothing: the control has no
+      // such option to show, and the value still reaches the model to be
+      // coerced. Falling back is the honest read of "this is no longer offered".
+      resolution: (VIDEO_RESOLUTIONS as readonly string[]).includes(p.video.resolution)
+        ? p.video.resolution
+        : DEFAULT_VIDEO.resolution,
+      duration: (VIDEO_DURATIONS as readonly string[]).includes(p.video.duration)
+        ? p.video.duration
+        : DEFAULT_VIDEO.duration,
     },
   };
 }

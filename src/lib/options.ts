@@ -2164,8 +2164,23 @@ export const MOTIONS: (Option & {
   },
 ];
 
-export const VIDEO_RESOLUTIONS = ["480p", "720p", "1080p", "4k"] as const;
-export const VIDEO_DURATIONS = ["auto", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15"] as const;
+/**
+ * Video output tiers.
+ *
+ * 4K is gone: Seedance 2.5, the shipped video model, tops out at 1080p. Offering
+ * a tier the default model cannot produce means the adapter quietly coerces it
+ * on the way out, and a silently downgraded render is worse than a shorter list.
+ * A model that does offer 4K still gets the request through its own controls.
+ */
+export const VIDEO_RESOLUTIONS = ["480p", "720p", "1080p"] as const;
+
+/**
+ * Up to 30 seconds, which is what Seedance 2.5 accepts; 2.0 stopped at 15. A
+ * model with a shorter ceiling gets the nearest legal value from the schema
+ * adapter rather than an error, so the longer list costs nothing on the models
+ * that cannot use it.
+ */
+export const VIDEO_DURATIONS = ["auto", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30"] as const;
 
 /**
  * The HeartStamp emblem is burned into the still before it reaches Seedance, so

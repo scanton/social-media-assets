@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Vendored POP KIT source. Copied verbatim out of the .skill package by
+    // scripts/sync-popkit.mjs and kept byte-identical so `--check` can prove it
+    // has not forked; linting it would only invite edits that break that.
+    "src/lib/popkit/kit/**",
   ]),
 ]);
 

@@ -92,6 +92,7 @@ export function OneShot() {
       <SectionHead
         step={2}
         title="Build the video"
+        help="step.oneShot"
         blurb={
           isPrint
             ? "Describe the scene and hand Seedance your card artwork in a single pass. It builds the whole shot around the real printed panels, so nothing has to be animated from an invented still. The logo is burned into the finished clip afterwards."
@@ -150,6 +151,7 @@ export function OneShot() {
 
           <Panel
             title="The scene"
+            help="scene.panel"
             locked={locked}
             lockNote={
               locked ? (
@@ -172,7 +174,7 @@ export function OneShot() {
             }
           >
             <div className="space-y-4">
-              <Field label="Audience">
+              <Field label="Audience" help="scene.audience">
                 <div className="flex flex-wrap gap-2">
                   {AUDIENCES.map((a) => (
                     <Chip
@@ -188,14 +190,14 @@ export function OneShot() {
               </Field>
 
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Device">
+                <Field label="Device" help="scene.device">
                   <Select
                     value={base.deviceId}
                     onChange={(deviceId) => s.setBase({ deviceId })}
                     options={devices.map((d) => ({ id: d.id, label: d.label, emoji: d.emoji }))}
                   />
                 </Field>
-                <Field label="Setting">
+                <Field label="Setting" help="scene.setting">
                   <Select
                     value={base.sceneId}
                     onChange={(sceneId) => s.setBase({ sceneId })}
@@ -209,14 +211,14 @@ export function OneShot() {
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Camera angle">
+                <Field label="Camera angle" help="scene.angleOne">
                   <Select
                     value={base.angleIds[0] ?? "pov"}
                     onChange={(id) => s.setBase({ angleIds: [id] })}
                     options={ANGLES.map((a) => ({ id: a.id, label: a.label, emoji: a.emoji }))}
                   />
                 </Field>
-                <Field label="How close">
+                <Field label="How close" help="scene.framing">
                   <Select
                     value={base.framingId}
                     onChange={(framingId) => s.setBase({ framingId })}
@@ -231,14 +233,14 @@ export function OneShot() {
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Lighting">
+                <Field label="Lighting" help="scene.lighting">
                   <Select
                     value={base.lightingId}
                     onChange={(lightingId) => s.setBase({ lightingId })}
                     options={LIGHTING.map((l) => ({ id: l.id, label: l.label, emoji: l.emoji }))}
                   />
                 </Field>
-                <Field label="Film look">
+                <Field label="Film look" help="scene.look">
                   <Select
                     value={base.lookId}
                     onChange={(lookId) => s.setBase({ lookId })}
@@ -247,7 +249,7 @@ export function OneShot() {
                 </Field>
               </div>
 
-              <Field label="Who's in frame">
+              <Field label="Who's in frame" help="scene.presence">
                 <Select
                   value={base.presenceId}
                   onChange={(presenceId) => s.setBase({ presenceId })}
@@ -261,7 +263,7 @@ export function OneShot() {
 
           <DetailsPanel />
 
-          <Panel title="Motion" aside={<span className="sticker">{motions.length} options</span>}>
+          <Panel title="Motion" help="motion.motion" aside={<span className="sticker">{motions.length} options</span>}>
             <div className="grid grid-cols-2 gap-2">
               {motions.map((m) => (
                 <Chip
@@ -307,17 +309,17 @@ export function OneShot() {
             )}
           </Panel>
 
-          <Panel title="Output">
+          <Panel title="Output" help="video.output">
             <div className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-3">
-                <Field label="Resolution">
+                <Field label="Resolution" help="video.resolution">
                   <Select
                     value={video.resolution}
                     onChange={(v) => s.setVideo({ resolution: v as typeof video.resolution })}
                     options={VIDEO_RESOLUTIONS.map((r) => ({ id: r, label: r.toUpperCase() }))}
                   />
                 </Field>
-                <Field label="Duration">
+                <Field label="Duration" help="video.duration">
                   <Select
                     value={video.duration}
                     onChange={(duration) => s.setVideo({ duration })}
@@ -327,7 +329,7 @@ export function OneShot() {
                     }))}
                   />
                 </Field>
-                <Field label="Orientation">
+                <Field label="Orientation" help="video.aspect">
                   <Select
                     value={video.aspectRatio === "auto" ? "9:16" : video.aspectRatio}
                     onChange={(v) => s.setVideo({ aspectRatio: v as typeof video.aspectRatio })}
@@ -347,6 +349,7 @@ export function OneShot() {
                 checked={base.logo && stampable}
                 onChange={(logo) => s.setBase({ logo })}
                 label="Stamp the HeartStamp logo"
+                help="video.logo"
                 hint={
                   stampable
                     ? "Redraws the finished clip through a canvas with the emblem burned into the bottom-right corner, exactly where Flow 1 puts it. Runs in this tab and takes about as long as the clip."
@@ -358,10 +361,11 @@ export function OneShot() {
                 checked={video.generateAudio}
                 onChange={(generateAudio) => s.setVideo({ generateAudio })}
                 label="Generate audio"
+                help="video.audio"
                 hint="Ambience and effects at no extra cost. Usually off for social — you'll drop a trending sound over it."
               />
 
-              <Field label="Extra direction" hint="Applies to both the scene and the motion.">
+              <Field label="Extra direction" help="scene.extra" hint="Applies to both the scene and the motion.">
                 <textarea
                   value={video.notes}
                   onChange={(e) => s.setVideo({ notes: e.target.value })}

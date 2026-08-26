@@ -33,7 +33,7 @@ export function SubjectFields() {
   return (
     <>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Primary subject">
+        <Field label="Primary subject" help="styling.subject">
           <Select
             value={base.genderId}
             onChange={(genderId) => s.setBase({ genderId: genderId as SubjectGenderId })}
@@ -45,7 +45,7 @@ export function SubjectFields() {
             }))}
           />
         </Field>
-        <Field label="Age">
+        <Field label="Age" help="styling.age">
           <Select
             value={base.ageId}
             onChange={(ageId) => s.setBase({ ageId: ageId as SubjectAgeId })}
@@ -56,6 +56,7 @@ export function SubjectFields() {
 
       <Field
         label="Ethnicity"
+        help="styling.ethnicity"
         hint="No faces are ever shown, so this carries through skin tone, hands and hair."
       >
         <Select
@@ -88,6 +89,7 @@ export function DetailsPanel() {
   return (
     <Panel
       title="Styling details"
+      help="styling.details"
       aside={
         <span className="sticker">{chosen ? `${chosen} set` : "All optional"}</span>
       }
@@ -108,7 +110,7 @@ export function DetailsPanel() {
             const value = resolveDetail(category, base.details, gender, age);
 
             return (
-              <Field key={category.id} label={category.label} hint={category.hint}>
+              <Field key={category.id} label={category.label} help={`styling.detail.${category.id}`} hint={category.hint}>
                 <Select
                   value={value}
                   onChange={(id) =>

@@ -1,5 +1,5 @@
 import "server-only";
-import { MODEL_SLOTS, type ModelSlot, type ModelSlotId } from "@/lib/models";
+import { MODEL_SLOTS, type ModelSlot, type ModelSlotId, inputAliases } from "@/lib/models";
 import { readSupports, type ModelSupports } from "@/lib/model-input";
 
 /**
@@ -59,6 +59,9 @@ export type InputSchema = {
 
 export type JsonSchemaProp = {
   type?: string;
+  /** fal writes one for most inputs; the freeform page shows it as the hint. */
+  description?: string;
+  title?: string;
   enum?: unknown[];
   default?: unknown;
   maximum?: number;
@@ -159,7 +162,7 @@ export async function compatibleModels(slot: ModelSlot): Promise<CatalogModel[]>
 
       const schema = await fetchInputSchema(model.id);
       if (!schema) continue;
-      if (!slot.requires.every((prop) => prop in schema.properties)) continue;
+      if (!slot.requires.every((prop) => inputAliases(prop).some((a) => a in schema.properties))) continue;
       // A required input we have no value for would fail at submit time.
       if (schema.required.some((prop) => !KNOWN_INPUTS.has(prop))) continue;
 
@@ -226,11 +229,70 @@ export async function isModelAllowed(modelId: string, slot: ModelSlotId): Promis
 
   const schema = await fetchInputSchema(modelId);
   if (!schema) return false;
-  if (!definition.requires.every((prop) => prop in schema.properties)) return false;
+  if (!definition.requires.every((prop) => inputAliases(prop).some((a) => a in schema.properties))) return false;
   if (schema.required.some((prop) => !KNOWN_INPUTS.has(prop))) return false;
 
   // Category membership is the guard that keeps this from being an open proxy
   // to all 1,400 fal endpoints — a matching schema alone is not enough.
   const inCategory = (await fetchCategory(definition.category)).filter(usable);
   return inCategory.some((m) => m.id === modelId);
+}
+
+
+/* --------------------------- the open catalogue --------------------------- */
+
+/**
+ * The categories the freeform page may reach.
+ *
+ * The same guard the slots rely on, written down explicitly: a matching schema
+ * alone is not enough to make something safe to proxy, and fal has around 1,400
+ * endpoints. These four are the media ones this product is about.
+ */
+export const OPEN_CATEGORIES = [
+  "text-to-image",
+  "image-to-image",
+  "text-to-video",
+  "image-to-video",
+] as const;
+
+export type OpenCategory = (typeof OPEN_CATEGORIES)[number];
+
+export const isOpenCategory = (v: unknown): v is OpenCategory =>
+  typeof v === "string" && (OPEN_CATEGORIES as readonly string[]).includes(v);
+
+/**
+ * Every usable model in a category, with no schema filtering.
+ *
+ * The slots ask `compatibleModels` for the ones that can take a specific
+ * payload. This is the other question: what is there? The freeform page builds
+ * its controls from whatever the chosen model actually declares, so a model
+ * that takes an unusual set of inputs is interesting rather than disqualified.
+ *
+ * No per-model schema fetch here either, which is what makes it quick: 200
+ * models is 200 outbound requests, and the schema is only needed once someone
+ * has picked one.
+ */
+export async function categoryModels(category: OpenCategory): Promise<CatalogModel[]> {
+  const raw = (await fetchCategory(category)).filter(usable).sort(newestFirst);
+  return raw.map((m) => ({
+    id: m.id as string,
+    title: typeof m.title === "string" && m.title ? m.title : (m.id as string),
+    group: typeof m.group?.label === "string" ? m.group.label : undefined,
+    description: typeof m.shortDescription === "string" ? m.shortDescription.trim() : undefined,
+    thumbnailUrl: typeof m.thumbnailUrl === "string" ? m.thumbnailUrl : undefined,
+    isDefault: false,
+    supports: {
+      resolution: false, duration: false, aspectRatio: false,
+      audio: false, imageSize: false, numImages: false,
+    },
+  }));
+}
+
+/** True when the model really is in one of the open categories. */
+export async function isModelInOpenCategory(modelId: string): Promise<boolean> {
+  for (const category of OPEN_CATEGORIES) {
+    const inIt = (await fetchCategory(category)).filter(usable);
+    if (inIt.some((m) => m.id === modelId)) return true;
+  }
+  return false;
 }

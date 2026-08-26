@@ -33,6 +33,30 @@ export type ModelSlot = {
   fallback: string;
 };
 
+/**
+ * Other names for the same input.
+ *
+ * A slot says it needs `video_urls`; Seedance calls it that, and Wan, MiniMax
+ * and Vidu call the identical thing `reference_video_urls`. Matching on the
+ * literal name excluded every one of them from the digital-card pipeline even
+ * though they do exactly the job, which read as "only Seedance supports this"
+ * when the truth was "only Seedance spells it our way".
+ *
+ * Aliases are same-shape only. Every name here is an array of strings, like the
+ * canonical one, so nothing needs converting when it is renamed. A singular
+ * `video_reference_url` is a different shape and deliberately absent: renaming
+ * an array onto a string field would submit something the model cannot read.
+ */
+export const INPUT_ALIASES: Record<string, string[]> = {
+  image_urls: ["image_urls", "reference_image_urls"],
+  video_urls: ["video_urls", "reference_video_urls"],
+};
+
+/** Every name a model might use for this input, canonical first. */
+export function inputAliases(key: string): string[] {
+  return INPUT_ALIASES[key] ?? [key];
+}
+
 export const MODEL_SLOTS: Record<ModelSlotId, ModelSlot> = {
   baseImage: {
     id: "baseImage",
@@ -58,7 +82,7 @@ export const MODEL_SLOTS: Record<ModelSlotId, ModelSlot> = {
     blurb: "Animates the finished still into a clip.",
     category: "image-to-video",
     requires: ["prompt", "image_url"],
-    fallback: "bytedance/seedance-2.0/image-to-video",
+    fallback: "bytedance/seedance-2.5/image-to-video",
   },
   screenReplace: {
     id: "screenReplace",
@@ -67,7 +91,7 @@ export const MODEL_SLOTS: Record<ModelSlotId, ModelSlot> = {
       "Plays your card clip on the surface, or opens a printed card to its inside spread. Needs a model that takes both image and video references — very few do.",
     category: "image-to-video",
     requires: ["prompt", "image_urls", "video_urls"],
-    fallback: "bytedance/seedance-2.0/reference-to-video",
+    fallback: "bytedance/seedance-2.5/reference-to-video",
   },
 };
 

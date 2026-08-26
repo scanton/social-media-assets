@@ -1,4 +1,5 @@
 import type { InputSchema, JsonSchemaProp } from "@/lib/model-catalog";
+import { inputAliases } from "@/lib/models";
 
 /**
  * Reshapes the studio's canonical payload to fit whatever model was picked.
@@ -135,7 +136,17 @@ export function adaptInput(
   const coerced: string[] = [];
 
   for (const [key, value] of Object.entries(input)) {
-    const prop = schema.properties[key];
+    /*
+     * The model may call this input something else.
+     *
+     * Wan, MiniMax and Vidu take the same array of reference URLs Seedance
+     * does and name it `reference_video_urls`. Sending our name would drop the
+     * references silently and render a clip with nothing referenced, which is
+     * a far worse failure than refusing the model outright, so the rename has
+     * to happen here as well as in the matching.
+     */
+    const name = inputAliases(key).find((a) => a in schema.properties) ?? key;
+    const prop = schema.properties[name];
     if (!prop) {
       dropped.push(key);
       continue;
@@ -148,7 +159,8 @@ export function adaptInput(
     if (next !== value && typeof next !== "object") {
       coerced.push(`${key} ${String(value)} → ${String(next)}`);
     }
-    out[key] = next;
+    if (name !== key) coerced.push(`${key} sent as ${name}`);
+    out[name] = next;
   }
 
   return { input: out, dropped, coerced };

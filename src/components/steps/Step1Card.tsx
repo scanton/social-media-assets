@@ -9,6 +9,7 @@ import { AssetThumb } from "../AssetThumb";
 import { AssetTile } from "../AssetTile";
 import { HandwrittenMessage } from "../HandwrittenMessage";
 import { Button, cx, usePasteShortcut, useToast } from "../ui";
+import { HelpTip } from "../HelpTip";
 import { SectionHead } from "./shared";
 
 /** Formats fal accepts and the image models handle cleanly. */
@@ -201,6 +202,7 @@ export function Step1Card() {
     <div className="space-y-8">
       <SectionHead
         step={1}
+        help="step.card"
         title={isPrint ? "Bring your card artwork" : "Bring your card animation"}
         blurb={
           isPrint
@@ -215,6 +217,7 @@ export function Step1Card() {
             <PanelSlot
               panel="front"
               title="Front panel"
+              help="card.front"
               hint="Portrait. The printed face of the card — this is what the scene is built around."
               emoji="🎴"
               required
@@ -227,6 +230,7 @@ export function Step1Card() {
             <PanelSlot
               panel="inside"
               title="Inside spread"
+              help="card.inside"
               hint="Landscape. Both inside panels in one image. Optional — but it's what unlocks the opening motions."
               emoji="📖"
               asset={inside}
@@ -312,7 +316,10 @@ export function Step1Card() {
           <div className="card-surface mx-auto max-w-2xl p-5">
             <div className="mb-4 flex items-center justify-between gap-3">
               <div>
-                <h3 className="font-display text-base font-bold text-ink">Digital card clip</h3>
+                <span className="flex items-center gap-2">
+                  <h3 className="font-display text-base font-bold text-ink">Digital card clip</h3>
+                  <HelpTip id="card.animation" />
+                </span>
                 <p className="mt-0.5 text-xs text-ink-faint">
                   MP4 or MOV, 2–15 seconds, up to 720p. This plays on the device in the video.
                 </p>
@@ -359,6 +366,7 @@ export function Step1Card() {
 
 function PanelSlot({
   title,
+  help,
   hint,
   emoji,
   asset,
@@ -370,6 +378,7 @@ function PanelSlot({
 }: {
   panel: CardPanel;
   title: string;
+  help?: string;
   hint: string;
   emoji: string;
   asset?: Asset;
@@ -383,7 +392,10 @@ function PanelSlot({
     <div className="card-surface p-5">
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <h3 className="font-display text-base font-bold text-ink">{title}</h3>
+          <span className="flex items-center gap-2">
+            <h3 className="font-display text-base font-bold text-ink">{title}</h3>
+            {help && <HelpTip id={help} />}
+          </span>
           <p className="mt-0.5 text-xs leading-relaxed text-ink-faint">{hint}</p>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">

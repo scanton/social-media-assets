@@ -122,6 +122,7 @@ export function BackgroundPanel({ subject }: { subject: "card" | "device" }) {
   return (
     <Panel
       title="Your own background"
+      help="scene.background"
       aside={
         <span className={cx("sticker", locked && "border-stamp-200 bg-stamp-50 text-stamp-700")}>
           {locked ? "Defining the scene" : "Optional"}

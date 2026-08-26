@@ -132,6 +132,7 @@ export function Step2Scene() {
       <SectionHead
         step={2}
         title="Build the scene"
+        help="step.scene"
         blurb={
           hasCard
             ? "Photoreal lifestyle shots with your front panel already printed on the card. Check multiple angles and orientations to batch a whole shoot at once — the logo goes on in step 3."
@@ -162,6 +163,7 @@ export function Step2Scene() {
           <Panel title="The card">
             <Field
               label="Physical size"
+              help="card.size"
               hint="Renders come out wrong when the model has to guess how big the card is. This is what it measures against the hands, mugs and tables in the shot."
             >
               <Select
@@ -181,6 +183,7 @@ export function Step2Scene() {
 
           <Panel
             title="The scene"
+            help="scene.panel"
             locked={locked}
             lockNote={
               locked ? (
@@ -195,7 +198,7 @@ export function Step2Scene() {
             }
           >
             <div className="space-y-4">
-              <Field label="Audience" hint="Filters the scene list and steers wardrobe and props.">
+              <Field label="Audience" help="scene.audience" hint="Filters the scene list and steers wardrobe and props.">
                 <div className="flex flex-wrap gap-2">
                   {AUDIENCES.map((a) => (
                     <Chip
@@ -212,6 +215,7 @@ export function Step2Scene() {
 
               <Field
                 label="Device / surface"
+                help={s.surface === "screen" ? "scene.device" : "scene.surface"}
                 hint="Mix these up across a campaign so every asset isn't the same hardware."
               >
                 <Select
@@ -231,6 +235,7 @@ export function Step2Scene() {
 
               <Field
                 label="Setting"
+                help="scene.setting"
                 hint={sceneMissing ? "This setting isn't typical for that audience — still fair game." : undefined}
               >
                 <Select
@@ -245,14 +250,14 @@ export function Step2Scene() {
               </Field>
 
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Lighting">
+                <Field label="Lighting" help="scene.lighting">
                   <Select
                     value={base.lightingId}
                     onChange={(lightingId) => s.setBase({ lightingId })}
                     options={LIGHTING.map((l) => ({ id: l.id, label: l.label, emoji: l.emoji }))}
                   />
                 </Field>
-                <Field label="Film look">
+                <Field label="Film look" help="scene.look">
                   <Select
                     value={base.lookId}
                     onChange={(lookId) => s.setBase({ lookId })}
@@ -262,7 +267,7 @@ export function Step2Scene() {
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Who's in frame">
+                <Field label="Who's in frame" help="scene.presence">
                   <Select
                     value={base.presenceId}
                     onChange={(presenceId) => s.setBase({ presenceId })}
@@ -271,6 +276,7 @@ export function Step2Scene() {
                 </Field>
                 <Field
                   label="How close"
+                  help="scene.framing"
                   hint="How much of the frame the card takes up."
                 >
                   <Select
@@ -294,6 +300,7 @@ export function Step2Scene() {
 
           <Panel
             title="Camera angles"
+            help="scene.angle"
             locked={locked}
             lockNote={
               locked ? (
@@ -326,6 +333,7 @@ export function Step2Scene() {
 
           <Panel
             title="Orientations"
+            help="scene.orientation"
             aside={<span className="sticker">{base.aspectIds.length} selected</span>}
           >
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -342,10 +350,10 @@ export function Step2Scene() {
             </div>
           </Panel>
 
-          <Panel title="Output">
+          <Panel title="Output" help="image.output">
             <div className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <Field label="Variations per combo" hint="Each is a separate render — GPT-Image-2 has no seed input, so re-rolls are how you get variety.">
+                <Field label="Variations per combo" help="image.variations" hint="Each is a separate render — GPT-Image-2 has no seed input, so re-rolls are how you get variety.">
                   <Stepper
                     value={base.variations}
                     onChange={(variations) => s.setBase({ variations })}
@@ -354,7 +362,7 @@ export function Step2Scene() {
                     suffix="per combo"
                   />
                 </Field>
-                <Field label="Resolution" hint="Short edge of each render.">
+                <Field label="Resolution" help="image.resolution" hint="Short edge of each render.">
                   <Select
                     value={base.imageResolution}
                     onChange={(id) => s.setBase({ imageResolution: id as typeof base.imageResolution })}
@@ -366,7 +374,7 @@ export function Step2Scene() {
                     }))}
                   />
                 </Field>
-                <Field label="Quality">
+                <Field label="Quality" help="image.quality">
                   <Select
                     value={base.quality}
                     onChange={(q) => s.setBase({ quality: q as typeof base.quality })}
@@ -380,7 +388,7 @@ export function Step2Scene() {
                 </Field>
               </div>
 
-              <Field label="Extra direction" hint="Optional. Anything specific — props, wardrobe, a colour story.">
+              <Field label="Extra direction" help="scene.extra" hint="Optional. Anything specific — props, wardrobe, a colour story.">
                 <textarea
                   value={base.notes}
                   onChange={(e) => s.setBase({ notes: e.target.value })}

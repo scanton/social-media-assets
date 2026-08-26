@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { currentUser } from "@/auth";
 import { falForRequest } from "@/lib/fal-server";
-import { fetchInputSchema, isModelAllowed } from "@/lib/model-catalog";
+import { fetchInputSchema, isModelAllowed, isModelInOpenCategory } from "@/lib/model-catalog";
 import { adaptInput } from "@/lib/model-input";
-import { isModelSlotId } from "@/lib/models";
+import { isModelSlotId, type ModelSlotId } from "@/lib/models";
 import { errorResponse } from "@/lib/api-errors";
 
 /**
@@ -24,7 +24,16 @@ export async function POST(req: Request) {
       input?: unknown;
     };
 
-    if (!isModelSlotId(slot)) {
+    /*
+     * `slot` is a guided step; `freeform` is the open page. Both are guarded,
+     * differently: a step demands its own category AND the inputs it sends, and
+     * freeform demands only that the model is one of the image or video ones.
+     * Freeform sends whatever the model's own schema declares, so requiring a
+     * fixed shape there would defeat the point of the page.
+     */
+    const freeform = slot === "freeform";
+
+    if (!freeform && !isModelSlotId(slot)) {
       return NextResponse.json({ error: `Unknown step: ${slot}` }, { status: 400 });
     }
     if (!model || typeof model !== "string") {
@@ -40,9 +49,16 @@ export async function POST(req: Request) {
      * this step sends. Without that check an open deployment would proxy any of
      * fal's ~1,400 endpoints.
      */
-    if (!(await isModelAllowed(model, slot))) {
+    const allowed = freeform
+      ? await isModelInOpenCategory(model)
+      : await isModelAllowed(model, slot as ModelSlotId);
+    if (!allowed) {
       return NextResponse.json(
-        { error: `${model} can't run this step. Pick another model.` },
+        {
+          error: freeform
+            ? `${model} is not an image or video model.`
+            : `${model} can't run this step. Pick another model.`,
+        },
         { status: 400 },
       );
     }
