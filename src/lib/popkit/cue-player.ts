@@ -1,6 +1,8 @@
 "use client";
 
 import { createPlayer } from "./kit/feedback.js";
+// Side effect: registers HeartStamp's cues into the table the player reads.
+import "./cues";
 
 /**
  * Plays a sound cue in the browser.

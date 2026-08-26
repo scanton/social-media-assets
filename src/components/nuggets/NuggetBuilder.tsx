@@ -30,7 +30,7 @@ import { playCue } from "@/lib/popkit/cue-player";
 import { renderNuggets } from "@/lib/popkit/render-video";
 import { isSvg, normaliseImage, toDataUri } from "@/lib/popkit/assets";
 import { canRecordVideo, type RenderProgress } from "@/lib/video-encode";
-import { CUES } from "@/lib/popkit/kit/feedback.js";
+import { CUE_MS, DEFAULT_ARROW_CUE, DEFAULT_CUE } from "@/lib/popkit/cues";
 import { buildDeck, exportBasename, validateDeckAgainstSchema } from "@/lib/popkit/export";
 import { Accordion, Disclosure } from "./Disclosure";
 import { VideoStage } from "./VideoStage";
@@ -52,11 +52,6 @@ const OVERLAP_KIT_DEFAULT = 0.3;
  */
 const DEFAULT_CAPTION_PAD = 34;
 
-/** Cue lengths from the kit's own table, so the picker says how long each is. */
-const CUE_MS: Record<string, number> = Object.fromEntries(
-  Object.entries(CUES as Record<string, { ms: number }>).map(([k, v]) => [k, v.ms]),
-);
-
 const OPENING_COPY = "Every card prints inside as well as out.";
 
 function newBeat(canvas: CanvasId): Beat {
@@ -74,7 +69,7 @@ function newBeat(canvas: CanvasId): Beat {
     anchor: { x: 0.5, y: 0.55 },
     medallion: { side: "left", frame: "circle", glyphFrac: GLYPH_FRAC_DEFAULT },
     arrows: [{ name: "dart", from: "left", anchor: 225, scale: 0.6, over: false, layer: "mid" }],
-    cue: "pop-in",
+    cue: DEFAULT_CUE,
     haptic: "none",
     medallionScale: MEDALLION_SCALE_DEFAULT,
     // the medallion opens on the left, so that is the end to tighten
@@ -107,7 +102,7 @@ function newWellBeat(): Beat {
     align: "center",
     anchor: { x: 0.5, y: 0.5 },
     well: { template: t.id, ...(t.spec as object), caption: undefined } as Beat["well"],
-    cue: "pop-in",
+    cue: DEFAULT_CUE,
     haptic: "none",
   };
 }
@@ -126,7 +121,7 @@ function newArrowBeat(): Beat {
     align: "center",
     anchor: { x: 0.5, y: 0.5 },
     arrows: [{ name: "dart", anchor: 225, size: 220, layer: "mid" }],
-    cue: "paper-slide",
+    cue: DEFAULT_ARROW_CUE,
     haptic: "none",
   };
 }

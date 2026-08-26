@@ -29,8 +29,14 @@
 /** Canvas presets from the kit's `tokens.js` CANVAS table. */
 export type CanvasId = "reels" | "youtube" | "square" | "ios" | "desktop";
 
-/** The nine cues in `motion-and-feedback.md`'s sound pack, plus none. */
+/**
+ * The nine cues in `motion-and-feedback.md`'s sound pack, plus HeartStamp's own
+ * two and the sentinel for none. Ours are registered into the kit's table at
+ * runtime — see `cues.ts` for why that rather than a fork.
+ */
 export type SoundCue =
+  | "bubble-pop-1"
+  | "bubble-pop-2"
   | "pop-in"
   | "pop-in-alt"
   | "pop-out"
@@ -322,7 +328,9 @@ export const GLYPH_FRAC_DEFAULT = 1.25;
 /** Cues closer than this collide; the second is silenced. `applySoundRules()`. */
 export const ANTI_CLATTER_MS = 250;
 
+/** Picker order. The default leads; the sentinel for none stays last. */
 export const SOUND_CUES: SoundCue[] = [
+  "bubble-pop-1", "bubble-pop-2",
   "pop-in", "pop-in-alt", "pop-out", "stamp", "paper-slide",
   "seal", "chime", "tick", "soft-error", "silent",
 ];

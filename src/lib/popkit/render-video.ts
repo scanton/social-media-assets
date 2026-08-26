@@ -6,7 +6,7 @@ import { silencedByClatter } from "./rules";
 import { tryGlyphDataUri } from "./glyphs";
 import { beatScale } from "./kit/motion.js";
 import { wellLayout } from "./kit/media.js";
-import { CUES } from "./kit/feedback.js";
+import { CUE_TABLE } from "./cues";
 import { makeTicker, pickRecorderMime, type RenderProgress } from "@/lib/video-encode";
 import type { Beat, CanvasId } from "./deck";
 
@@ -218,7 +218,7 @@ export async function renderNuggets({
   for (const b of beats) {
     const cue = b.cue;
     if (!cue || cue === "silent" || silenced.has(b.id) || buffers.has(cue)) continue;
-    const spec = (CUES as Record<string, { file: string | null }>)[cue];
+    const spec = CUE_TABLE[cue];
     if (!spec?.file) continue;
     try {
       const res = await fetch("/sfx/" + spec.file);
@@ -310,7 +310,7 @@ export async function renderNuggets({
         if (buf) {
           const src = actx.createBufferSource();
           const g = actx.createGain();
-          g.gain.value = (CUES as Record<string, { gain: number }>)[b.cue]?.gain ?? 0.6;
+          g.gain.value = CUE_TABLE[b.cue]?.gain ?? 0.6;
           src.buffer = buf;
           src.connect(g);
           g.connect(dest);
