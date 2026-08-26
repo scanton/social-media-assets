@@ -388,8 +388,31 @@ export function Freeform() {
           )}
         </div>
 
-        {/* ----------------------------- the help ----------------------------- */}
+        {/* --------------------- the model, then the help --------------------- */}
         <div className="space-y-5">
+          {/*
+           * Settings first. These are the model's real controls — size, quality,
+           * how many — and burying them under nine optional prompt taxonomies
+           * read as though the taxonomies were the point. The helpers are the
+           * garnish; this is the machine.
+           */}
+          <div className="card-surface space-y-4 p-5">
+            <div>
+              <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.09em] text-ink-faint">
+                {current?.title ?? "Model"} settings
+                <HelpTip id="bench.settings" />
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-ink-soft">
+                Read from this model. Pick another and these change with it.
+              </p>
+            </div>
+            <SchemaFields
+              schema={schema}
+              values={values}
+              onChange={(k, v) => setValuesBy((s) => ({ ...s, [model]: { ...(s[model] ?? {}), [k]: v } }))}
+            />
+          </div>
+
           <div className="card-surface space-y-5 p-5">
             <div>
               <p className="text-[11px] font-bold uppercase tracking-[0.09em] text-ink-faint">A hand with the prompt</p>
@@ -439,23 +462,6 @@ export function Freeform() {
                 </div>
               </div>
             ))}
-          </div>
-
-          <div className="card-surface space-y-4 p-5">
-            <div>
-              <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.09em] text-ink-faint">
-                {current?.title ?? "Model"} settings
-                <HelpTip id="bench.settings" />
-              </p>
-              <p className="mt-1 text-xs leading-relaxed text-ink-soft">
-                Read from this model. Pick another and these change with it.
-              </p>
-            </div>
-            <SchemaFields
-              schema={schema}
-              values={values}
-              onChange={(k, v) => setValuesBy((s) => ({ ...s, [model]: { ...(s[model] ?? {}), [k]: v } }))}
-            />
           </div>
         </div>
       </div>
