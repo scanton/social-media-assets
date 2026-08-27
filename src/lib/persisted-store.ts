@@ -391,3 +391,51 @@ export function addAssetsToRoll(next: Asset[]) {
       : {}),
   });
 }
+
+
+/**
+ * Removes one asset from the roll, and repairs whatever pointed at it.
+ *
+ * Lives here rather than only in StudioProvider for the same reason
+ * `addAssetsToRoll` does. Every fix-up below is a no-op for an asset the card
+ * pipelines never selected — which is exactly why it is safe to share rather
+ * than to write a second, simpler version for the bench that would drift.
+ */
+export function removeAssetFromRoll(id: string) {
+  const current = getPersisted();
+  const removed = current.assets.find((a) => a.id === id);
+  const assets = current.assets.filter((a) => a.id !== id);
+
+  // Screen-replace needs a clip; without one it would just fail at render time.
+  const lostLastClip =
+    removed?.kind === "card-video" && !assets.some((a) => a.kind === "card-video");
+  // Likewise an opening motion with no inside spread left to reveal.
+  const motionStranded = !motionUsable(current.video.motionId, assets, current.surface);
+
+  // Fall back to the next asset of the same kind rather than clearing the
+  // slot — an empty slot is how step 2 silently went back to blank screens.
+  const nextOf = (kind: Asset["kind"]) =>
+    assets.filter((a) => a.kind === kind).sort((a, b) => b.createdAt - a.createdAt)[0]?.id ?? null;
+  const nextPanel = (panel: "front" | "inside") =>
+    assets
+      .filter((a) => a.kind === "card-art" && a.panel === panel)
+      .sort((a, b) => b.createdAt - a.createdAt)[0]?.id ?? null;
+
+  updatePersisted({
+    assets,
+    ...(current.cardFrontId === id ? { cardFrontId: nextPanel("front") } : {}),
+    ...(current.cardInsideId === id ? { cardInsideId: nextPanel("inside") } : {}),
+    ...(current.cardVideoId === id ? { cardVideoId: nextOf("card-video") } : {}),
+    // No fallback here on purpose: a background locks every scene control, so
+    // quietly swapping in a different one would relock the UI around a photo
+    // the user never chose.
+    ...(current.backgroundId === id ? { backgroundId: null } : {}),
+    ...(current.baseId === id ? { baseId: nextOf("base") } : {}),
+    ...(lostLastClip && current.video.engine === "screen-replace"
+      ? { video: { ...current.video, engine: "animate" as const } }
+      : {}),
+    ...(motionStranded
+      ? { video: { ...current.video, motionId: firstUsableMotion(assets, current.surface) } }
+      : {}),
+  });
+}

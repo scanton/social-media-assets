@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { awaitJob, submitJob, uploadToFal } from "@/lib/client-api";
 import { HINT_GROUPS, compilePrompt, DEFAULT_NEGATIVE } from "@/lib/freeform";
-import { addAssetsToRoll } from "@/lib/persisted-store";
+import { addAssetsToRoll, removeAssetFromRoll, usePersisted } from "@/lib/persisted-store";
 import type { CatalogModel, InputSchema } from "@/lib/model-catalog";
 import type { Asset } from "@/lib/studio-types";
 import { Field, Select, cx } from "../ui";
@@ -33,12 +33,27 @@ const CATEGORIES = [
     // fal returns its catalogue newest-first, which lands a landing on
     // whatever shipped this week — sometimes a novelty like a try-on model.
     // A generalist opens better, and it's only the starting point.
-    prefer: "fal-ai/nano-banana-pro",
+    prefer: "openai/gpt-image-2",
   },
   { id: "image-to-image", label: "Image from an image", video: false, prefer: "fal-ai/nano-banana-2/edit" },
   { id: "text-to-video", label: "Video from a prompt", video: true, prefer: "bytedance/seedance-2.5/text-to-video" },
   { id: "image-to-video", label: "Video from an image", video: true, prefer: "bytedance/seedance-2.5/image-to-video" },
 ] as const;
+
+/**
+ * Settings we open a model on, where its own default is not what we want.
+ *
+ * Only the fields named here are overridden; everything else still comes from
+ * the model's published schema, and anything touched afterwards is the
+ * person's. Kept as a table rather than special-cased in the seeding loop so
+ * that "which models do we disagree with, and about what" is one thing to read.
+ */
+const HOUSE_DEFAULTS: Record<string, Record<string, unknown>> = {
+  // The schema opens on `high`. Medium is the better default here: the
+  // difference is hard to see at social sizes and easy to see on the bill,
+  // and the control is right there for the render that earns it.
+  "openai/gpt-image-2": { quality: "medium" },
+};
 
 type CategoryId = (typeof CATEGORIES)[number]["id"];
 
@@ -96,10 +111,16 @@ export function Freeform() {
   const [busy, setBusy] = useState<{ state: string; queuePosition?: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   /*
-   * Held as roll Assets rather than bare urls: it is the same object that goes
-   * into the roll, and it is what AssetTile already knows how to render.
+   * Results come from the roll, not from this page's own memory.
+   *
+   * They used to live in local state, so leaving the page threw away every
+   * render that had not been downloaded — while the card pipelines kept theirs
+   * and showed them again on return. The roll already persists, already knows
+   * when fal has dropped something, and is already where these were being
+   * written; reading them back from it is what makes them outlast the visit.
    */
-  const [results, setResults] = useState<Asset[]>([]);
+  const roll = usePersisted().assets;
+  const results = useMemo(() => roll.filter((a) => a.kind === "freeform"), [roll]);
 
   /*
    * fal returns its catalogue newest-first, which is the right order for a
@@ -164,10 +185,14 @@ export function Freeform() {
         if (cancelled || !body?.schema) return;
         setSchemaBy((s) => ({ ...s, [model]: body.schema as InputSchema }));
         // Start from the model's own defaults rather than blank, so a render
-        // works before anything has been touched.
+        // works before anything has been touched — then apply ours over the
+        // top for the few fields we disagree with. See HOUSE_DEFAULTS.
         const next: Record<string, unknown> = {};
         for (const [k, p] of Object.entries(body.schema.properties)) {
           if (p.default !== undefined) next[k] = p.default;
+        }
+        for (const [k, v] of Object.entries(HOUSE_DEFAULTS[model] ?? {})) {
+          if (k in body.schema.properties) next[k] = v;
         }
         setValuesBy((s) => (s[model] ? s : { ...s, [model]: next }));
       })
@@ -190,7 +215,6 @@ export function Freeform() {
   const run = useCallback(async () => {
     if (!model || !finalPrompt.trim()) return;
     setError(null);
-    setResults([]);
     setBusy({ state: "queued" });
     try {
       const input: Record<string, unknown> = { ...values, prompt: finalPrompt };
@@ -217,8 +241,6 @@ export function Freeform() {
         createdAt: Date.now(),
         prompt: finalPrompt,
       }));
-      setResults(made);
-
       /*
        * Into the shared roll, not just this page's own list.
        *
@@ -407,8 +429,10 @@ export function Freeform() {
           {(busy || results.length > 0) && (
             <div className="card-surface space-y-3 p-5">
               <div className="flex items-baseline justify-between gap-2">
-                <p className="text-[11px] font-bold uppercase tracking-[0.09em] text-ink-faint">Result</p>
-                <p className="text-[11px] text-ink-faint">Saved to the roll</p>
+                <p className="text-[11px] font-bold uppercase tracking-[0.09em] text-ink-faint">Results</p>
+                <p className="text-[11px] text-ink-faint">
+                  Kept in the roll until fal drops them
+                </p>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 {busy && (
@@ -419,7 +443,7 @@ export function Freeform() {
                   />
                 )}
                 {results.map((a) => (
-                  <AssetTile key={a.id} asset={a} />
+                  <AssetTile key={a.id} asset={a} onRemove={() => removeAssetFromRoll(a.id)} />
                 ))}
               </div>
             </div>

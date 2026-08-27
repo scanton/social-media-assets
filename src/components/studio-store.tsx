@@ -22,6 +22,7 @@ import type { Asset } from "@/lib/studio-types";
 import { useJobRunner, type JobSpec } from "@/lib/use-jobs";
 import {
   addAssetsToRoll,
+  removeAssetFromRoll,
   firstUsableMotion,
   getPersisted,
   motionUsable,
@@ -156,44 +157,9 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   // roll through the same function rather than a second copy of it.
   const addAssets = useCallback((next: Asset[]) => addAssetsToRoll(next), []);
 
-  const removeAsset = useCallback((id: string) => {
-    const current = getPersisted();
-    const removed = current.assets.find((a) => a.id === id);
-    const assets = current.assets.filter((a) => a.id !== id);
-
-    // Screen-replace needs a clip; without one it would just fail at render time.
-    const lostLastClip =
-      removed?.kind === "card-video" && !assets.some((a) => a.kind === "card-video");
-    // Likewise an opening motion with no inside spread left to reveal.
-    const motionStranded = !motionUsable(current.video.motionId, assets, current.surface);
-
-    // Fall back to the next asset of the same kind rather than clearing the
-    // slot — an empty slot is how step 2 silently went back to blank screens.
-    const nextOf = (kind: Asset["kind"]) =>
-      assets.filter((a) => a.kind === kind).sort((a, b) => b.createdAt - a.createdAt)[0]?.id ?? null;
-    const nextPanel = (panel: "front" | "inside") =>
-      assets
-        .filter((a) => a.kind === "card-art" && a.panel === panel)
-        .sort((a, b) => b.createdAt - a.createdAt)[0]?.id ?? null;
-
-    updatePersisted({
-      assets,
-      ...(current.cardFrontId === id ? { cardFrontId: nextPanel("front") } : {}),
-      ...(current.cardInsideId === id ? { cardInsideId: nextPanel("inside") } : {}),
-      ...(current.cardVideoId === id ? { cardVideoId: nextOf("card-video") } : {}),
-      // No fallback here on purpose: a background locks every scene control, so
-      // quietly swapping in a different one would relock the UI around a photo
-      // the user never chose.
-      ...(current.backgroundId === id ? { backgroundId: null } : {}),
-      ...(current.baseId === id ? { baseId: nextOf("base") } : {}),
-      ...(lostLastClip && current.video.engine === "screen-replace"
-        ? { video: { ...current.video, engine: "animate" as const } }
-        : {}),
-      ...(motionStranded
-        ? { video: { ...current.video, motionId: firstUsableMotion(assets, current.surface) } }
-        : {}),
-    });
-  }, []);
+  // Delegated for the same reason addAssets is: the roll is not the card
+  // studio's private property, and the open bench is outside this provider.
+  const removeAsset = useCallback((id: string) => removeAssetFromRoll(id), []);
 
   /**
    * Drops every asset pointing at a URL fal no longer has.
