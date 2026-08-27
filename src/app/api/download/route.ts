@@ -73,7 +73,14 @@ export async function GET(req: Request) {
   const target = resolveTarget(params.get("url"));
   if (target instanceof NextResponse) return target;
 
-  const upstream = await fetch(target, { cache: "no-store" });
+  // HEAD already guards this; GET did not, so a DNS failure or a dropped
+  // connection surfaced as a bare 500 page where a download was expected.
+  let upstream: Response;
+  try {
+    upstream = await fetch(target, { cache: "no-store" });
+  } catch {
+    return NextResponse.json({ error: "Could not reach the asset host." }, { status: 504 });
+  }
   if (!upstream.ok || !upstream.body) {
     return NextResponse.json({ error: `Upstream returned ${upstream.status}.` }, { status: 502 });
   }

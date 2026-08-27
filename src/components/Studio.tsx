@@ -375,6 +375,7 @@ const ROLL_FILTERS = [
   { id: "all", label: "Everything" },
   { id: "base", label: "Scenes" },
   { id: "video", label: "Video" },
+  { id: "freeform", label: "Make anything" },
   { id: "card-art", label: "Uploads" },
 ] as const;
 

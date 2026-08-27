@@ -2,12 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { awaitJob, downloadUrl, submitJob, uploadToFal } from "@/lib/client-api";
+import { awaitJob, submitJob, uploadToFal } from "@/lib/client-api";
 import { HINT_GROUPS, compilePrompt, DEFAULT_NEGATIVE } from "@/lib/freeform";
+import { addAssetsToRoll } from "@/lib/persisted-store";
 import type { CatalogModel, InputSchema } from "@/lib/model-catalog";
+import type { Asset } from "@/lib/studio-types";
 import { Field, Select, cx } from "../ui";
 import { Uploader } from "../Uploader";
 import { HelpTip } from "../HelpTip";
+import { AssetTile, PendingTile } from "../AssetTile";
 import { SchemaFields } from "./SchemaFields";
 
 /**
@@ -42,6 +45,7 @@ type CategoryId = (typeof CATEGORIES)[number]["id"];
 interface Result {
   url: string;
   kind: "image" | "video";
+  contentType?: string;
 }
 
 /** Finds the media in whatever shape a model returns. */
@@ -54,7 +58,7 @@ function readResult(data: unknown): Result[] {
     if (typeof o.url === "string") {
       const t = typeof o.content_type === "string" ? o.content_type : "";
       const isVideo = t.startsWith("video/") || /\.(mp4|webm|mov)(\?|$)/i.test(o.url);
-      out.push({ url: o.url, kind: isVideo ? "video" : "image" });
+      out.push({ url: o.url, kind: isVideo ? "video" : "image", contentType: t || undefined });
       return;
     }
     Object.values(o).forEach(walk);
@@ -85,9 +89,17 @@ export function Freeform() {
   const [picks, setPicks] = useState<Record<string, string>>({});
   const [refUrl, setRefUrl] = useState("");
 
-  const [busy, setBusy] = useState<string | null>(null);
+  /*
+   * Structured rather than a formatted string: the pending tile wants the
+   * queue position as a number, and the render button wants a sentence.
+   */
+  const [busy, setBusy] = useState<{ state: string; queuePosition?: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [results, setResults] = useState<Result[]>([]);
+  /*
+   * Held as roll Assets rather than bare urls: it is the same object that goes
+   * into the roll, and it is what AssetTile already knows how to render.
+   */
+  const [results, setResults] = useState<Asset[]>([]);
 
   /*
    * fal returns its catalogue newest-first, which is the right order for a
@@ -110,6 +122,7 @@ export function Freeform() {
     (models.some((m) => m.id === preferred) ? preferred : models[0]?.id) ??
     "";
   const schema = schemaBy[model] ?? null;
+  const current = models.find((m) => m.id === model);
   // Memoised because it feeds a useCallback: a fresh {} each render would make
   // that callback new each render too.
   const values = useMemo(() => valuesBy[model] ?? {}, [valuesBy, model]);
@@ -178,7 +191,7 @@ export function Freeform() {
     if (!model || !finalPrompt.trim()) return;
     setError(null);
     setResults([]);
-    setBusy("Submitting");
+    setBusy({ state: "queued" });
     try {
       const input: Record<string, unknown> = { ...values, prompt: finalPrompt };
       if (negative.trim() && schema?.properties.negative_prompt) input.negative_prompt = negative.trim();
@@ -190,19 +203,38 @@ export function Freeform() {
 
       const requestId = await submitJob(model, "freeform", input);
       const data = await awaitJob<unknown>(model, requestId, {
-        onUpdate: (u) => setBusy(u.queuePosition ? `Queued, ${u.queuePosition} ahead` : u.status),
+        onUpdate: (u) => setBusy({ state: u.status, queuePosition: u.queuePosition }),
       });
       const found = readResult(data);
       if (!found.length) throw new Error("That model returned nothing this page knows how to show.");
-      setResults(found);
+      const made: Asset[] = found.map((r, i) => ({
+        id: `ff-${requestId}-${i}`,
+        kind: "freeform",
+        url: r.url,
+        contentType: r.contentType,
+        label: prompt.trim().slice(0, 60) || current?.title || "Untitled",
+        tags: [current?.title ?? model, r.kind === "video" ? "video" : "image"],
+        createdAt: Date.now(),
+        prompt: finalPrompt,
+      }));
+      setResults(made);
+
+      /*
+       * Into the shared roll, not just this page's own list.
+       *
+       * fal drops media after a while and this page had no other memory, so a
+       * render that only ever existed in local state was gone on reload. The
+       * roll is where the rest of the app already keeps its output, and it is
+       * reachable from every page.
+       */
+      addAssetsToRoll(made);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(null);
     }
-  }, [model, finalPrompt, values, negative, schema, needsImage, refUrl]);
+  }, [model, finalPrompt, values, negative, schema, needsImage, refUrl, prompt, current]);
 
-  const current = models.find((m) => m.id === model);
 
   return (
     <div className="mx-auto max-w-[110rem] px-4 py-6 sm:px-6">
@@ -332,7 +364,11 @@ export function Freeform() {
                 onClick={run}
                 className="focus-stamp rounded-full bg-stamp-600 px-4 py-2.5 text-sm font-bold text-white transition-all hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:bg-ink/20 disabled:hover:translate-y-0"
               >
-                {busy ? `${busy}…` : "Render"}
+                {busy
+                  ? busy.queuePosition != null
+                    ? `#${busy.queuePosition} in queue…`
+                    : `${busy.state === "queued" ? "Submitting" : "Rendering"}…`
+                  : "Render"}
               </button>
               {finalPrompt.trim() !== prompt.trim() && (
                 <span className="text-xs text-ink-faint">
@@ -362,26 +398,28 @@ export function Freeform() {
           )}
 
           {/* results */}
-          {results.length > 0 && (
+          {/*
+            * The same tiles the card pipelines use, so a bench render gets the
+            * same download, the same zoom preview and the same "fal dropped
+            * this" check for free — and looks like the rest of the app rather
+            * than like a second, worse gallery.
+            */}
+          {(busy || results.length > 0) && (
             <div className="card-surface space-y-3 p-5">
-              <p className="text-[11px] font-bold uppercase tracking-[0.09em] text-ink-faint">Result</p>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {results.map((r, i) => (
-                  <figure key={r.url} className="space-y-2">
-                    {r.kind === "video" ? (
-                      <video src={r.url} controls playsInline className="w-full rounded-xl border border-hairline" />
-                    ) : (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={r.url} alt="" className="w-full rounded-xl border border-hairline" />
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => downloadUrl(r.url, `freeform-${i + 1}.${r.kind === "video" ? "mp4" : "png"}`)}
-                      className="focus-stamp rounded-full border border-hairline bg-white px-3 py-1.5 text-xs font-bold text-ink hover:border-stamp-300"
-                    >
-                      Download
-                    </button>
-                  </figure>
+              <div className="flex items-baseline justify-between gap-2">
+                <p className="text-[11px] font-bold uppercase tracking-[0.09em] text-ink-faint">Result</p>
+                <p className="text-[11px] text-ink-faint">Saved to the roll</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                {busy && (
+                  <PendingTile
+                    label={prompt.trim().slice(0, 40) || current?.title || "Rendering"}
+                    state={busy.state}
+                    queuePosition={busy.queuePosition}
+                  />
+                )}
+                {results.map((a) => (
+                  <AssetTile key={a.id} asset={a} />
                 ))}
               </div>
             </div>

@@ -21,6 +21,7 @@ import { useModelChoices } from "@/lib/model-prefs";
 import type { Asset } from "@/lib/studio-types";
 import { useJobRunner, type JobSpec } from "@/lib/use-jobs";
 import {
+  addAssetsToRoll,
   firstUsableMotion,
   getPersisted,
   motionUsable,
@@ -151,19 +152,9 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
 
-  const addAssets = useCallback((next: Asset[]) => {
-    const current = getPersisted();
-    const assets = [...next, ...current.assets];
-    // An inside spread flips printed cards to the opening-motion set, so a
-    // motion picked before the upload may no longer apply.
-    const stranded = !motionUsable(current.video.motionId, assets, current.surface);
-    updatePersisted({
-      assets,
-      ...(stranded
-        ? { video: { ...current.video, motionId: firstUsableMotion(assets, current.surface) } }
-        : {}),
-    });
-  }, []);
+  // Delegated so the open bench, which is outside this provider, adds to the
+  // roll through the same function rather than a second copy of it.
+  const addAssets = useCallback((next: Asset[]) => addAssetsToRoll(next), []);
 
   const removeAsset = useCallback((id: string) => {
     const current = getPersisted();

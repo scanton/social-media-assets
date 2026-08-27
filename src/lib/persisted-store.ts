@@ -368,3 +368,26 @@ export function updatePersisted(patch: Partial<Persisted>) {
   writeStorage();
   listeners.forEach((l) => l());
 }
+
+/**
+ * Prepends assets to the roll.
+ *
+ * Lives here rather than only in StudioProvider because the roll is not the
+ * card studio's private property — it is the one place everything this app
+ * makes ends up, and the open bench is outside that provider entirely. Two
+ * copies of "add to the roll" would be two chances to forget the motion
+ * fix-up below.
+ */
+export function addAssetsToRoll(next: Asset[]) {
+  const current = getPersisted();
+  const assets = [...next, ...current.assets];
+  // An inside spread flips printed cards to the opening-motion set, so a
+  // motion picked before the upload may no longer apply.
+  const stranded = !motionUsable(current.video.motionId, assets, current.surface);
+  updatePersisted({
+    assets,
+    ...(stranded
+      ? { video: { ...current.video, motionId: firstUsableMotion(assets, current.surface) } }
+      : {}),
+  });
+}

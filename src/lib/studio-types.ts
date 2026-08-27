@@ -9,7 +9,8 @@ export type AssetKind =
   | "card-video" /* uploaded 8–13s digital card clip */
   | "background" /* uploaded location photo the printed card is placed into */
   | "base" /* generated lifestyle scene, card already on the surface */
-  | "video"; /* final motion asset */
+  | "video" /* final motion asset */
+  | "freeform"; /* made on the open bench, image or clip, outside either pipeline */
 
 export type Asset = {
   id: string;
@@ -56,4 +57,10 @@ export type Job = {
   finishedAt?: number;
 };
 
-export const isVideo = (a: Asset) => a.kind === "video" || a.kind === "card-video";
+/*
+ * A bench asset is whichever the model returned, so the kind alone cannot say.
+ * Reading the content type first makes this more correct everywhere, not just
+ * for the bench: a `video` asset has always carried one too.
+ */
+export const isVideo = (a: Asset) =>
+  a.contentType?.startsWith("video/") || a.kind === "video" || a.kind === "card-video";
