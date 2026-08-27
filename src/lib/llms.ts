@@ -7,27 +7,24 @@
  * out). Both are generated from `help.ts` by `pnpm llms`.
  *
  * WHY THIS IS CONFIGURABLE
- * Embedded, the studio is a fragment of somebody else's document. It is hosted
- * at heartstamp.com/admin/social-assets, so a relative `/llms.txt` there
- * resolves to heartstamp.com/llms.txt — the host's root, which is not ours and
- * has no such file. An assistant following that link gets a 404 and concludes
- * the studio has no documentation.
+ * Unset — the normal case — every reference is relative, which is correct: the
+ * studio serves the guide from its own root and an assistant fetching
+ * `/llms.txt` against the page it is looking at gets the right file.
  *
- * So NEXT_PUBLIC_STUDIO_BASE_URL holds the base the guide is actually served
- * from, and every reference is built off it. It is a base URL rather than an
- * origin because the embed lives under a path: both
+ * It exists for the case where the studio is rendered inside a document it does
+ * not own. There a relative `/llms.txt` resolves against the *host's* root, not
+ * ours, and an assistant following it gets a 404 and concludes the studio is
+ * undocumented — a failure with no error attached to it. Setting this to the
+ * base the guide is actually served from makes every reference absolute and
+ * survives the move.
  *
- *   https://studio.example.com
- *   https://heartstamp.com/admin/social-assets
- *
- * are valid values. Which one is correct depends on whether the host forwards
- * sub-paths through to this app — if it does, the second is friendlier because
- * it matches the URL the user is looking at; if it does not, the studio's own
- * origin is the one that resolves. Point it at whichever actually serves
- * `/llms.txt`, and check by fetching it.
- *
- * Left unset it stays relative, which is correct for the standalone deployment
- * and for local development.
+ * Note that this is NOT the HeartStamp admin app at
+ * heartstamp.com/admin/social-assets. That is a separate implementation of the
+ * same product against HeartStamp's own design system; it does not serve this
+ * app's files, and pointing at it would send assistants somewhere that has
+ * never heard of `/llms.txt`. If that app wants a guide, it should serve one
+ * from its own origin — `public/llms.txt` is a static generated file and copies
+ * cleanly.
  */
 
 const BASE = (process.env.NEXT_PUBLIC_STUDIO_BASE_URL ?? "").trim().replace(/\/+$/, "");

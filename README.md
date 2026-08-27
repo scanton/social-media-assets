@@ -250,21 +250,23 @@ a `<link rel="alternate">` in `<head>` is the standard announcement; a
 in a page whose `<head>` we do not own; and a visible link in the footer is there
 because someone asking an assistant for help usually starts by pasting a URL.
 
-**When embedding, set `NEXT_PUBLIC_STUDIO_BASE_URL`.** Those references are
-relative by default, which is right standalone and wrong inside a HeartStamp
-page: the studio is hosted at `heartstamp.com/admin/social-assets`, so a relative
-`/llms.txt` resolves to `heartstamp.com/llms.txt` — the host's root, which has no
-such file. An assistant following it gets a 404 and concludes the studio is
-undocumented.
+**The references are relative, which is what you want.** The studio serves the
+guide from its own root, so an assistant fetching `/llms.txt` against the page it
+is looking at gets the right file.
 
-```bash
-NEXT_PUBLIC_STUDIO_BASE_URL=https://heartstamp.com/admin/social-assets
-```
+`NEXT_PUBLIC_STUDIO_BASE_URL` exists only for the case where the studio is
+rendered inside a document it does not own. A relative `/llms.txt` there resolves
+against the *host's* root and 404s, and an assistant concludes the studio is
+undocumented — a failure with no error attached to it. Set the variable to the
+base the guide is actually served from and every reference goes absolute.
 
-That value is right **if** heartstamp.com forwards sub-paths through to this app.
-If it does not, use the studio's own origin instead — it serves `/llms.txt`
-whatever the host does. Fetch `<value>/llms.txt` once and believe the result
-rather than the reasoning. See [`src/lib/llms.ts`](src/lib/llms.ts).
+It is **not** for the HeartStamp admin app at `heartstamp.com/admin/social-assets`.
+That is a separate implementation of the same product against HeartStamp's own
+design system — it does not serve this app's files, and pointing at it would send
+assistants somewhere that has never heard of `/llms.txt`. If that app wants a
+guide of its own, `public/llms.txt` is a static generated file and copies cleanly;
+regenerate it from here whenever the taxonomy moves. See
+[`src/lib/llms.ts`](src/lib/llms.ts).
 
 ## Scripts
 
