@@ -1,4 +1,16 @@
-@import "tailwindcss";
+/*
+ * Tailwind's three parts, imported WITHOUT their `layer()` wrappers.
+ *
+ * `@import "tailwindcss"` puts all of this inside `@layer theme, base,
+ * components, utilities`, and an unlayered rule beats a layered one whatever
+ * its specificity — so on the HeartStamp site every ordinary rule of theirs
+ * outranked every utility of ours, and raising our specificity would not have
+ * helped. Unlayered, it is an ordinary specificity contest again, which
+ * postcss-scope-studio.mjs then wins by confining all of it to our root.
+ */
+@import "tailwindcss/theme.css";
+@import "tailwindcss/preflight.css";
+@import "tailwindcss/utilities.css";
 
 /* ============================================================
    HeartStamp Asset Studio — design tokens
@@ -115,6 +127,33 @@ body {
   color: var(--color-ink);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * The one class of leak scoping cannot fix on its own.
+ *
+ * A host reset that targets `*` reaches every one of our elements DIRECTLY
+ * rather than by inheritance, so declaring a value on our root does not stop
+ * it — there is simply no rule of ours on those elements for the cascade to
+ * prefer. The properties below are the inheritable text ones a site reset
+ * tends to touch, and the ones whose absence is instantly visible.
+ *
+ * Everything under the root asks to inherit, which restores the normal chain
+ * without this rule having an opinion about any of it — and at (1,0,0) it
+ * beats a host `*` while losing to every utility of ours, which is exactly the
+ * order we want. The values the chain terminates in are set inline on the root
+ * in layout.tsx: they are all initial values, and the minifier strips those
+ * from a stylesheet as redundant.
+ */
+#heartstamp-studio * {
+  font-family: inherit;
+  color: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
+  word-spacing: inherit;
+  text-transform: inherit;
+  font-style: inherit;
+  text-indent: inherit;
 }
 
 ::selection { background: #be1e2e; color: #fff; }

@@ -21,6 +21,17 @@ import { cx } from "./cx";
  * repositioned while the page scrolls so it stays pinned to its "?".
  */
 
+/**
+ * Where the panel is portaled to.
+ *
+ * Our root, not `document.body`. Every style we ship is scoped to that
+ * element, so a panel portaled past it arrives with no tokens, no reset and no
+ * utilities — a plain white rectangle of serif text. It still escapes the
+ * scrolling columns it needs to escape, because those are far below the root.
+ */
+const studioRoot = () =>
+  document.getElementById("heartstamp-studio") ?? document.body;
+
 const GAP = 8;
 const WIDTH = 320;
 const MARGIN = 12;
@@ -179,7 +190,7 @@ export function HelpTip({
               </ul>
             )}
           </div>,
-          document.body,
+          studioRoot(),
         )}
     </>
   );
