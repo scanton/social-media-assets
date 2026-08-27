@@ -215,6 +215,46 @@ a photograph.
 (via a `useSyncExternalStore` store, so there's no hydration mismatch). Media stays on fal's CDN.
 Downloads stream through `/api/download`, which is host-allowlisted to fal domains.
 
+## The AI guide
+
+Users bring assistants. The studio publishes two plain-text files describing
+itself, so an assistant arrives knowing what the tool is instead of guessing from
+a client-rendered page:
+
+| Path | What it is |
+| --- | --- |
+| `/llms.txt` | What the studio makes, the rules that cost money to learn, and one line per control. ~17 KB. |
+| `/llms-full.txt` | The same, with every control and every option written out in full. ~51 KB. |
+
+**Both are generated — do not edit them.** `scripts/build-llms-txt.mjs` renders
+them from [`src/lib/help.ts`](src/lib/help.ts) and
+[`src/lib/options.ts`](src/lib/options.ts), which is the same principle `help.ts`
+already follows for its own tooltips: a hand-written copy of the taxonomy is a
+second copy, and second copies rot. Add a scene to the taxonomy or a tooltip to a
+control and the published guide picks it up. The narrative sections at the top —
+the cost warning, the rules that are not guessable — are hand-written and live in
+the script.
+
+```bash
+pnpm llms
+```
+
+`pnpm build` runs it first, so a stale guide cannot ship. `pnpm llms --check`
+fails if the committed files are out of date, which is the form to put in CI.
+
+Four things point at it, because each one covers a case the others miss:
+`robots.txt` allows the two files while disallowing everything else (an assistant
+that respects robots.txt would otherwise refuse the one document written for it);
+a `<link rel="alternate">` in `<head>` is the standard announcement; a
+`data-llms` attribute on the studio root travels with the app when it is embedded
+in a page whose `<head>` we do not own; and a visible link in the footer is there
+because someone asking an assistant for help usually starts by pasting a URL.
+
+**When embedding, set `NEXT_PUBLIC_STUDIO_ORIGIN`** to the studio's own origin.
+Those references are relative by default, which is right standalone but wrong
+inside a HeartStamp page — there, `/llms.txt` resolves against heartstamp.com.
+See [`src/lib/llms.ts`](src/lib/llms.ts).
+
 ## Scripts
 
 ```bash
@@ -227,6 +267,10 @@ pnpm build
 
 ```bash
 pnpm lint
+```
+
+```bash
+pnpm llms
 ```
 
 ## Deploying to Vercel

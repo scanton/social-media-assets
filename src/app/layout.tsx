@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Outfit } from "next/font/google";
+import { LLMS_TXT, LLMS_FULL_TXT } from "@/lib/llms";
 import "./globals.css";
 
 const inter = Inter({
@@ -20,6 +21,19 @@ export const metadata: Metadata = {
   description:
     "Generate lifestyle base images and social videos for HeartStamp printed and digital greeting cards.",
   robots: { index: false, follow: false },
+  /*
+   * The AI guide, announced the standard way. `rel="alternate"` with a text
+   * media type is how a machine-readable version of a page is advertised, and
+   * it is the first place a fetcher looks after robots.txt.
+   */
+  alternates: {
+    types: {
+      "text/plain": [
+        { url: LLMS_TXT, title: "llms.txt — how to use this app" },
+        { url: LLMS_FULL_TXT, title: "llms-full.txt — every control explained" },
+      ],
+    },
+  },
 };
 
 export const viewport: Viewport = {
@@ -64,6 +78,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
          */}
         <div
           id={STUDIO_ROOT_ID}
+          /*
+           * The same pointer as the <link> above, on the element itself.
+           *
+           * Embedded, this div is all that ships — the host owns <head>, so a
+           * link tag there is not something we can count on surviving. An
+           * attribute on our own root travels with us, and an assistant reading
+           * the DOM finds it without having to know the convention.
+           */
+          data-llms={LLMS_TXT}
           /*
            * The two font variables, set inline on the root rather than through
            * next/font's `.variable` class.

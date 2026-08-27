@@ -1,0 +1,294 @@
+# HeartStamp Asset Studio
+
+> A browser tool that turns greeting-card artwork into social-media assets —
+> lifestyle stills, TikTok/Reels/Shorts video, and annotated "nugget" clips.
+> Written for AI assistants helping someone operate it.
+
+You are almost certainly reading this because someone asked you for help with
+this tool. It is a graphical app: there is no agent API, no headless mode, and
+no way to drive it except a browser. What you can usefully do is know what it
+makes, know which part to send someone to, know the vocabulary, and know the
+handful of rules that are not guessable and that cost money to learn the hard
+way. That is what this file is.
+
+## Read this before you render anything
+
+**Every generation spends the user's own money, immediately.**
+
+Each person supplies their own fal.ai key, so renders bill their fal account
+rather than a shared one. There is no free tier inside the app, no preview, and
+no undo — a submitted job is a charge. This is the single most important thing
+on this page.
+
+Step 2 is where this bites, because its batch multiplies:
+
+    images = camera angles × orientations × variations
+
+Four angles, two orientations and two variations is sixteen images, not eight,
+and it is easy to tick four boxes without doing that arithmetic. One exception:
+supplying your own background photograph locks the camera angles — the picture
+already decides where the camera is — so the batch collapses to
+`orientations × variations`.
+
+The app is on your side here. Step 2 shows the resulting count next to the render
+button before you commit, and past twelve it warns outright that these are
+billable renders on your fal account. Renders run three at a time and are
+cancellable mid-flight.
+
+**Read the count out to the user and get an explicit yes before triggering a
+render**, especially a batch. Do not treat "make me some scenes" as authorisation
+for sixteen of them.
+
+Video costs more than stills and takes minutes rather than seconds. That is the
+whole reason the printed-card path stops at a still: you can look at eight
+framings for the price of eight images instead of eight videos.
+
+**Do not handle the fal key.** It is entered through the app's own dialog and
+kept in an httpOnly cookie the page cannot read. Never ask a user to paste a key
+to you, never put one in a file, a URL or a command. If they are not connected,
+point them at the key dialog in the header and at fal.ai/dashboard/keys.
+
+## What the studio makes
+
+Three surfaces, and picking the right one is most of the help you can give.
+
+**`/` — the card pipeline.** The main event, and the only part that knows what a
+greeting card is. Upload artwork, put it in a photographed scene, animate it.
+What you are selling picks the route:
+
+- **Printed card** — three steps. Artwork → a lifestyle still with the front
+  printed on the card → motion. It goes through a still because a video model
+  handed artwork as a reference re-draws it; `image-to-video` reproduces frame
+  one exactly, so the still is what pins the artwork down.
+- **Digital card** — two steps. Upload the 2–15s card animation, then one render
+  straight to video. No still needed: the clip is played back on the device's
+  screen rather than re-imagined, so it survives.
+
+**`/nuggets` — PopKit.** Annotation over a finished clip or a still image:
+captions, medallions, arrows, media wells that pop in at chosen moments. It never
+alters the footage; it draws on top and re-encodes both together in the browser.
+This is where you go to explain, caption, or point at something — not to generate
+imagery.
+
+**`/freeform` — the bench.** Direct access to every image and video model fal
+offers, with that model's own settings read live from fal's schema. No card
+knowledge, no pipeline, no house rules. Use it when the pipeline's assumptions
+are in the way, or to try a model the pipeline does not offer.
+
+## Rules that are not guessable
+
+These are all consequences of real renders failing, and each one will waste the
+user's money if you ignore it.
+
+**Nobody's face is ever shown.** Every "who's in frame" option is written around
+hands, shoulders, backs of heads and crops above the chin. Generated faces
+animate badly, and a wrong face sinks an otherwise good shot. Do not write a
+prompt asking for a face, and do not suggest one as an improvement.
+
+**An inside spread decides which motions exist.** With a spread uploaded, every
+motion opens the card and the spread rides along so the real artwork is revealed.
+Without one, nothing opens, because the model would have to invent an interior.
+Uploading or removing a spread flips the whole motion set, and the current
+selection is re-validated. If a motion "disappeared", this is why.
+
+**There is no seed.** GPT-Image-2 exposes none, so "variations" means N separate
+calls with a prompt nudge, not N seeds. You cannot reproduce a specific image, and
+you cannot ask for "the same one but…". The only honest advice is to re-roll and
+keep what lands.
+
+**Nothing is stored server-side, and nothing lasts.** Config and asset URLs live
+in the browser's localStorage; the media itself only ever lives on fal's CDN.
+Uploads are expired by fal after about a week, and generated output goes the same
+way — the app does not assume a deadline, it checks: the asset roll has a **Remove
+expired items** control that sweeps for dead URLs, and it will quietly drop things
+that have gone. **Anything worth keeping must be downloaded.** Clearing site data
+loses the session too. Say this early, before someone spends an afternoon building
+a roll they think is saved.
+
+**Nobody touches the screen.** Taps never line up with what is playing, so hands
+support a device from its edges only, and the motions are written to match.
+
+**The logo is composited, not prompted.** A model asked to draw a brand mark
+returns an approximation in a different place every time, so the real PNG is
+burned in on a canvas. Scene stills are clean; the mark appears on video only.
+Do not suggest prompting for it.
+
+**PopKit exports in real time.** The encode records the deck as it plays, so a
+sixty-second deck takes sixty seconds and the tab has to stay open and visible.
+That is also why the still-background timeline is capped at a minute.
+
+## Helping without a browser
+
+If you cannot see the app, the useful things you can still do are: work out which
+surface and which route the user needs; explain what a control does (the whole
+reference is below); write prompt text for the "extra direction" box or the
+bench; do the batch arithmetic before they spend; and talk through why a render
+came out wrong using the rules above. Ask what is on their screen rather than
+assuming — the app self-heals a restored session and drops assets that are gone,
+so what they have may not be what they left.
+
+If you are driving a browser, the flow is top-to-bottom on the page: the header
+picks printed or digital, each step unlocks when the one above it has what it
+needs, and the render button at the bottom of a step carries the count and the
+cost. The "?" beside every control opens the same text you will find below.
+
+---
+
+# Every control in the app, one line each
+
+Generated from the app's own help registry, so it matches what the "?" buttons
+say. **The full text of each, plus every option explained, is at
+`/llms-full.txt`** — read that when someone asks what a specific control does or
+which choice to pick.
+
+## The three steps
+
+- **Step 1** — Everything downstream is built from what you upload here.
+- **Step 2** — Stills first, video second.
+- **Step 3** — Turns a chosen still into a clip.
+- **One pass** — Scene and motion in a single render, without stopping at a still.
+
+## Step 1 — what you upload
+
+- **Front panel** — The outside of the card — the face someone sees before they open it.
+- **Inside spread** — Both inside pages photographed open, as one wide image.
+- **The card animation** — The clip that plays on the device's screen in the finished video — your card doing whatever it does when someone opens it.
+- **Physical size** — The real-world dimensions of the printed card.
+
+## Step 2 — the scene
+
+- **The scene** — Where the shot happens and what it looks like: place, light, lens and who is in it.
+- **Audience** — Who the finished post is aimed at.
+- **Device** — What the card animation is playing on.
+- **Surface** — What the printed card is resting on, being held by, or propped against.
+- **Setting** — Where the shot happens.
+- **Lighting** — The quality and colour of the light.
+- **Film look** — What the picture was supposedly taken with.
+- **Who's in frame** — How much of a person appears.
+- **How close** — How much of the frame the card takes up.
+- **Camera angles** — Where the camera sits relative to the card.
+- **Camera angle** — Where the camera sits relative to the card.
+- **Orientations** — The shape of the finished frame.
+- **Extra direction** — Anything the controls above do not cover — a specific prop, a colour story, a piece of wardrobe, a thing to avoid.
+- **Your own background** — Skip the generated scene and drop in a photograph you already have.
+
+## Step 2 — who is in frame
+
+- **Primary subject** — Who the hands, wrists and shoulders in frame read as.
+- **Age** — Roughly how old the person in frame reads.
+- **Ethnicity** — Since no option ever shows a face, this is carried by skin tone, hair texture, hands and forearms.
+- **Styling details** — The small things right beside the card — nails, rings, a watch, a sleeve.
+- **Nails** — The most visible styling choice, because hands are right beside the card in almost every shot.
+- **Tattoos** — On the forearms and hands, which is the part of a person the frame actually sees.
+- **Wrist** — What sits at the edge of the frame when a hand holds the card.
+- **Rings** — Fingers are unavoidably in shot when someone holds a card.
+- **Other accessories** — Anything else that dresses the frame — a cap, sunglasses pushed up, a knit scarf, a tote.
+
+## Step 2 — the handwritten message
+
+- **Handwritten message** — Asks the image model to write a note on the card's inside pages, in a hand you choose.
+- **Message** — The words written inside the card.
+- **Signature** — The name at the end, written a little looser than the message — as a real signature is.
+- **Handwriting** — Whose hand it looks like.
+- **Pen** — What it was written with.
+- **Written** — Where on the inside spread the message sits.
+
+## Step 2 — output and cost
+
+- **Output** — How many stills to make and how large.
+- **Variations per combo** — How many separate renders to make of each angle-and-orientation pair.
+- **Resolution** — The short edge of each render.
+- **Quality** — How much work the image model puts in per render.
+
+## Step 3 — motion and output
+
+- **Output** — The shape, size and length of the finished clip, plus the two things added after the model is done: the logo and the audio.
+- **Motion** — What actually happens in the video — how the camera moves, how the card is handled, what the moment is.
+- **Resolution** — The size of the finished video.
+- **Duration** — How long the clip runs.
+- **Aspect** — The shape of the finished video.
+- **The HeartStamp logo** — Stamps the wordmark onto the finished video after the model is done.
+- **Generated audio** — Asks the model to invent a soundtrack — room tone, paper, a bit of music.
+- **Source still** — Which rendered scene the video is built from.
+
+## Choosing a model
+
+- **Scene image model** — Which image model draws the still.
+- **Scene image model** — Which image model draws the still with your artwork — and your background, if you added one — handed to it as references.
+- **Video model** — Which model animates the still into a clip.
+- **Reference video model** — This step hands the model both a picture and a video — your card clip playing on the surface, or a printed card opening to its inside spread.
+
+## PopKit — the nugget builder at /nuggets
+
+- **Canvas** — The frame size the annotations are laid out for, and the safe zone inside it.
+- **The safe zone** — An overlay showing where the platform's own interface sits over your video.
+- **What you can add** — Six things, and the difference between them is what they are for rather than how they look.
+- **Protected regions** — A rectangle nothing should be placed over — a logo, a watermark, a burned-in caption already in your footage.
+- **When it applies** — The stretch of the video this protected region covers, in seconds.
+- **Copy** — The words in the nugget.
+- **Text size** — How large the caption text is drawn, relative to the canvas.
+- **Cluster width** — How wide the caption is allowed to run before it wraps to another line.
+- **Dwell** — How long the nugget stays on screen, including its pop-in and pop-out.
+- **Sound cue** — A short sound played as the nugget appears.
+- **Colourway** — The palette the whole nugget is drawn in — shell, border, medallion and glyph together.
+- **Anchor point** — Which part of the nugget sits on the spot you placed.
+- **Side** — Which side of the caption the medallion sits on.
+- **Which ends** — A caption can carry a medallion on either end, both, or neither.
+- **Editing** — Which of the two the frame, border, glyph and media controls below are pointed at.
+- **Medallion size** — How big the badge is next to the caption.
+- **Lap over the caption** — How far the medallion overlaps the caption shell.
+- **Gap to the text** — The space between the arrow's tail and the caption.
+- **Glyph size** — How much of the medallion's safe box the artwork fills.
+- **Caption shell** — The container the words sit in.
+- **Medallion frame** — The shape of the badge beside the caption.
+- **Border treatment** — How the medallion's edge is finished.
+- **Arrow** — A pointer running from the nugget to whatever it is talking about.
+- **Arrow angle** — Which way the arrow points, in degrees.
+- **Arrow layer** — Where the arrow is drawn in the stack.
+- **Object glyphs** — Line drawings of things — a phone, an envelope, a heart.
+- **Occasion glyphs** — Drawings for moments rather than objects — a birthday, a new home, a wedding, a thank-you.
+- **Your own glyph** — Upload artwork of your own instead of using the catalogue.
+- **Stampy** — The HeartStamp character, in a range of expressions.
+- **Media wells** — A nugget that holds a picture or a clip instead of a medallion — a screenshot, a reaction, a before-and-after.
+- **Screen** — A media well with nothing around it: no frame, no keyline, no caption.
+- **Glass** — A soft diagonal sheen and a darkened edge, drawn on the screen's own surface so it foreshortens with the pin.
+- **Perspective** — Lay the screen into the scene by dragging its four corners onto the real thing in the photograph.
+- **Aspect** — The shape of the screen you are matching.
+- **Width** — How wide the screen is drawn before any corner-pinning.
+- **Corner radius** — How round the corners are, in canvas pixels.
+- **Format** — The ten named well formats.
+- **Shape wells** — Any of the eighteen medallion frames with a hole cut in it and your media showing through.
+- **Well media** — The picture or clip that sits in the shape.
+- **Shape** — The aspect the media is cropped to inside the well.
+- **Well size** — How big the well is drawn, independently of any text size.
+- **Well caption** — A line under the media, inside the frame — the well's own label rather than a separate nugget.
+- **Kicker** — The small line above the caption, usually a category or a source — "BEFORE", "STEP 2", "@handle".
+- **Medallion** — The badge that sits beside the caption — a shape, a border treatment and usually a glyph.
+- **Timeline length** — How long the deck runs when the background is a still.
+- **Playing the deck** — Play, pause, and back to the start.
+- **Timeline** — Every beat in the deck, laid over the length of the video.
+- **PopKit** — Annotation over a finished clip: captions, medallions, arrows and media wells that pop in at chosen moments.
+
+## The bench at /freeform
+
+- **What are you making** — Which kind of model to work with.
+- **Model** — Every image or video model fal currently offers in this category — hundreds of them, pulled live rather than from a list we maintain.
+- **Prompt** — Your words, used exactly as written.
+- **Starting image** — The picture this kind of model works from.
+- **Negative prompt** — What to keep out: extra fingers, watermarks, text, blur.
+- **Model settings** — These are read from the model's own published schema, not written by us, which is why they change completely when you switch models and why the wording is sometimes the vendor's rather than ours.
+- **What gets sent** — The exact prompt string the model receives: your words first, unchanged, then a clause for each choice you made on the right.
+- **Shot size** — How much of the subject is in frame.
+- **Camera angle** — Where the camera sits relative to the subject.
+- **Lighting** — The single biggest lever on how a shot feels.
+- **Lens** — Focal length changes perspective, not just crop.
+- **Depth of field** — How much of the scene is sharp.
+- **Look** — The finish.
+- **Time and weather** — When it is, and what the air is doing.
+- **Camera motion** — What the camera does.
+- **Pace** — How fast anything moves.
+
+---
+
+`llms.txt` is generated from `src/lib/help.ts` and `src/lib/options.ts`. Do not
+edit by hand; run `pnpm llms` instead.

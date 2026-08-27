@@ -6,6 +6,7 @@ import { getKeyState } from "@/lib/client-api";
 import { signOutAction } from "@/app/actions";
 import type { StudioUser } from "@/auth";
 import { BRAND } from "@/lib/brand";
+import { LLMS_TXT } from "@/lib/llms";
 import { SURFACES, type SurfaceKind } from "@/lib/options";
 import { sweepAssets, useExpiredUrls } from "@/lib/asset-health";
 import { StudioProvider, useStudio } from "./studio-store";
@@ -351,6 +352,18 @@ function StudioShell({
           Assets are generated on your own fal.ai account and served from fal&apos;s CDN.{" "}
           {BRAND.name} {BRAND.product}{" "}
           doesn&apos;t store your key or keep your assets — download what you want to keep.
+        </p>
+        {/*
+         * Visible because the machine-readable hooks only help an assistant
+         * that already has the page. Someone asking Claude for help usually
+         * starts by pasting a link, and this is the one worth pasting.
+         */}
+        <p className="mt-2 text-xs text-ink-faint">
+          Working with an AI assistant?{" "}
+          <a className="underline underline-offset-2 hover:text-ink" href={LLMS_TXT}>
+            Give it this page
+          </a>{" "}
+          so it knows how the studio works.
         </p>
       </footer>
 

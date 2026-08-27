@@ -1,0 +1,908 @@
+# HeartStamp Asset Studio
+
+> A browser tool that turns greeting-card artwork into social-media assets —
+> lifestyle stills, TikTok/Reels/Shorts video, and annotated "nugget" clips.
+> Written for AI assistants helping someone operate it.
+
+You are almost certainly reading this because someone asked you for help with
+this tool. It is a graphical app: there is no agent API, no headless mode, and
+no way to drive it except a browser. What you can usefully do is know what it
+makes, know which part to send someone to, know the vocabulary, and know the
+handful of rules that are not guessable and that cost money to learn the hard
+way. That is what this file is.
+
+## Read this before you render anything
+
+**Every generation spends the user's own money, immediately.**
+
+Each person supplies their own fal.ai key, so renders bill their fal account
+rather than a shared one. There is no free tier inside the app, no preview, and
+no undo — a submitted job is a charge. This is the single most important thing
+on this page.
+
+Step 2 is where this bites, because its batch multiplies:
+
+    images = camera angles × orientations × variations
+
+Four angles, two orientations and two variations is sixteen images, not eight,
+and it is easy to tick four boxes without doing that arithmetic. One exception:
+supplying your own background photograph locks the camera angles — the picture
+already decides where the camera is — so the batch collapses to
+`orientations × variations`.
+
+The app is on your side here. Step 2 shows the resulting count next to the render
+button before you commit, and past twelve it warns outright that these are
+billable renders on your fal account. Renders run three at a time and are
+cancellable mid-flight.
+
+**Read the count out to the user and get an explicit yes before triggering a
+render**, especially a batch. Do not treat "make me some scenes" as authorisation
+for sixteen of them.
+
+Video costs more than stills and takes minutes rather than seconds. That is the
+whole reason the printed-card path stops at a still: you can look at eight
+framings for the price of eight images instead of eight videos.
+
+**Do not handle the fal key.** It is entered through the app's own dialog and
+kept in an httpOnly cookie the page cannot read. Never ask a user to paste a key
+to you, never put one in a file, a URL or a command. If they are not connected,
+point them at the key dialog in the header and at fal.ai/dashboard/keys.
+
+## What the studio makes
+
+Three surfaces, and picking the right one is most of the help you can give.
+
+**`/` — the card pipeline.** The main event, and the only part that knows what a
+greeting card is. Upload artwork, put it in a photographed scene, animate it.
+What you are selling picks the route:
+
+- **Printed card** — three steps. Artwork → a lifestyle still with the front
+  printed on the card → motion. It goes through a still because a video model
+  handed artwork as a reference re-draws it; `image-to-video` reproduces frame
+  one exactly, so the still is what pins the artwork down.
+- **Digital card** — two steps. Upload the 2–15s card animation, then one render
+  straight to video. No still needed: the clip is played back on the device's
+  screen rather than re-imagined, so it survives.
+
+**`/nuggets` — PopKit.** Annotation over a finished clip or a still image:
+captions, medallions, arrows, media wells that pop in at chosen moments. It never
+alters the footage; it draws on top and re-encodes both together in the browser.
+This is where you go to explain, caption, or point at something — not to generate
+imagery.
+
+**`/freeform` — the bench.** Direct access to every image and video model fal
+offers, with that model's own settings read live from fal's schema. No card
+knowledge, no pipeline, no house rules. Use it when the pipeline's assumptions
+are in the way, or to try a model the pipeline does not offer.
+
+## Rules that are not guessable
+
+These are all consequences of real renders failing, and each one will waste the
+user's money if you ignore it.
+
+**Nobody's face is ever shown.** Every "who's in frame" option is written around
+hands, shoulders, backs of heads and crops above the chin. Generated faces
+animate badly, and a wrong face sinks an otherwise good shot. Do not write a
+prompt asking for a face, and do not suggest one as an improvement.
+
+**An inside spread decides which motions exist.** With a spread uploaded, every
+motion opens the card and the spread rides along so the real artwork is revealed.
+Without one, nothing opens, because the model would have to invent an interior.
+Uploading or removing a spread flips the whole motion set, and the current
+selection is re-validated. If a motion "disappeared", this is why.
+
+**There is no seed.** GPT-Image-2 exposes none, so "variations" means N separate
+calls with a prompt nudge, not N seeds. You cannot reproduce a specific image, and
+you cannot ask for "the same one but…". The only honest advice is to re-roll and
+keep what lands.
+
+**Nothing is stored server-side, and nothing lasts.** Config and asset URLs live
+in the browser's localStorage; the media itself only ever lives on fal's CDN.
+Uploads are expired by fal after about a week, and generated output goes the same
+way — the app does not assume a deadline, it checks: the asset roll has a **Remove
+expired items** control that sweeps for dead URLs, and it will quietly drop things
+that have gone. **Anything worth keeping must be downloaded.** Clearing site data
+loses the session too. Say this early, before someone spends an afternoon building
+a roll they think is saved.
+
+**Nobody touches the screen.** Taps never line up with what is playing, so hands
+support a device from its edges only, and the motions are written to match.
+
+**The logo is composited, not prompted.** A model asked to draw a brand mark
+returns an approximation in a different place every time, so the real PNG is
+burned in on a canvas. Scene stills are clean; the mark appears on video only.
+Do not suggest prompting for it.
+
+**PopKit exports in real time.** The encode records the deck as it plays, so a
+sixty-second deck takes sixty seconds and the tab has to stay open and visible.
+That is also why the still-background timeline is capped at a minute.
+
+## Helping without a browser
+
+If you cannot see the app, the useful things you can still do are: work out which
+surface and which route the user needs; explain what a control does (the whole
+reference is below); write prompt text for the "extra direction" box or the
+bench; do the batch arithmetic before they spend; and talk through why a render
+came out wrong using the rules above. Ask what is on their screen rather than
+assuming — the app self-heals a restored session and drops assets that are gone,
+so what they have may not be what they left.
+
+If you are driving a browser, the flow is top-to-bottom on the page: the header
+picks printed or digital, each step unlocks when the one above it has what it
+needs, and the render button at the bottom of a step carries the count and the
+cost. The "?" beside every control opens the same text you will find below.
+
+---
+
+# Reference: every control in the app
+
+Generated from the app's own help registry, so it matches what the "?" buttons
+say. Where a control offers a list of choices, each choice is explained too.
+
+## The three steps
+
+### Step 1
+
+Everything downstream is built from what you upload here. Nothing on this page is generated — it is your artwork, or your animation, going in as it is. The rest of the app never invents a card; it only ever places the one you supply.
+
+### Step 2
+
+Stills first, video second. This step makes photographs of your card in a place, and step 3 animates whichever one you like best. Splitting it means you can look at eight framings for the price of eight images rather than eight videos.
+
+### Step 3
+
+Turns a chosen still into a clip. The video model animates that exact frame, so this step decides what happens rather than what things look like — the look was settled in step 2.
+
+### One pass
+
+Scene and motion in a single render, without stopping at a still. Faster and cheaper than the two-step route, with less control: you cannot check the framing before paying for the movement.
+
+
+## Step 1 — what you upload
+
+### Front panel
+
+The outside of the card — the face someone sees before they open it. This is the one required picture: every scene and every video is built around it, and the model is shown it directly rather than described it.
+
+### Inside spread
+
+Both inside pages photographed open, as one wide image. Optional. Supplying it lets a scene show the card opened, and lets a handwritten message be placed on a real page instead of an invented one.
+
+### The card animation
+
+The clip that plays on the device's screen in the finished video — your card doing whatever it does when someone opens it. Eight to thirteen seconds is the sweet spot: long enough to read as a whole thing, short enough to hold a viewer.
+
+### Physical size
+
+The real-world dimensions of the printed card. It sets the proportions of the card in the scene and how big it reads against a hand, a table or an envelope — a 4×6 in someone's fingers looks nothing like an A5.
+
+  - **5" × 7" folded** — 10" × 7" open — the HeartStamp standard
+  - **4" × 6" folded** — 8" × 6" open
+  - **5.5" square folded** — 11" × 5.5" open
+  - **A6 folded** — 105 × 148 mm closed
+  - **A5 folded** — 148 × 210 mm closed
+
+
+## Step 2 — the scene
+
+### The scene
+
+Where the shot happens and what it looks like: place, light, lens and who is in it. Everything here is compiled into one prompt — none of it reaches the model as a separate instruction, which is why the choices have to agree with each other to work.
+
+### Audience
+
+Who the finished post is aimed at. It filters the list of settings to ones that suit them, and steers wardrobe, props and styling. It never appears as words in the picture — it decides which words get used.
+
+  - **Gen Z** — Late teens to mid-twenties. Dorms, thrifted layers, phone-first.
+  - **Millennial moms** — Thirties, family home, warm and lived-in.
+  - **College / dorm** — Campus and shared housing, budget-friendly clutter.
+  - **Young professional** — Twenties to thirties, work-adjacent, tidier and more considered.
+
+### Device
+
+What the card animation is playing on. The exact model matters more than it sounds — bezels, rails and the shape of the corners are the difference between a shot that reads as a real photograph and one that reads as a render.
+
+### Surface
+
+What the printed card is resting on, being held by, or propped against. It sets the whole physical situation of the shot before any lighting or framing is applied.
+
+### Setting
+
+Where the shot happens. This is the single biggest lever on the finished picture — more than lighting, more than lens. The list is filtered by the audience above, so change that first if nothing here fits.
+
+### Lighting
+
+The quality and colour of the light. Soft light flatters and calms; hard light adds drama and texture. If a render looks flat or fake, this is usually the control to change.
+
+  - **Golden hour** — The hour after sunrise or before sunset. Warm, low, long soft shadows.
+  - **Soft window light** — Daylight through a big window. Soft, flattering, no harsh edges.
+  - **Overcast daylight** — Flat cloudy daylight. Even and neutral — nothing dramatic, nothing to hide.
+  - **Direct flash** — Hard on-camera flash. Bright subject, dark background, crunchy and immediate.
+  - **Neon night** — Night with saturated magenta and cyan spill on wet surfaces.
+  - **Warm indoor lamp** — Indoor tungsten lamplight. Amber, cosy, deep soft shadows.
+  - **Clean studio** — A big softbox and gentle fill on a seamless background. Clean and commercial.
+  - **Stage / concert** — Concert lighting — coloured beams, haze, a strong rim light on the subject.
+
+### Film look
+
+What the picture was supposedly taken with. This is the finish rather than the content: the same scene shot as 35mm film and as a Y2K digicam are the same objects with completely different credibility.
+
+  - **iPhone snapshot** — Modern phone photography. Clean, true-to-life, computational.
+  - **35mm film** — 35mm film. Fine grain, lifted blacks, a glow in the highlights.
+  - **Editorial / campaign** — Magazine campaign work. Medium-format sharp, deliberately composed.
+  - **Y2K digicam** — Early-2000s point-and-shoot. Noise, harsh flash, nostalgic colour.
+  - **Raw UGC** — Raw user-generated content. Imperfect framing, un-styled, believable.
+
+### Who's in frame
+
+How much of a person appears. No option here shows a face — faces are the thing image models get uncannily wrong, and a wrong face sinks an otherwise good shot — so presence is carried by hands, shoulders and the backs of heads.
+
+  - **No people** — The card or device alone. Nothing to get wrong.
+  - **Hands only** — Hands and forearms only. The most reliable way to add a human.
+  - **One person, cropped** — One person, cropped above the chin or framed from the shoulders down.
+  - **One person, from behind** — One person seen from behind, face turned away.
+  - **Friend group** — A few friends leaning in, seen from behind or cropped at the shoulders.
+
+### How close
+
+How much of the frame the card takes up. Separate from camera angle: that says where the camera is, this says how close it gets.
+
+  - **Hero close-up** — The card is the whole point and fills most of the frame.
+  - **Fills the frame** — Closer still — card edge to edge, almost no room for anything else.
+  - **Balanced** — The card leads, the scene supports it. The safest default.
+  - **Environmental** — The environment tells the story and the card sits inside it.
+
+### Camera angles
+
+Where the camera sits relative to the card. Pick as many as you like — each one is rendered separately, so this is the fastest way to get genuine variety rather than the same shot four times.
+
+  - **First-person POV** — Looking down at your own hands, arms entering from the bottom of the frame.
+  - **Over the shoulder** — Just past someone's shoulder, the back of their head soft in the foreground.
+  - **Top-down flat lay** — Straight down at ninety degrees. The classic tabletop layout shot.
+  - **Three-quarter angle** — Off to one side by about twenty-five degrees, so the card is seen in gentle perspective.
+  - **Straight-on eye level** — Square to the card, no perspective distortion. Clean and product-like.
+  - **Low hero angle** — Slightly below, looking up. Makes the subject loom — heroic and a little dramatic.
+  - **Macro lens** — Right up against the surface, focus falling away fast. Texture and detail.
+  - **Wide establishing** — Pulled back to take in the whole room around the subject.
+  - **Handheld dutch tilt** — A few degrees of tilt, casual and imperfect, like a snapshot.
+
+### Camera angle
+
+Where the camera sits relative to the card. One per render here — this page makes a single clip rather than a batch, so pick the one that suits the moment.
+
+  - **First-person POV** — Looking down at your own hands, arms entering from the bottom of the frame.
+  - **Over the shoulder** — Just past someone's shoulder, the back of their head soft in the foreground.
+  - **Top-down flat lay** — Straight down at ninety degrees. The classic tabletop layout shot.
+  - **Three-quarter angle** — Off to one side by about twenty-five degrees, so the card is seen in gentle perspective.
+  - **Straight-on eye level** — Square to the card, no perspective distortion. Clean and product-like.
+  - **Low hero angle** — Slightly below, looking up. Makes the subject loom — heroic and a little dramatic.
+  - **Macro lens** — Right up against the surface, focus falling away fast. Texture and detail.
+  - **Wide establishing** — Pulled back to take in the whole room around the subject.
+  - **Handheld dutch tilt** — A few degrees of tilt, casual and imperfect, like a snapshot.
+
+### Orientations
+
+The shape of the finished frame. Pick as many as you need — each is rendered separately, which is how you get a vertical cut for Reels and a square for the feed without re-prompting.
+
+  - **9:16 Vertical** — Full-screen vertical. TikTok, Reels, Shorts, Stories.
+  - **4:5 Portrait** — Tall portrait. The largest shape a feed post can occupy.
+  - **1:1 Square** — Square. Safe everywhere, strong nowhere.
+  - **16:9 Landscape** — Landscape. YouTube, sites, anything on a desktop screen.
+  - **2:3 Tall** — Tall, print-proportioned. Good for a card standing upright.
+  - **3:4 Portrait** — A gentler portrait than 4:5.
+
+### Extra direction
+
+Anything the controls above do not cover — a specific prop, a colour story, a piece of wardrobe, a thing to avoid. It is appended to the prompt the choices build, so it adds to them rather than replacing them. Optional, and usually best left empty until something specific is going wrong.
+
+### Your own background
+
+Skip the generated scene and drop in a photograph you already have. The card gets composited into it. Choosing one locks the scene controls, because the picture now decides the setting, the lighting and the framing.
+
+
+## Step 2 — who is in frame
+
+### Primary subject
+
+Who the hands, wrists and shoulders in frame read as. Only meaningful when someone is actually in the shot — with "No people" selected above, none of the styling controls do anything.
+
+  - **Any** — Let the model decide
+
+### Age
+
+Roughly how old the person in frame reads. It carries through hands, nails and wardrobe rather than a face, so treat it as a nudge rather than a precise instruction.
+
+### Ethnicity
+
+Since no option ever shows a face, this is carried by skin tone, hair texture, hands and forearms. Each is written as a range rather than one exact look — naming a single point produces a caricature.
+
+  - **Any / unspecified** — Let the model decide
+  - **Mixed group** — Several ethnicities in one shot
+
+### Styling details
+
+The small things right beside the card — nails, rings, a watch, a sleeve. They are the difference between a stock-looking hand and one that belongs to somebody. Everything here is optional; "Any" leaves the choice to the model.
+
+  - **Nails** — Right beside the card in almost every shot, so the most visible of these.
+  - **Tattoos** — On the forearms and hands, where the frame can actually see them.
+  - **Wrist** — Watches, bracelets, a scrunchie — whatever sits at the edge of the frame.
+  - **Rings** — Stacked, statement, signet or none.
+  - **Other accessories** — Necklaces, hoops, a cap, a tote — anything else that dresses the shot.
+
+### Nails
+
+The most visible styling choice, because hands are right beside the card in almost every shot. A chrome or glitter manicure reads as deliberate; short and bare reads as ordinary. Both are useful — they just say different things about whose card this is.
+
+### Tattoos
+
+On the forearms and hands, which is the part of a person the frame actually sees. The named styles are how tattooists describe their own work.
+
+  - **Fine-line** — Thin single-weight black lines. Small, delicate, modern.
+  - **Botanical** — Plants and flowers, usually fine-line.
+  - **American traditional** — Bold outlines, limited colour. Anchors, roses, swallows.
+  - **Blackwork / geometric** — Solid black shapes and repeated patterns.
+  - **Script lettering** — Words in a handwritten or gothic hand.
+  - **Full sleeve** — Dense coverage from shoulder to wrist.
+
+### Wrist
+
+What sits at the edge of the frame when a hand holds the card. Small, but it does a lot of the work of making a hand belong to a particular person.
+
+### Rings
+
+Fingers are unavoidably in shot when someone holds a card. A wedding band or a signet says something specific; "Any" leaves it to the model.
+
+### Other accessories
+
+Anything else that dresses the frame — a cap, sunglasses pushed up, a knit scarf, a tote. Use sparingly: each one is another thing the model has to render correctly.
+
+
+## Step 2 — the handwritten message
+
+### Handwritten message
+
+Asks the image model to write a note on the card's inside pages, in a hand you choose. Everything here is optional, and none of it does anything without an inside spread uploaded — there is no page to write on otherwise.
+
+### Message
+
+The words written inside the card. Keep it to what would genuinely fit on a page in someone's hand — a few lines. Long paragraphs come back cramped and illegible, because that is what they would really look like.
+
+### Signature
+
+The name at the end, written a little looser than the message — as a real signature is. Optional; leave it empty for an unsigned note.
+
+### Handwriting
+
+Whose hand it looks like. Grouped by how the writing reads rather than by any font name, because the model is being asked to imitate a person, not to set type.
+
+  - **Neat everyday** — Tidy, legible, unfussy
+  - **Chicken scratch** — Hurried, cramped, barely legible
+  - **Messy scrawl** — Heavy, jagged, pressed hard
+  - **Bold marker** — Thick felt-tip strokes
+  - **Architect's block** — Even, drafted capitals
+  - **Girly script** — Round, looping, bouncy
+  - **Breezy print** — Light, airy, upright
+  - **Elegant calligraphy** — Formal copperplate
+  - **Classic cursive** — Old-fashioned joined hand
+  - **Playful** — Bubbly and childlike
+
+### Pen
+
+What it was written with. Ballpoint blue is the most believable for a note actually written by hand; gold and red read as deliberate, which is sometimes the point.
+
+  - **Ballpoint blue** — The most ordinary and so the most believable.
+  - **Black ink** — Neutral and a little more formal.
+  - **Pencil** — Pencil. Soft, grey, slightly smudged.
+  - **Red ink** — Reads as emphatic or festive.
+  - **Gold pen** — A metallic gel pen. Deliberate, celebratory.
+
+### Written
+
+Where on the inside spread the message sits. Lower right is where a card is normally signed, which is why it is the default.
+
+  - **Lower right** — Where a card is normally signed
+
+
+## Step 2 — output and cost
+
+### Output
+
+How many stills to make and how large. Every angle is multiplied by every orientation and then by the variation count, so these three numbers together decide the size of the batch — and the bill. The running total is shown on the render button.
+
+### Variations per combo
+
+How many separate renders to make of each angle-and-orientation pair. GPT-Image-2 has no seed input, so re-rolling is the only way to get variety — two variations of four angles is eight images, and eight charges.
+
+### Resolution
+
+The short edge of each render. Bigger costs more and takes longer. These are stills that will be handed to a video model at 720p or 1080p, so the largest sizes rarely earn their price.
+
+  - **720p** — Fastest and cheapest
+  - **1080p** — Balanced
+  - **1440p** — Sharper detail
+  - **4K** — Slowest, most expensive
+
+### Quality
+
+How much work the image model puts in per render. Higher quality means better hands, cleaner text on the card and fewer obvious mistakes — and a longer wait and a larger bill. Worth raising once the scene is right, not while you are still exploring.
+
+
+## Step 3 — motion and output
+
+### Output
+
+The shape, size and length of the finished clip, plus the two things added after the model is done: the logo and the audio. Longer and larger both cost more, and neither improves what actually happens in the shot.
+
+### Motion
+
+What actually happens in the video — how the camera moves, how the card is handled, what the moment is. Pick as many as you like; each is rendered as its own clip. This is the choice that decides whether the result feels like a video or like a photograph that drifts.
+
+### Resolution
+
+The size of the finished video. 720p is the right default for social — it is what the platforms re-encode to anyway, it renders faster and it costs less. Go higher only when something will be seen full-screen on a desktop.
+
+  - **480p** — Draft quality. Good for checking a motion before paying for the real thing.
+  - **720p** — The social default. Sharp enough everywhere it will actually be watched.
+  - **1080p** — Full HD. Worth it for a desktop or a site hero, otherwise not.
+
+### Duration
+
+How long the clip runs. Longer costs proportionally more and gives the model more room to drift away from your card. "Auto" lets the model pick what suits the motion.
+
+### Aspect
+
+The shape of the finished video. Match it to where it is going: vertical for Reels and TikTok, square for a feed, landscape for YouTube.
+
+  - **9:16 Vertical** — Full-screen vertical. TikTok, Reels, Shorts, Stories.
+  - **4:5 Portrait** — Tall portrait, the biggest a feed post gets.
+  - **1:1 Square** — Square. Safe everywhere.
+  - **16:9 Landscape** — Landscape. YouTube and desktop.
+
+### The HeartStamp logo
+
+Stamps the wordmark onto the finished video after the model is done. It is added here rather than baked into the still, so the same scene can be used with and without it — and so the logo stays crisp instead of being re-imagined by a video model.
+
+### Generated audio
+
+Asks the model to invent a soundtrack — room tone, paper, a bit of music. Useful for a quick draft. For anything you will actually post, expect to replace it: models are far better at pictures than at sound.
+
+### Source still
+
+Which rendered scene the video is built from. The model animates this exact frame, so whatever is wrong in the still will still be wrong — and moving — in the video. Pick the cleanest one, not the most interesting one.
+
+
+## Choosing a model
+
+### Scene image model
+
+Which image model draws the still. With no artwork attached it works from the prompt alone. The list only shows models that accept the inputs this step sends, which is why it is shorter than fal's full catalogue — the open bench has the unfiltered list.
+
+### Scene image model
+
+Which image model draws the still with your artwork — and your background, if you added one — handed to it as references. Models differ most in how faithfully they reproduce artwork they are shown rather than in how pretty the scene is.
+
+### Video model
+
+Which model animates the still into a clip. They differ in how long a clip they will make, how well they hold onto the card's artwork while it moves, and what they cost. Only models that accept the inputs this step sends are listed.
+
+### Reference video model
+
+This step hands the model both a picture and a video — your card clip playing on the surface, or a printed card opening to its inside spread. Very few models accept both, which is why this list is short.
+
+
+## PopKit — the nugget builder at /nuggets
+
+### Canvas
+
+The frame size the annotations are laid out for, and the safe zone inside it. It does not resize your video — it decides where the platform's own interface would cover things up, so nothing important lands under a caption bar or a row of buttons.
+
+  - **TikTok / Reels / Shorts** — 1080×1920. Deep safe margins top and bottom for the platform's controls.
+  - **YouTube** — 1920×1080. Landscape, with room for the player chrome.
+  - **Square** — 1080×1080. Feed posts.
+
+### The safe zone
+
+An overlay showing where the platform's own interface sits over your video. Anything you put outside it may be covered by a caption, a username or a row of buttons on a real phone. It is a guide only — it never appears in the export.
+
+### What you can add
+
+Six things, and the difference between them is what they are for rather than how they look. The first four become beats on the timeline; the last two act on what is already there.
+
+  - **Add beat** — A caption nugget — words in a shell, usually with a medallion and an arrow. The default thing, and the one with a reading-time floor: text needs about three and a half seconds to be read at all.
+  - **Add well** — A framed window holding a picture or a clip — a screenshot, a reaction, a before-and-after. It has its own furniture: a caption lip, a kicker, a border. Ten named formats, or any of the eighteen frames with a hole in it.
+  - **Add arrow** — A pointer on its own, with no caption attached. Answers to pointer lead rather than reading time, so it can be brief — it marks something for a moment rather than being read.
+  - **Add screen** — A bare well with no frame at all, meant to pass for a surface already in the shot: the screen of a phone, a monitor, a billboard. Holds the whole timeline and does not pop in, and its corners can be dragged onto the real thing.
+  - **Delete beat** — Removes the selected beat. Only offered while more than one exists, because a deck with nothing in it is not a state worth being able to reach by accident.
+  - **Mark protected region** — Draws a box over something already in your footage that nothing should cover — a logo, a watermark, a burned-in caption. Then drag on the frame to place it. An arrow landing inside one is a blocking error rather than a warning, and it needs 16px of clearance. Give it a time window if the thing is only there for part of the clip.
+
+### Protected regions
+
+A rectangle nothing should be placed over — a logo, a watermark, a burned-in caption already in your footage. Mark it once and the builder warns you when a nugget lands on top of it.
+
+### When it applies
+
+The stretch of the video this protected region covers, in seconds. Leave both blank if the thing is on screen for the whole clip — a watermark usually is, an end card usually is not.
+
+### Copy
+
+The words in the nugget. Short is not a style rule here — it is a legibility one. A viewer sees this for a couple of seconds at phone size, so a handful of words lands and a sentence does not.
+
+### Text size
+
+How large the caption text is drawn, relative to the canvas. Everything else in the nugget is sized from it — the shell, the padding, the medallion — so this is the main lever on how much of the frame the whole cluster takes up.
+
+### Cluster width
+
+How wide the caption is allowed to run before it wraps to another line. Narrower gives you a taller, chunkier block; wider gives a long thin one. Useful for fitting a nugget beside something in the footage rather than over it.
+
+### Dwell
+
+How long the nugget stays on screen, including its pop-in and pop-out. Text needs roughly three and a half seconds to be read at all; arrows and media wells have no such floor because there is nothing to read.
+
+### Sound cue
+
+A short sound played as the nugget appears. It is mixed into the exported video and previewed here when you pick one. "None" is a real choice — a deck where every beat clicks gets tiring fast.
+
+### Colourway
+
+The palette the whole nugget is drawn in — shell, border, medallion and glyph together. Set per beat, so one deck can run a house look throughout and switch to a loud one for the moment that matters.
+
+  - **House** — The HeartStamp palette. The default, and the right answer most of the time.
+  - **Loud** — High-saturation and high-contrast. For the one beat that has to be seen.
+  - **Night** — Dark ground, light type. Sits better over bright footage.
+  - **Premium** — Restrained, warm neutrals with metallic accents.
+  - **Soft** — Low contrast and gentle. Quiet, and easy to lose over busy footage.
+  - **Candy** — Bright pastels.
+  - **Signal** — Warning colours — the visual language of an alert.
+  - **Mono** — Black and white only. Never fights the footage.
+
+### Anchor point
+
+Which part of the nugget sits on the spot you placed. Dragging positions a single point; this says whether that point is the cluster's centre, a corner or an edge — which is what keeps a nugget lined up with something in the footage as its text grows.
+
+### Side
+
+Which side of the caption the medallion sits on. The arrow moves with it, so this flips the whole cluster rather than just the badge.
+
+### Which ends
+
+A caption can carry a medallion on either end, both, or neither. Turning one off takes its glyph and its gap with it, and moves any arrow that was hanging off it to the end that still has one — an arrow whose host disappears silently reattaches itself to a caption edge instead.
+
+### Editing
+
+Which of the two the frame, border, glyph and media controls below are pointed at. Only appears when there are two, because with one there is nothing to choose between. The previews are the real medallions rather than the words — two circles that differ only by their glyph are otherwise impossible to tell apart. Clicking one on the frame selects it too.
+
+### Medallion size
+
+How big the badge is next to the caption. As it shrinks it moves closer to the text so the cluster stays a single object rather than two things near each other.
+
+### Lap over the caption
+
+How far the medallion overlaps the caption shell. A little overlap reads as one designed object; none reads as two stickers placed next to each other.
+
+### Gap to the text
+
+The space between the arrow's tail and the caption. Enough that they read as separate parts, little enough that the arrow clearly belongs to this nugget and not another one.
+
+### Glyph size
+
+How much of the medallion's safe box the artwork fills. Larger uses the space better; too large and a frame with corners — a diamond, a pennant — starts clipping the drawing.
+
+### Caption shell
+
+The container the words sit in. Twelve of them, and the choice is mostly tone: a pill is neutral and modern, a ticket or a torn edge is playful, a slab is loud.
+
+  - **Pill** — Fully rounded ends. Neutral, modern, the safe default.
+  - **Inset Pill** — A pill with an inner line, so it reads as a printed label.
+  - **Slab** — A hard rectangle with a heavy offset. Loud and blocky.
+  - **Bevel** — Cut corners — a plate rather than a sticker.
+  - **Sticker** — A thick white keyline all the way round, like a die-cut vinyl sticker.
+  - **Ticket** — Notched sides, as if torn from a roll.
+  - **Stamp Edge** — Perforated postage-stamp edges.
+  - **Index** — A filing-card look, squared off and plain.
+  - **Ribbon** — Tails at each end, as though the banner continues past the frame.
+  - **Bar** — A flat full-width band. Utilitarian, good for a lower third.
+  - **Brackets** — No fill — just marks at the corners holding the words.
+  - **Torn** — A ragged edge, as if ripped from paper.
+
+### Medallion frame
+
+The shape of the badge beside the caption. Eighteen of them. Rounder shapes give a glyph the most usable room; pointed ones look sharper but crop the artwork harder, so check the glyph size after switching.
+
+  - **Capsule** — A stretched circle. Good for a wide glyph.
+  - **Squircle** — Between a square and a circle — the shape of an app icon.
+  - **Triangle Down** — A triangle pointing down — useful when the arrow comes from above.
+  - **Shield** — A crest. Reads as official or as a badge of honour.
+  - **Rosette** — A scalloped edge, like an award seal.
+  - **Ticket** — Notched sides, matching the ticket shell.
+  - **Pennant** — A tapering flag shape.
+  - **Arch** — Flat bottom, domed top. Like a plaque or a doorway.
+  - **Burst** — A jagged star — the shape of a price flash.
+  - **Blob** — An irregular organic shape. Hand-drawn rather than geometric.
+  - **Stamp** — Perforated edges, matching the stamp caption shell.
+
+### Border treatment
+
+How the medallion's edge is finished. It is what separates the badge from the footage behind it — over busy video a hairline disappears and a slab or a sticker survives. Leaving it on the register default is usually right.
+
+  - **Slab** — A solid offset block behind the shape. The strongest separation there is.
+  - **Drop** — A soft drop shadow. Lifts it off the footage without adding a line.
+  - **Glow** — A soft halo. Works where a hard edge would look heavy.
+  - **Sticker** — A thick white keyline, like a die-cut sticker.
+  - **Gap** — A line held away from the edge, with clear space between.
+  - **Key** — A plain keyline at the standard weight.
+  - **Key Fat** — The same, much heavier.
+  - **Hair** — A hairline. Delicate, and the first thing to vanish over busy video.
+  - **Gold** — A metallic keyline. Reads as premium.
+  - **Double** — Two concentric lines.
+  - **Stitch** — A dashed line, like stitching round a patch.
+  - **Tick** — Small marks around the edge, like a dial.
+  - **Emboss** — A raised-and-pressed edge, as if stamped into card.
+
+### Arrow
+
+A pointer running from the nugget to whatever it is talking about. Thirty-four of them, and they fall into families: cursors that look like a mouse or a tap, darts and blades that are plain and sharp, drawn ones that look hand-made, and leaders that are more line than arrow. Each medallion carries its own, so with two you get two — this edits whichever one the Editing selector is pointed at, and removing a medallion takes its arrow with it.
+
+  - **Cursors** — cursor, cursorFat, cursorDrag, cursorTap — an interface pointer. Best when you are showing something being clicked or tapped.
+  - **Darts and blades** — dart, wedge, tube, blade, nub, barb — plain, sharp and neutral. The default choice.
+  - **Drawn** — brush, scrawl, sketch, loop, pigtail — hand-made and informal, as if annotated by a person.
+  - **Leaders** — leader, elbow, dashLeader, underscore, bracketTick — mostly line, with a small tip. Quiet, for pointing without shouting.
+  - **Gestural** — swoop, arc, spiral, boomerang, lasso, speed, bolt — motion and energy. Loud by design.
+
+### Arrow angle
+
+Which way the arrow points, in degrees. Zero points right; the angle runs anticlockwise from there. Set it so the tip lands on the thing in the footage rather than merely gesturing in its direction.
+
+### Arrow layer
+
+Where the arrow is drawn in the stack. Under the caption it can be hidden by the shell's border; over the medallion it can cross the badge. Between the two is usually right, which is why it is the default.
+
+  - **Under everything** — Behind the caption and the medallion both. The arrow tucks in.
+  - **Between** — Over the caption, under the medallion. The default.
+  - **Over everything** — On top of the whole cluster. Use when the arrow has to cross the nugget itself.
+
+### Object glyphs
+
+Line drawings of things — a phone, an envelope, a heart. They sit inside the medallion. Use one when the badge should say what the nugget is about at a glance, rather than decorate it.
+
+### Occasion glyphs
+
+Drawings for moments rather than objects — a birthday, a new home, a wedding, a thank-you. Same medallion, different vocabulary. Searchable, because there are forty-seven of them.
+
+### Your own glyph
+
+Upload artwork of your own instead of using the catalogue. It is carried inside the deck itself rather than uploaded anywhere, so nothing needs a server and the deck stays portable. Stills are resized to 512px; SVGs are kept as they are.
+
+### Stampy
+
+The HeartStamp character, in a range of expressions. These are drawn artwork rather than generated, and the head is matched across the set — so props spill outside the frame rather than shrinking the face to fit.
+
+### Media wells
+
+A nugget that holds a picture or a clip instead of a medallion — a screenshot, a reaction, a before-and-after. It pops in like any other beat. Pick a named format for one with its own furniture, or a shape well for a plain hole in a frame.
+
+### Screen
+
+A media well with nothing around it: no frame, no keyline, no caption. It exists to sit inside the background rather than on top of it — the screen of a phone in a photo, a monitor, a billboard — so any furniture would give the game away. It holds the whole timeline and does not pop in, because a thing already in the scene does not arrive.
+
+### Glass
+
+A soft diagonal sheen and a darkened edge, drawn on the screen's own surface so it foreshortens with the pin. A real screen is a mirror as well as an emitter, and the eye reads the total absence of a reflection as "pasted on" long before it can say why. Keep it low — this is meant to sell the illusion, not to look like a filter. Zero turns it off.
+
+### Perspective
+
+Lay the screen into the scene by dragging its four corners onto the real thing in the photograph. Four corners describe any flat surface under any camera exactly, which is why this is corners rather than tilt sliders: matching a photo by rotation would also need that photo's focal length, and for a screen off to one side no amount of rotating gets there. "Pin to the scene" looks for a bright screen-shaped rectangle first and gives you a plain one to drag if it cannot find it.
+
+### Aspect
+
+The shape of the screen you are matching. It decides how the media is cropped to fit — a 16:9 clip in a phone-shaped screen loses its sides rather than being squashed — and gives the corner handles a sensible rectangle to start from.
+
+### Width
+
+How wide the screen is drawn before any corner-pinning. Rough is fine: once you drag the corners onto the thing in the photo, they decide the shape and this only sets the starting rectangle.
+
+### Corner radius
+
+How round the corners are, in canvas pixels. Zero is square, which is right for a billboard or an older monitor. Match it to the device in your photo — a modern phone is rounder than it looks.
+
+### Format
+
+The ten named well formats. Each carries its own proportion and its own furniture — a caption lip, a kicker line, a border treatment — so the format is a whole design rather than just an aspect ratio. Switching format keeps whatever media is loaded.
+
+### Shape wells
+
+Any of the eighteen medallion frames with a hole cut in it and your media showing through. No caption lip and no furniture — the shape is the whole thing. Picking one replaces the named format above.
+
+### Well media
+
+The picture or clip that sits in the shape. It rides inside the deck rather than being uploaded, so a still is resized to fit; a clip is kept as a file and plays in the preview and the export.
+
+### Shape
+
+The aspect the media is cropped to inside the well. Ignored when a shape well is chosen above, because the frame itself already decides it.
+
+### Well size
+
+How big the well is drawn, independently of any text size. A well has no words to stay legible, so it is sized to suit the frame rather than to suit reading.
+
+### Well caption
+
+A line under the media, inside the frame — the well's own label rather than a separate nugget. Leave it empty for a well with no words at all.
+
+### Kicker
+
+The small line above the caption, usually a category or a source — "BEFORE", "STEP 2", "@handle". Set in a smaller, quieter style than the caption below it.
+
+### Medallion
+
+The badge that sits beside the caption — a shape, a border treatment and usually a glyph. It is what turns a line of text into something that reads as designed rather than typed over the footage. Optional on every beat.
+
+### Timeline length
+
+How long the deck runs when the background is a still. A clip brings its own length; a photograph has none, so this is it. Capped at a minute because the export records in real time — a minute of deck is a minute of watching it render.
+
+### Playing the deck
+
+Play, pause, and back to the start. They sit outside the video because a still background has no controls of its own — and because getting back to the top meant dragging the playhead to the left edge and hoping. Rewinding while it plays starts it over rather than stopping it.
+
+### Timeline
+
+Every beat in the deck, laid over the length of the video. Click the bar to move the playhead, or drag it. Drag a beat to move it, drag its edges to change how long it holds. Beats may overlap — two nuggets on screen at once is a deliberate move, not a mistake.
+
+### PopKit
+
+Annotation over a finished clip: captions, medallions, arrows and media wells that pop in at chosen moments. It never changes your video — it draws on top of it, and the export re-encodes the two together in this browser.
+
+
+## The bench at /freeform
+
+### What are you making
+
+Which kind of model to work with. It decides the catalogue below and what the page asks you for — the two "from an image" options start from a picture you supply, the two "from a prompt" options start from nothing.
+
+  - **Image from a prompt** — Words in, one still out. The usual starting point.
+  - **Image from an image** — Editing, restyling, extending or combining pictures you already have.
+  - **Video from a prompt** — Words in, a clip out. The model invents everything, including the first frame.
+  - **Video from an image** — Animates a still you supply. More control over how it looks, less over how it moves.
+
+### Model
+
+Every image or video model fal currently offers in this category — hundreds of them, pulled live rather than from a list we maintain. The settings panel is read from whichever one you pick, so it changes when you change models.
+
+### Prompt
+
+Your words, used exactly as written. Describe the thing you want to see rather than instructing the model — "a hand setting a letterpressed card on a sunlit table" works, "make me a nice image of a card" does not. The choices on the right are appended after this, never woven into it.
+
+### Starting image
+
+The picture this kind of model works from. Drop a file and it goes straight to fal's storage — it never passes through our server — or paste a link to one that is already online.
+
+### Negative prompt
+
+What to keep out: extra fingers, watermarks, text, blur. Not every model supports it — this field only appears when the one you picked does. "Use the usual" fills in the common list.
+
+### Model settings
+
+These are read from the model's own published schema, not written by us, which is why they change completely when you switch models and why the wording is sometimes the vendor's rather than ours. Anything left alone uses that model's own default, with one or two exceptions where we open on something more sensible — GPT Image 2 starts at medium quality rather than high, because the difference is hard to see at social sizes and easy to see on the bill.
+
+### What gets sent
+
+The exact prompt string the model receives: your words first, unchanged, then a clause for each choice you made on the right. Shown in full so nothing is added on your behalf without you seeing it.
+
+### Shot size
+
+How much of the subject is in frame. All optional, and off unless you pick one. Whatever you choose is added to your prompt as a clause after your own words.
+
+  - **Extreme wide** — extreme wide shot, the subject small in a large space
+  - **Wide** — wide shot, full subject with the surroundings visible
+  - **Medium** — medium shot, subject from the waist up
+  - **Close-up** — close-up, the subject filling the frame
+  - **Macro** — macro shot, very close, fine detail and texture
+
+### Camera angle
+
+Where the camera sits relative to the subject. All optional, and off unless you pick one. Whatever you choose is added to your prompt as a clause after your own words.
+
+  - **Eye level** — shot at eye level, straight on
+  - **Low angle** — Makes the subject loom
+  - **High angle** — high angle looking down at the subject
+  - **Overhead** — directly overhead, flat lay, looking straight down
+  - **Dutch tilt** — Unease, energy
+  - **Over the shoulder** — over-the-shoulder shot
+  - **Three-quarter** — three-quarter view, turned slightly away from camera
+
+### Lighting
+
+The single biggest lever on how a shot feels. All optional, and off unless you pick one. Whatever you choose is added to your prompt as a clause after your own words.
+
+  - **Golden hour** — golden hour light, low warm sun, long soft shadows
+  - **Blue hour** — blue hour, cool even twilight just after sunset
+  - **Soft window** — soft diffused daylight from a large window, gentle falloff
+  - **Overcast** — flat overcast daylight, soft shadowless light
+  - **Hard sun** — hard midday sun, bright highlights and sharp shadows
+  - **Rembrandt** — Rembrandt lighting, one key light at 45 degrees, deep shadow side
+  - **Rim light** — strong rim light separating the subject from a dark background
+  - **Neon** — neon lighting, saturated magenta and cyan practicals
+  - **Candlelight** — warm candlelight, low key, flickering pools of light
+  - **Studio softbox** — clean studio lighting, large softbox, even and controlled
+
+### Lens
+
+Focal length changes perspective, not just crop. All optional, and off unless you pick one. Whatever you choose is added to your prompt as a clause after your own words.
+
+  - **Wide 24mm** — shot on a 24mm wide lens, expansive perspective
+  - **35mm** — shot on a 35mm lens, natural documentary perspective
+  - **50mm** — shot on a 50mm lens, perspective close to the human eye
+  - **85mm portrait** — shot on an 85mm portrait lens, flattering compression
+  - **Telephoto 200mm** — shot on a 200mm telephoto, heavily compressed background
+  - **Macro** — shot on a macro lens, extreme close focus
+
+### Depth of field
+
+How much of the scene is sharp. All optional, and off unless you pick one. Whatever you choose is added to your prompt as a clause after your own words.
+
+  - **Shallow** — shallow depth of field, subject sharp against a soft blurred background
+  - **Deep** — deep depth of field, everything from foreground to background in focus
+  - **Tilt-shift** — tilt-shift effect, a narrow band of focus across the frame
+
+### Look
+
+The finish. Where a shot reads as film, or phone, or render. All optional, and off unless you pick one. Whatever you choose is added to your prompt as a clause after your own words.
+
+  - **35mm film** — shot on 35mm film, natural grain, slight halation
+  - **Cinematic** — cinematic colour grade, filmic contrast, anamorphic feel
+  - **Editorial** — editorial photography, clean and considered, magazine quality
+  - **Phone / UGC** — shot on a phone, candid and unstyled, natural imperfection
+  - **Polaroid** — instant film look, soft focus, washed warm tones, white border
+  - **Black and white** — black and white, rich tonal range
+  - **3D render** — clean 3D render, soft global illumination, subtle ambient occlusion
+  - **Illustration** — flat vector illustration, bold shapes, limited palette
+
+### Time and weather
+
+When it is, and what the air is doing. All optional, and off unless you pick one. Whatever you choose is added to your prompt as a clause after your own words.
+
+  - **Dawn** — early morning, pale light, long shadows
+  - **Midday** — bright midday
+  - **Dusk** — dusk, the last warm light going
+  - **Night** — at night, artificial light sources only
+  - **Rain** — rain, wet reflective surfaces
+  - **Fog** — fog, heavy atmosphere, depth falling away
+  - **Snow** — snow falling, cold muted palette
+
+### Camera motion
+
+What the camera does. The move is the difference between a still that ticks and a shot. All optional, and off unless you pick one. Whatever you choose is added to your prompt as a clause after your own words.
+
+  - **Locked off** — the camera is locked off and completely static
+  - **Dolly in** — the camera dollies slowly in toward the subject
+  - **Dolly out** — the camera dollies slowly back away from the subject
+  - **Truck left** — the camera trucks steadily to the left, staying parallel to the subject
+  - **Truck right** — the camera trucks steadily to the right, staying parallel to the subject
+  - **Pan left** — the camera pans left from a fixed position
+  - **Pan right** — the camera pans right from a fixed position
+  - **Tilt up** — the camera tilts up from a fixed position
+  - **Tilt down** — the camera tilts down from a fixed position
+  - **Crane up** — the camera cranes upward, rising above the subject
+  - **Orbit** — the camera orbits smoothly around the subject
+  - **Zoom in** — The lens moves, not the camera
+  - **Zoom out** — The lens moves, not the camera
+  - **Handheld** — handheld camera, subtle natural shake
+  - **Follow** — the camera follows the subject, holding them steady in frame
+  - **Rack focus** — a rack focus, shifting focus from foreground to background
+
+### Pace
+
+How fast anything moves. All optional, and off unless you pick one. Whatever you choose is added to your prompt as a clause after your own words.
+
+  - **Almost still** — almost no movement, only the smallest drift
+  - **Slow** — slow, unhurried movement
+  - **Natural** — movement at a natural, real-time pace
+  - **Brisk** — brisk, energetic movement
+  - **Slow motion** — slow motion, high frame rate look
+
+
+---
+
+`llms-full.txt` is generated from `src/lib/help.ts` and `src/lib/options.ts`. Do not
+edit by hand; run `pnpm llms` instead.
