@@ -4,11 +4,14 @@ import { CANVASES } from "./catalogue";
 import { renderBeat } from "./preview";
 import { silencedByClatter } from "./rules";
 import { tryGlyphDataUri } from "./glyphs";
-import { beatScale } from "./kit/motion.js";
 import { wellLayout } from "./kit/media.js";
 import { CUE_TABLE } from "./cues";
 import { makeTicker, pickRecorderMime, type RenderProgress } from "@/lib/video-encode";
-import type { Beat, CanvasId } from "./deck";
+import { beatScaleFor, type Beat, type CanvasId } from "./deck";
+import {
+  coverCrop, drawImageInQuad, quadSize, roundedQuadPath, sourceHeight, sourceWidth, type Quad,
+} from "@/lib/perspective";
+import { glossStops } from "./screen-gloss";
 
 /**
  * Burns the nuggets into a clip, in the browser.
@@ -24,6 +27,8 @@ import type { Beat, CanvasId } from "./deck";
  */
 
 /** Rasterised above final size, because the entrance overshoots past 100%. */
+const WARP_STEPS_PER_FRAME = 10;
+
 const RASTER = 1.35;
 
 /**
@@ -115,7 +120,19 @@ async function rasterise(
  * stroke is centred on the edge, and half of it belongs inside.
  */
 interface WellClip {
-  video: HTMLVideoElement;
+  /** A clip, or — for a bare well — a still. Both are drawable and sizable. */
+  media: HTMLVideoElement | HTMLImageElement;
+  /**
+   * A pinned still, warped once.
+   *
+   * The mesh warp costs a thousand-odd clipped draws, which is affordable once
+   * and ruinous thirty times a second — and it was: the wall clock ran to the
+   * end of the deck while only a handful of frames had been painted, and a
+   * five second render came out half a second long. A still's warp never
+   * changes, so it is done at open time and blitted afterwards. A clip has no
+   * such luck and pays per frame, at a coarser mesh.
+   */
+  warped?: HTMLCanvasElement;
   /** The media rectangle inside the well, in the well's own coordinates. */
   L: { mediaX: number; mediaY: number; mediaW: number; mediaH: number; radius: number; outerW: number };
 }
@@ -123,23 +140,144 @@ interface WellClip {
 async function openWellClips(beats: Beat[], canvas: CanvasId): Promise<Map<string, WellClip>> {
   const out = new Map<string, WellClip>();
   for (const b of beats) {
-    if (b.well?.kind !== "video" || !b.well.src) continue;
-    const v = document.createElement("video");
-    v.src = b.well.src;
-    v.muted = true;      // a well is a picture that moves, not a second soundtrack
-    v.loop = true;
-    v.playsInline = true;
-    await new Promise<void>((resolve) => {
-      v.onloadeddata = () => resolve();
-      v.onerror = () => resolve();     // a clip that will not load leaves an empty shape
-    });
-    const L = wellLayout(b.well, CANVASES[canvas]) as {
-      mediaX: number; mediaY: number; mediaW: number; mediaH: number;
-      radius: number; outerW: number;
-    };
-    out.set(b.id, { video: v, L });
+    const well = b.well;
+    if (!well?.src) continue;
+    /*
+     * Framed wells only need this for a clip, because a still goes straight
+     * into their SVG. A bare well has no SVG to go into — the media IS the
+     * beat — so both kinds are opened here.
+     */
+    const bare = Boolean(well.bare);
+    if (!bare && well.kind !== "video") continue;
+
+    let media: HTMLVideoElement | HTMLImageElement;
+    if (well.kind === "video") {
+      const v = document.createElement("video");
+      v.src = well.src;
+      v.muted = true;    // a well is a picture that moves, not a second soundtrack
+      v.loop = true;
+      v.playsInline = true;
+      await new Promise<void>((resolve) => {
+        v.onloadeddata = () => resolve();
+        v.onerror = () => resolve();   // a clip that will not load leaves an empty shape
+      });
+      media = v;
+    } else {
+      const i = new Image();
+      i.src = well.src;
+      await new Promise<void>((resolve) => {
+        i.onload = () => resolve();
+        i.onerror = () => resolve();
+      });
+      media = i;
+    }
+
+    /*
+     * A bare well has no wellLayout: its box IS the beat, so the aperture is
+     * the whole thing and renderBeat already worked the size out. Asking
+     * media.js for a layout it does not have would land the media in the wrong
+     * place by exactly the frame's padding.
+     */
+    const L = bare
+      ? (() => {
+          const preview = renderBeat(b, canvas, () => undefined);
+          const a = preview?.aperture;
+          return {
+            mediaX: a?.x ?? 0, mediaY: a?.y ?? 0,
+            mediaW: a?.w ?? 0, mediaH: a?.h ?? 0,
+            radius: a?.radius ?? 0, outerW: preview?.w ?? 1,
+          };
+        })()
+      : (wellLayout(well, CANVASES[canvas]) as {
+          mediaX: number; mediaY: number; mediaW: number; mediaH: number;
+          radius: number; outerW: number;
+        });
+    /*
+     * Pre-warp a pinned still into a full-canvas layer, once. The paint loop
+     * then blits it, which is one drawImage instead of a mesh.
+     */
+    let warped: HTMLCanvasElement | undefined;
+    const quad = well.quad;
+    if (quad && well.kind === "image") {
+      const C = CANVASES[canvas];
+      const layer = document.createElement("canvas");
+      layer.width = C.w;
+      layer.height = C.h;
+      const lc = layer.getContext("2d");
+      if (lc) {
+        const q = quad.map((pt) => ({ x: pt.x * C.w, y: pt.y * C.h })) as Quad;
+        if (well.radius) {
+          const path = roundedQuadPath(q, well.radius);
+          lc.beginPath();
+          path.forEach((pt, i) => (i ? lc.lineTo(pt.x, pt.y) : lc.moveTo(pt.x, pt.y)));
+          lc.closePath();
+          lc.clip();
+        }
+        const sw = sourceWidth(media);
+        const sh = sourceHeight(media);
+        drawImageInQuad(lc, media, q, { srcRect: coverCrop({ width: sw, height: sh }, q) });
+        if (well.gloss) paintGloss(lc, q, well.gloss, 32);
+        warped = layer;
+      }
+    }
+    out.set(b.id, { media, L, warped });
   }
   return out;
+}
+
+
+/**
+ * The glass, painted in the surface's own space and then warped with it.
+ *
+ * Drawn onto a small offscreen canvas the size of the *untransformed* panel
+ * and pushed through the same homography as the media, so the sheen lies on
+ * the screen rather than across the frame. Doing it the other way round — a
+ * gradient over the finished quad — is what makes a composite look varnished.
+ */
+function paintGloss(
+  ctx: CanvasRenderingContext2D,
+  quad: Quad,
+  gloss: number,
+  steps: number,
+) {
+  const { w: qw, h: qh } = quadSize(quad);
+  const w = Math.max(2, Math.round(qw));
+  const h = Math.max(2, Math.round(qh));
+  const layer = document.createElement("canvas");
+  layer.width = w;
+  layer.height = h;
+  const lc = layer.getContext("2d");
+  if (!lc) return;
+
+  const { sheen, edgeAlpha } = glossStops(gloss);
+  // 118deg, matching glossCss: across the panel and slightly down.
+  const a = (118 * Math.PI) / 180;
+  const dx = Math.cos(a) * w;
+  const dy = Math.sin(a) * h;
+  const grad = lc.createLinearGradient((w - dx) / 2, (h - dy) / 2, (w + dx) / 2, (h + dy) / 2);
+  for (const s of sheen) grad.addColorStop(s.at, `rgba(255,255,255,${s.alpha})`);
+  lc.fillStyle = grad;
+  lc.fillRect(0, 0, w, h);
+
+  if (edgeAlpha > 0) {
+    const spread = Math.max(2, Math.round(Math.min(w, h) * 0.06));
+    const edge = lc.createLinearGradient(0, 0, 0, h);
+    edge.addColorStop(0, `rgba(0,0,0,${edgeAlpha})`);
+    edge.addColorStop(spread / h, "rgba(0,0,0,0)");
+    edge.addColorStop(1 - spread / h, "rgba(0,0,0,0)");
+    edge.addColorStop(1, `rgba(0,0,0,${edgeAlpha})`);
+    lc.fillStyle = edge;
+    lc.fillRect(0, 0, w, h);
+    const side = lc.createLinearGradient(0, 0, w, 0);
+    side.addColorStop(0, `rgba(0,0,0,${edgeAlpha})`);
+    side.addColorStop(spread / w, "rgba(0,0,0,0)");
+    side.addColorStop(1 - spread / w, "rgba(0,0,0,0)");
+    side.addColorStop(1, `rgba(0,0,0,${edgeAlpha})`);
+    lc.fillStyle = side;
+    lc.fillRect(0, 0, w, h);
+  }
+
+  drawImageInQuad(ctx, layer, quad, { srcRect: { x: 0, y: 0, w, h }, steps });
 }
 
 export interface NuggetRenderResult {
@@ -150,12 +288,18 @@ export interface NuggetRenderResult {
 
 export async function renderNuggets({
   file,
+  kind = "video",
+  duration: deckSeconds,
   beats,
   canvas,
   onProgress,
   signal,
 }: {
   file: File;
+  /** A still has no clock and no audio of its own; both are supplied here. */
+  kind?: "video" | "image";
+  /** How long the deck runs. Ignored for a clip, which knows its own length. */
+  duration?: number;
   beats: Beat[];
   canvas: CanvasId;
   onProgress?: (p: RenderProgress) => void;
@@ -170,30 +314,66 @@ export async function renderNuggets({
   const silenced = silencedByClatter(beats);
 
   const url = URL.createObjectURL(file);
-  const video = document.createElement("video");
-  video.src = url;
-  video.playsInline = true;
-  video.preload = "auto";
-  /*
-   * NOT muted, unlike the preview element.
-   *
-   * The audio is taken through Web Audio so the cues can be mixed into it, and
-   * `createMediaElementSource` on a muted element yields silence. Routing it
-   * into the graph is also what keeps this inaudible: the source is connected
-   * to the recording destination and never to `ctx.destination`, so nothing
-   * reaches the speakers while it runs.
-   */
-  video.muted = false;
-
-  await new Promise<void>((resolve, reject) => {
-    video.onloadedmetadata = () => resolve();
-    video.onerror = () => reject(new Error("That video could not be decoded."));
-  });
-
+  const still = kind === "image";
   const preset = CANVASES[canvas];
-  const w = video.videoWidth || preset.w;
-  const h = video.videoHeight || preset.h;
-  const duration = video.duration;
+
+  /*
+   * A still is its own kind of source, not a one-frame video.
+   *
+   * It has no clock, so the ticker below counts instead; it has no audio, so
+   * the cues are the whole soundtrack; and it is whatever shape it is, so it is
+   * cropped to cover the canvas rather than fitted to it. A rendered clip
+   * cannot have letterbox bars baked into it, which is the one place the export
+   * deliberately disagrees with the editor preview.
+   */
+  const image = still ? new Image() : null;
+  const video = still ? null : document.createElement("video");
+
+  if (video) {
+    video.src = url;
+    video.playsInline = true;
+    video.preload = "auto";
+    /*
+     * NOT muted, unlike the preview element.
+     *
+     * The audio is taken through Web Audio so the cues can be mixed into it, and
+     * `createMediaElementSource` on a muted element yields silence. Routing it
+     * into the graph is also what keeps this inaudible: the source is connected
+     * to the recording destination and never to `ctx.destination`, so nothing
+     * reaches the speakers while it runs.
+     */
+    video.muted = false;
+    await new Promise<void>((resolve, reject) => {
+      video.onloadedmetadata = () => resolve();
+      video.onerror = () => reject(new Error("That video could not be decoded."));
+    });
+  } else if (image) {
+    image.src = url;
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error("That image could not be decoded."));
+    });
+  }
+
+  const w = video ? video.videoWidth || preset.w : preset.w;
+  const h = video ? video.videoHeight || preset.h : preset.h;
+  const duration = video ? video.duration : Math.max(0.1, deckSeconds ?? 0);
+  if (!duration) throw new Error("The deck has no length, so there is nothing to render.");
+
+  /** Cover, so the frame is filled and the overflow is cropped. */
+  const stillFit = image
+    ? (() => {
+        const k = Math.max(w / (image.naturalWidth || 1), h / (image.naturalHeight || 1));
+        const dw = (image.naturalWidth || 1) * k;
+        const dh = (image.naturalHeight || 1) * k;
+        return { dx: (w - dw) / 2, dy: (h - dh) / 2, dw, dh };
+      })()
+    : null;
+
+  /** The clock. The element's when there is one, counted from the start when not. */
+  let startedAt = 0;
+  const now = () =>
+    video ? video.currentTime : Math.min(duration, (performance.now() - startedAt) / 1000);
 
   const cv = document.createElement("canvas");
   cv.width = w;
@@ -208,10 +388,12 @@ export async function renderNuggets({
     window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
   const actx = new AC();
   const dest = actx.createMediaStreamDestination();
-  try {
-    actx.createMediaElementSource(video).connect(dest);
-  } catch {
-    // Already tapped, or no audio track. The render is silent rather than dead.
+  if (video) {
+    try {
+      actx.createMediaElementSource(video).connect(dest);
+    } catch {
+      // Already tapped, or no audio track. The render is silent rather than dead.
+    }
   }
 
   const buffers = new Map<string, AudioBuffer>();
@@ -246,14 +428,15 @@ export async function renderNuggets({
 
   let lastT = -0.001;
   const paint = () => {
-    const t = video.currentTime;
-    ctx2d.drawImage(video, 0, 0, w, h);
+    const t = now();
+    if (video) ctx2d.drawImage(video, 0, 0, w, h);
+    else if (image && stillFit) ctx2d.drawImage(image, stillFit.dx, stillFit.dy, stillFit.dw, stillFit.dh);
 
     for (const b of beats) {
       if (t < b.t || t > b.out) continue;
       const a = art.get(b.id);
       if (!a) continue;
-      const s = beatScale(t, b.t, b.out);
+      const s = beatScaleFor(b, t);
       if (s <= 0) continue;
 
       // Canvas px, not preset px: a 720p source carries the same normalised
@@ -271,7 +454,52 @@ export async function renderNuggets({
       if (b.rotate) ctx2d.rotate((b.rotate * Math.PI) / 180);
 
       const well = wells.get(b.id);
-      if (well && well.video.readyState >= 2) {
+      const ready =
+        well &&
+        (well.media instanceof HTMLVideoElement ? well.media.readyState >= 2 : well.media.complete);
+
+      /*
+       * A pinned screen is warped onto its quad instead of being drawn into a
+       * rectangle, by the same homography the editor puts in a CSS matrix3d.
+       * It also sits outside the beat's own transform: the quad is in canvas
+       * coordinates already, so the translate/rotate/scale set up above would
+       * apply it twice.
+       */
+      if (well && ready && b.well?.quad) {
+        ctx2d.restore();
+        if (well.warped) {
+          // A still, warped once when the deck was opened.
+          ctx2d.drawImage(well.warped, 0, 0, w, h);
+          continue;
+        }
+        const q = b.well.quad.map((p) => ({ x: p.x * w, y: p.y * h })) as Quad;
+        const m = well.media;
+        ctx2d.save();
+        if (b.well.radius) {
+          // Rounded corners in the surface's own space, foreshortened with it.
+          const r = (b.well.radius * w) / preset.w;
+          const path = roundedQuadPath(q, r);
+          ctx2d.beginPath();
+          path.forEach((p, i) => (i ? ctx2d.lineTo(p.x, p.y) : ctx2d.moveTo(p.x, p.y)));
+          ctx2d.closePath();
+          ctx2d.clip();
+        }
+        drawImageInQuad(ctx2d, m, q, {
+          srcRect: coverCrop({ width: sourceWidth(m), height: sourceHeight(m) }, q),
+          /*
+           * Coarser than the 32 the card compositor uses. That density exists
+           * to land print artwork pixel-accurately in a one-off composite; this
+           * runs every frame of the render, and a moving picture hides the
+           * fraction of a pixel it costs.
+           */
+          steps: WARP_STEPS_PER_FRAME,
+        });
+        if (b.well.gloss) paintGloss(ctx2d, q, b.well.gloss, WARP_STEPS_PER_FRAME);
+        ctx2d.restore();
+        continue;
+      }
+
+      if (well && ready) {
         /*
          * The clip goes UNDER the frame, through the hole wellSvg leaves for it.
          * Coordinates come from wellLayout, the same numbers the SVG was drawn
@@ -286,11 +514,12 @@ export async function renderNuggets({
         ctx2d.clip();
         // cover, not contain: letterboxing inside the aperture would show the
         // frame's own fill through the gaps
-        const vw = well.video.videoWidth || 1;
-        const vh = well.video.videoHeight || 1;
+        const m = well.media;
+        const vw = (m instanceof HTMLVideoElement ? m.videoWidth : m.naturalWidth) || 1;
+        const vh = (m instanceof HTMLVideoElement ? m.videoHeight : m.naturalHeight) || 1;
         const cover = Math.max(well.L.mediaW / vw, well.L.mediaH / vh);
         ctx2d.drawImage(
-          well.video,
+          m,
           well.L.mediaX + (well.L.mediaW - vw * cover) / 2,
           well.L.mediaY + (well.L.mediaH - vh * cover) / 2,
           vw * cover, vh * cover,
@@ -324,8 +553,9 @@ export async function renderNuggets({
 
   try {
     recorder.start();
-    for (const { video: wv } of wells.values()) void wv.play().catch(() => {});
-    await video.play();
+    for (const { media: m } of wells.values()) if (m instanceof HTMLVideoElement) void m.play().catch(() => {});
+    startedAt = performance.now();
+    if (video) await video.play();
   } catch {
     throw new Error("The browser blocked playback, so the clip couldn't be rendered.");
   }
@@ -334,14 +564,15 @@ export async function renderNuggets({
   try {
     await new Promise<void>((resolve) => {
       ticker.start(() => {
-        if (signal?.aborted || video.ended || video.paused) {
+        const done = video ? video.ended || video.paused : now() >= duration;
+        if (signal?.aborted || done) {
           resolve();
           return;
         }
         paint();
         onProgress?.({
           stage: "Rendering",
-          pct: duration ? Math.min(99, Math.round((video.currentTime / duration) * 100)) : undefined,
+          pct: Math.min(99, Math.round((now() / duration) * 100)),
         });
       });
     });
@@ -353,8 +584,8 @@ export async function renderNuggets({
   recorder.stop();
   await stopped;
 
-  video.pause();
-  for (const { video: wv } of wells.values()) wv.pause();
+  video?.pause();
+  for (const { media: m } of wells.values()) if (m instanceof HTMLVideoElement) m.pause();
   URL.revokeObjectURL(url);
   void actx.close();
 

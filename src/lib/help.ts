@@ -695,6 +695,36 @@ export const HELP: Record<string, HelpEntry> = {
     body:
       "A nugget that holds a picture or a clip instead of a medallion — a screenshot, a reaction, a before-and-after. It pops in like any other beat. Pick a named format for one with its own furniture, or a shape well for a plain hole in a frame.",
   },
+  "pop.screen": {
+    title: "Screen",
+    body:
+      "A media well with nothing around it: no frame, no keyline, no caption. It exists to sit inside the background rather than on top of it — the screen of a phone in a photo, a monitor, a billboard — so any furniture would give the game away. It holds the whole timeline and does not pop in, because a thing already in the scene does not arrive.",
+  },
+  "pop.screenGloss": {
+    title: "Glass",
+    body:
+      "A soft diagonal sheen and a darkened edge, drawn on the screen's own surface so it foreshortens with the pin. A real screen is a mirror as well as an emitter, and the eye reads the total absence of a reflection as \"pasted on\" long before it can say why. Keep it low — this is meant to sell the illusion, not to look like a filter. Zero turns it off.",
+  },
+  "pop.screenPin": {
+    title: "Perspective",
+    body:
+      "Lay the screen into the scene by dragging its four corners onto the real thing in the photograph. Four corners describe any flat surface under any camera exactly, which is why this is corners rather than tilt sliders: matching a photo by rotation would also need that photo's focal length, and for a screen off to one side no amount of rotating gets there. \"Pin to the scene\" looks for a bright screen-shaped rectangle first and gives you a plain one to drag if it cannot find it.",
+  },
+  "pop.screenAspect": {
+    title: "Aspect",
+    body:
+      "The shape of the screen you are matching. It decides how the media is cropped to fit — a 16:9 clip in a phone-shaped screen loses its sides rather than being squashed — and gives the corner handles a sensible rectangle to start from.",
+  },
+  "pop.screenWidth": {
+    title: "Width",
+    body:
+      "How wide the screen is drawn before any corner-pinning. Rough is fine: once you drag the corners onto the thing in the photo, they decide the shape and this only sets the starting rectangle.",
+  },
+  "pop.screenRadius": {
+    title: "Corner radius",
+    body:
+      "How round the corners are, in canvas pixels. Zero is square, which is right for a billboard or an older monitor. Match it to the device in your photo — a modern phone is rounder than it looks.",
+  },
   "pop.wellFormat": {
     title: "Format",
     body:
@@ -736,6 +766,16 @@ export const HELP: Record<string, HelpEntry> = {
     title: "Medallion",
     body:
       "The badge that sits beside the caption — a shape, a border treatment and usually a glyph. It is what turns a line of text into something that reads as designed rather than typed over the footage. Optional on every beat.",
+  },
+  "pop.stillLength": {
+    title: "Timeline length",
+    body:
+      "How long the deck runs when the background is a still. A clip brings its own length; a photograph has none, so this is it. Capped at a minute because the export records in real time — a minute of deck is a minute of watching it render.",
+  },
+  "pop.transport": {
+    title: "Playing the deck",
+    body:
+      "Play, pause, and back to the start. They sit outside the video because a still background has no controls of its own — and because getting back to the top meant dragging the playhead to the left edge and hoping. Rewinding while it plays starts it over rather than stopping it.",
   },
   "pop.timeline": {
     title: "Timeline",

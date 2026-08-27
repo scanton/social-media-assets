@@ -100,13 +100,20 @@ function drawTriangle(
  */
 export function drawImageInQuad(
   ctx: CanvasRenderingContext2D,
-  img: ImageBitmap,
+  /*
+   * Any drawable, not just an ImageBitmap. A media well corner-pinned into a
+   * scene is often a clip, and turning each frame into a bitmap first would
+   * mean an async hop inside a paint loop that has to stay synchronous.
+   * drawTriangle already accepted a CanvasImageSource; only this signature
+   * did not.
+   */
+  img: CanvasImageSource,
   quad: Quad,
   opts: { srcRect?: { x: number; y: number; w: number; h: number }; steps?: number } = {},
 ) {
   const steps = opts.steps ?? 32;
   const m = unitSquareToQuad(quad);
-  const src = opts.srcRect ?? { x: 0, y: 0, w: img.width, h: img.height };
+  const src = opts.srcRect ?? { x: 0, y: 0, w: sourceW(img), h: sourceH(img) };
 
   for (let i = 0; i < steps; i++) {
     for (let j = 0; j < steps; j++) {
@@ -209,3 +216,52 @@ export const quadArea = (q: Quad) => {
   }
   return Math.abs(a) / 2;
 };
+
+
+/* ------------------------- talking to the DOM ------------------------- */
+
+const sourceW = (img: CanvasImageSource): number =>
+  (img as HTMLVideoElement).videoWidth ||
+  (img as HTMLImageElement).naturalWidth ||
+  (img as ImageBitmap).width ||
+  1;
+
+const sourceH = (img: CanvasImageSource): number =>
+  (img as HTMLVideoElement).videoHeight ||
+  (img as HTMLImageElement).naturalHeight ||
+  (img as ImageBitmap).height ||
+  1;
+
+export { sourceW as sourceWidth, sourceH as sourceHeight };
+
+/**
+ * The same projective map as a CSS transform.
+ *
+ * A homography is exactly what `matrix3d` does when the fourth row is used, so
+ * an element sized `w x h` can be corner-pinned live in the DOM by the same
+ * numbers the canvas warp uses — one definition of where the thing goes,
+ * rather than an editor that approximates what the render will do.
+ *
+ * `transform-origin: 0 0` is required for this to mean anything: the matrix
+ * maps the element's own top-left corner to `quad[0]`.
+ */
+export function quadToCssMatrix(quad: Quad, w: number, h: number): string {
+  const m = unitSquareToQuad(quad);
+  // The map is over the unit square, so fold the element's size in first.
+  const a = m.a / w, b = m.b / h;
+  const d = m.d / w, e = m.e / h;
+  const g = m.g / w, hh = m.h / h;
+  // Column-major, and the perspective terms live in the fourth row.
+  const cells = [a, d, 0, g, b, e, 0, hh, 0, 0, 1, 0, m.c, m.f, 0, 1];
+  return `matrix3d(${cells.map((n) => (Number.isFinite(n) ? n : 0).toFixed(6)).join(",")})`;
+}
+
+/** A plain rectangle as a quad, in the same winding order. */
+export function rectQuad(x: number, y: number, w: number, h: number): Quad {
+  return [
+    { x, y },
+    { x: x + w, y },
+    { x: x + w, y: y + h },
+    { x, y: y + h },
+  ];
+}

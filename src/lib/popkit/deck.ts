@@ -26,6 +26,8 @@
  *                      stays one format rather than a second one.
  */
 
+import { beatScale } from "./kit/motion.js";
+
 /** Canvas presets from the kit's `tokens.js` CANVAS table. */
 export type CanvasId = "reels" | "youtube" | "square" | "ios" | "desktop";
 
@@ -139,6 +141,60 @@ export interface BeatWell {
   /** The kit's own multiplier. 1 is the canvas default, and it scales the copy with it. */
   size?: number;
   tilt?: number;
+
+  /* ------------------------- the spatial family ------------------------- */
+
+  /**
+   * A bare well: the media and nothing else.
+   *
+   * No frame, no keyline, no caption lip, no extrude. It exists to sit *in* a
+   * background rather than on top of one — the screen of a phone in a photo,
+   * a billboard, a monitor — so every piece of furniture the other two
+   * families carry would give the game away. ADDED in v10.
+   */
+  bare?: boolean;
+  /**
+   * Corner radius in canvas px. Zero is square. Bare wells only.
+   *
+   * Its own number rather than a shape preset because it is being matched to
+   * something real in a photograph, and real screens do not come in a fixed
+   * set of radii.
+   */
+  radius?: number;
+  /**
+   * Width over height. Bare wells only, which have no template shape to ask.
+   *
+   * Decides how the media is cropped into the well, and gives the corner-pin
+   * a sensible rectangle to start from.
+   */
+  aspect?: number;
+  /**
+   * The corner-pin: where the four corners land, as fractions of the canvas.
+   * Clockwise from the top left, matching `Quad` in lib/perspective.
+   *
+   * WHY FOUR CORNERS RATHER THAN THREE ANGLES
+   * To place a plane in a photograph by rotation you would also need that
+   * photo's focal length and the screen's offset from its axis — five coupled
+   * unknowns to guess by eye, and for a screen that is off to one side no
+   * centred projection can match it at all. Four corners are eight degrees of
+   * freedom and describe *any* flat surface under *any* pinhole camera
+   * exactly. It is both stricter and easier to operate.
+   *
+   * When set, this replaces `anchor` and `size` for the well: the quad says
+   * where it goes and how big it is. ADDED in v10.
+   */
+  quad?: [Anchor, Anchor, Anchor, Anchor];
+  /**
+   * A glass overlay on the media: a soft diagonal sheen and a darkened edge.
+   *
+   * 0 is off. What it buys is the thing a flat paste never has — a real screen
+   * is a mirror as well as an emitter, and the eye reads the absence of any
+   * reflection as "pasted on" long before it can say why. Deliberately weak by
+   * default: enough to sell it, not enough to look like a filter.
+   *
+   * Drawn in the surface's own space, so it foreshortens with the pin.
+   */
+  gloss?: number;
 }
 
 /** Mirrors an entry in compose()'s `arrows` array. See `references/arrows.md`. */
@@ -205,6 +261,15 @@ export interface Beat {
   t: number;
   /** Exit, in seconds. Explicit rather than inferred, so the render route never guesses. */
   out: number;
+  /**
+   * Skips the entrance and exit springs, holding full size for its whole span.
+   *
+   * A thing that is meant to BE part of the scene must not arrive: a phone
+   * screen that springs in with a 21% overshoot reads as a sticker over the
+   * photo rather than as the screen. Set by default on a spatial well, and
+   * available to anything else that wants to sit still. ADDED in v10.
+   */
+  noPop?: boolean;
   /** Template variant id, e.g. "M01". Carried through from the v9 example. */
   variant?: string;
   /** The copy. Capped at 120 characters — see `annotation-system.md`. */
@@ -408,4 +473,49 @@ export function dwellFloorSeconds(text: string | undefined): number {
  */
 export function floorForBeat(beat: Pick<Beat, "text" | "medallion" | "arrows">): number {
   return beatKind(beat) === "arrow" ? POINTER_LEAD_MIN_S : dwellFloorSeconds(beat.text);
+}
+
+
+/* ------------------------- what the beats sit over ------------------------ */
+
+/**
+ * The background: a clip, or a still.
+ *
+ * A still has no length of its own, so the deck carries one instead — see
+ * `STILL_DEFAULT_S`. `duration` here is the file's, which for a still is
+ * meaningless and left at zero rather than invented.
+ */
+export interface Background {
+  kind: "video" | "image";
+  file: File;
+  /** Object URL. */
+  url: string;
+  name: string;
+  width: number;
+  height: number;
+  /** The clip's own length. Zero for a still. */
+  duration: number;
+}
+
+/**
+ * How long a still-backed deck runs by default, and the most it may.
+ *
+ * The ceiling is a real constraint rather than a taste: the export records in
+ * real time, so a minute of deck is a minute of watching it render.
+ */
+export const STILL_DEFAULT_S = 10;
+export const STILL_MAX_S = 60;
+export const STILL_MIN_S = 1;
+
+
+/**
+ * How big a beat is drawn at time `t`, springs included unless it opted out.
+ *
+ * One function so the editor and the render route cannot disagree about
+ * whether something pops. Zero outside the beat's window, which doubles as the
+ * visibility test both callers already relied on `beatScale` for.
+ */
+export function beatScaleFor(beat: Pick<Beat, "t" | "out" | "noPop">, t: number): number {
+  if (t < beat.t || t > beat.out) return 0;
+  return beat.noPop ? 1 : (beatScale(t, beat.t, beat.out) as number);
 }

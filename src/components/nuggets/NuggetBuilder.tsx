@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ARROWS, BORDERS, CANVASES, CAPTIONS, COLORWAY_NAMES,
@@ -13,7 +13,8 @@ import {
   CAPTION_MAX_CHARS, GLYPH_FRAC_DEFAULT, GLYPH_FRAC_KIT_DEFAULT, SOUND_CUES,
   MEDALLION_SCALE_DEFAULT, MEDALLION_SCALE_KIT_DEFAULT,
   beatKind, defaultDwellSeconds, floorForBeat,
-  type Beat, type CanvasId, type ProtectedRegion, type SoundCue,
+  STILL_DEFAULT_S, STILL_MAX_S, STILL_MIN_S,
+  type Background, type Beat, type CanvasId, type ProtectedRegion, type SoundCue,
 } from "@/lib/popkit/deck";
 import { fitBeat, renderBeat, safeWidth } from "@/lib/popkit/preview";
 import { frame } from "@/lib/popkit/kit/frames.js";
@@ -33,9 +34,12 @@ import { canRecordVideo, type RenderProgress } from "@/lib/video-encode";
 import { CUE_MS, DEFAULT_ARROW_CUE, DEFAULT_CUE } from "@/lib/popkit/cues";
 import { buildDeck, exportBasename, validateDeckAgainstSchema } from "@/lib/popkit/export";
 import { Accordion, Disclosure } from "./Disclosure";
+import { Transport } from "./Transport";
 import { VideoStage } from "./VideoStage";
 import { Field, Select, Switch, cx } from "../ui";
 import { HelpTip } from "../HelpTip";
+import { detectScreenQuad } from "@/lib/screen-detect";
+import { usePlayhead } from "@/lib/popkit/use-playhead";
 const uid = () => Math.random().toString(36).slice(2, 9);
 
 /** compose()'s own lap-over-the-caption-end default. */
@@ -91,6 +95,109 @@ function newBeat(canvas: CanvasId): Beat {
  * arrives by upload; the shape defaults to a capsule because that is what the
  * doc recommends for screen recordings and card fronts.
  */
+/**
+ * A screen: a bare well, holding the whole timeline, that does not pop.
+ *
+ * Its defaults are the opposite of every other beat's on purpose. The others
+ * are annotations that arrive, hold and leave; this one is pretending to be
+ * part of the photograph behind it, and a thing already in the scene neither
+ * springs into view nor goes away halfway through.
+ */
+
+/**
+ * Where a rectangle in the background image lands on the canvas.
+ *
+ * The still is drawn to *cover* the canvas — cropped, not letterboxed, in the
+ * editor and in the export alike — so a screen found in the source image is
+ * somewhere else by the time it is on the frame. Getting this wrong puts the
+ * pin a crop's width away from the thing it is meant to sit on.
+ */
+function sourceToCanvas(
+  pt: { x: number; y: number },
+  src: { w: number; h: number },
+  canvasW: number,
+  canvasH: number,
+) {
+  const k = Math.max(canvasW / src.w, canvasH / src.h);
+  const dx = (canvasW - src.w * k) / 2;
+  const dy = (canvasH - src.h * k) / 2;
+  return { x: (pt.x * k + dx) / canvasW, y: (pt.y * k + dy) / canvasH };
+}
+
+/** A centred rectangle of the canvas, as the quad to start dragging from. */
+function defaultQuad(aspect: number): NonNullable<NonNullable<Beat["well"]>["quad"]> {
+  const w = 0.34;
+  const h = w / (aspect || 1) / (1920 / 1080);
+  const x0 = 0.5 - w / 2;
+  const x1 = 0.5 + w / 2;
+  const y0 = 0.5 - h / 2;
+  const y1 = 0.5 + h / 2;
+  return [
+    { x: x0, y: y0 },
+    { x: x1, y: y0 },
+    { x: x1, y: y1 },
+    { x: x0, y: y1 },
+  ];
+}
+
+/**
+ * A starting quad for a screen: the one detected in the background if there is
+ * one, and a centred rectangle otherwise.
+ *
+ * Detection is the same pass the card pipeline uses to find a blank device
+ * screen, so it wants a bright flat quadrilateral. It will miss a busy or dark
+ * one, which is not a failure — the corners are draggable either way, and a
+ * rough rectangle to drag is better than nothing to drag.
+ */
+async function proposeQuad(
+  bg: Background | null,
+  canvas: CanvasId,
+  aspect: number,
+): Promise<NonNullable<NonNullable<Beat["well"]>["quad"]>> {
+  const fallback = defaultQuad(aspect);
+  if (bg?.kind !== "image") return fallback;
+  try {
+    const bitmap = await createImageBitmap(await (await fetch(bg.url)).blob());
+    const found = detectScreenQuad(bitmap);
+    bitmap.close();
+    if (!found) return fallback;
+    const C = CANVASES[canvas];
+    const src = { w: bg.width, h: bg.height };
+    return found.quad.map((p) => sourceToCanvas(p, src, C.w, C.h)) as NonNullable<
+      NonNullable<Beat["well"]>["quad"]
+    >;
+  } catch {
+    return fallback;
+  }
+}
+
+/** Screens worth matching. Value is width over height. */
+const SCREEN_ASPECTS = [
+  { label: "Phone 9:19.5", value: 9 / 19.5 },
+  { label: "Phone 9:16", value: 9 / 16 },
+  { label: "Tablet 3:4", value: 3 / 4 },
+  { label: "Monitor 16:9", value: 16 / 9 },
+  { label: "Monitor 16:10", value: 16 / 10 },
+  { label: "Laptop 3:2", value: 3 / 2 },
+  { label: "Billboard 4:1", value: 4 },
+  { label: "Square 1:1", value: 1 },
+] as const;
+
+function newScreenBeat(duration: number): Beat {
+  return {
+    id: uid(),
+    t: 0,
+    out: Math.max(0.1, duration),
+    align: "center",
+    anchor: { x: 0.5, y: 0.5 },
+    noPop: true,
+    // 9:19.5 — a modern phone screen, which is the case this exists for.
+    well: { bare: true, shape: "rounded", kind: "image", aspect: 9 / 19.5, size: 0.9, radius: 28, gloss: 0.35 },
+    cue: "silent",
+    haptic: "none",
+  };
+}
+
 function newWellBeat(): Beat {
   // W01 Reaction Well: media.js calls it the workhorse, and it is the shape a
   // phone-shot reaction clip arrives in.
@@ -133,22 +240,30 @@ function newArrowBeat(): Beat {
  */
 export function NuggetBuilder() {
   const [canvas, setCanvas] = useState<CanvasId>("reels");
-  const [videoSrc, setVideoSrc] = useState<string | null>(null);
-  const [videoName, setVideoName] = useState<string | null>(null);
+
   const [showSafeZone, setShowSafeZone] = useState(true);
   const [beats, setBeats] = useState<Beat[]>(() => [newBeat("reels")]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [regions, setRegions] = useState<ProtectedRegion[]>([]);
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
   const [drawingRegion, setDrawingRegion] = useState(false);
-  const [playhead, setPlayhead] = useState(0);
-  const [videoMeta, setVideoMeta] = useState<{ duration: number; width: number; height: number } | null>(null);
-  const [videoFile, setVideoFile] = useState<File | null>(null);
+
+  /**
+   * What the beats sit over. A clip, or a still.
+   *
+   * One piece of state rather than four loose ones, because "which kind" has
+   * to travel with the url and the size — a still with a video's duration, or
+   * a clip whose kind said image, is a bug that can only exist if they are
+   * allowed to disagree.
+   */
+  const [bg, setBg] = useState<Background | null>(null);
+  /** A still has no length of its own, so the deck says how long it runs. */
+  const [stillSeconds, setStillSeconds] = useState(STILL_DEFAULT_S);
   const [overrideFor, setOverrideFor] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string[] | null>(null);
+  const [pinning, setPinning] = useState(false);
   const [rendering, setRendering] = useState<RenderProgress | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
   // "Nothing fits" is recorded against the beat it was true of, not as a plain
   // flag, so editing the copy or dropping the arrow clears it without an effect.
   const [noFitFor, setNoFitFor] = useState<string | null>(null);
@@ -208,7 +323,42 @@ export function NuggetBuilder() {
       ? { captionPadL: v, captionPadR: undefined }
       : { captionPadR: v, captionPadL: undefined });
 
-  const duration = videoMeta?.duration ?? 0;
+  const duration = bg ? (bg.kind === "video" ? bg.duration : stillSeconds) : 0;
+
+  /*
+   * Time belongs to the deck, not to the video element. See use-playhead.ts:
+   * a still background has no clock of its own, and the transport buttons need
+   * something to drive that is not the element's own controls.
+   */
+  const clock = usePlayhead({ duration, beats });
+
+  /**
+   * Retime the deck when the timeline length changes.
+   *
+   * Two things follow from it. A beat cannot end after the deck does, so
+   * anything hanging past the new end is pulled back to it — the issue list
+   * still catches whatever that leaves below its dwell floor, which is the
+   * existing contract and better than silently holding an invalid deck.
+   *
+   * And a screen that spanned the whole deck goes on spanning it. It is
+   * scenery rather than a moment, so "the whole thing" is the length it means,
+   * not the number of seconds that happened to be true when it was added.
+   */
+  const setLength = useCallback(
+    (next: number) => {
+      const was = stillSeconds;
+      setStillSeconds(next);
+      setBeats((bs) =>
+        bs.map((b) => {
+          const spannedAll = b.well?.bare && b.t <= 0.001 && b.out >= was - 0.001;
+          if (spannedAll) return { ...b, t: 0, out: next };
+          return b.out > next ? { ...b, out: next } : b;
+        }),
+      );
+    },
+    [stillSeconds],
+  );
+  const playhead = clock.playhead;
 
   /**
    * Arrow tips in canvas pixels, per beat.
@@ -225,6 +375,22 @@ export function NuggetBuilder() {
     for (const b of beats) {
       const p = renderBeat(b, canvas, (n) => tryGlyphDataUri(n, 512));
       if (!p) continue;
+      /*
+       * A pinned screen is placed by its corners, not by its anchor, so its
+       * box is the quad's bounding box. Measuring it the ordinary way put the
+       * rectangle at the canvas centre where the anchor still nominally sits —
+       * which meant the safe-zone and protected-region checks were being run
+       * against somewhere the screen is not.
+       */
+      if (b.well?.quad) {
+        const xs = b.well.quad.map((q) => q.x * c.w);
+        const ys = b.well.quad.map((q) => q.y * c.h);
+        const x = Math.min(...xs);
+        const y = Math.min(...ys);
+        boxes.set(b.id, { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y });
+        continue;
+      }
+
       const align = b.align ?? "center";
       const originX = b.anchor.x * c.w + (align === "left" ? 0 : align === "right" ? -p.w : -p.w / 2);
       const originY = b.anchor.y * c.h - p.h / 2;
@@ -237,8 +403,8 @@ export function NuggetBuilder() {
   }, [beats, canvas]);
 
   const issues = useMemo(
-    () => collectIssues(beats, regions, canvas, placed.tips, videoMeta?.duration, placed.boxes),
-    [beats, regions, canvas, placed, videoMeta],
+    () => collectIssues(beats, regions, canvas, placed.tips, bg ? duration : undefined, placed.boxes),
+    [beats, regions, canvas, placed, bg, duration],
   );
   const blocking = issues.filter((i) => i.level === "error");
 
@@ -384,28 +550,40 @@ export function NuggetBuilder() {
               />
             </Field>
             <label className="focus-stamp cursor-pointer rounded-2xl border border-hairline bg-white px-4 py-3 text-sm font-semibold text-ink hover:border-stamp-300">
-              {videoName ?? "Load a video"}
+              {bg?.name ?? "Load a video or image"}
               <input
                 type="file"
-                accept="video/*"
+                accept="video/*,image/*"
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
                   if (!f) return;
                   const url = URL.createObjectURL(f);
-                  setVideoSrc(url);
-                  setVideoName(f.name);
-                  setVideoFile(f);
-                  // Duration and dimensions are the deck's, and the timeline
-                  // cannot exist without the duration — read them off the file
-                  // rather than asking anyone to type them.
+                  const isStill = f.type.startsWith("image/");
+                  /*
+                   * Size and, for a clip, length are the deck's business, and
+                   * the timeline cannot exist without a length — so they are
+                   * read off the file rather than typed in. A still has no
+                   * length to read, which is what `stillSeconds` is for.
+                   */
+                  if (isStill) {
+                    const probe = new Image();
+                    probe.onload = () =>
+                      setBg({
+                        kind: "image", file: f, url, name: f.name,
+                        width: probe.naturalWidth, height: probe.naturalHeight,
+                        duration: 0,
+                      });
+                    probe.src = url;
+                    return;
+                  }
                   const probe = document.createElement("video");
                   probe.preload = "metadata";
                   probe.onloadedmetadata = () =>
-                    setVideoMeta({
+                    setBg({
+                      kind: "video", file: f, url, name: f.name,
+                      width: probe.videoWidth, height: probe.videoHeight,
                       duration: probe.duration,
-                      width: probe.videoWidth,
-                      height: probe.videoHeight,
                     });
                   probe.src = url;
                 }}
@@ -414,12 +592,24 @@ export function NuggetBuilder() {
           </div>
 
           <VideoStage
-            src={videoSrc}
+            src={bg?.url ?? null}
+            kind={bg?.kind ?? "video"}
             canvas={canvas}
             beats={beats}
             selectedId={selected?.id ?? null}
             onSelect={setSelectedId}
             onMove={(id, anchor) => setBeats((bs) => bs.map((b) => (b.id === id ? { ...b, anchor } : b)))}
+            onMoveCorner={(id, corner, at) =>
+              setBeats((bs) =>
+                bs.map((b) => {
+                  if (b.id !== id || !b.well?.quad) return b;
+                  const quad = b.well.quad.map((p, i) => (i === corner ? at : p)) as NonNullable<
+                    NonNullable<Beat["well"]>["quad"]
+                  >;
+                  return { ...b, well: { ...b.well, quad } };
+                }),
+              )
+            }
             showSafeZone={showSafeZone}
             regions={regions}
             drawingRegion={drawingRegion}
@@ -431,14 +621,38 @@ export function NuggetBuilder() {
               setSelectedRegionId(id);
               setDrawingRegion(false);
             }}
-            videoRef={videoRef}
-            onTime={setPlayhead}
-            playhead={playhead}
-            videoWidth={videoMeta?.width}
+            clock={clock}
+            videoWidth={bg?.width}
           />
 
-            {videoMeta && (
-              <div className="mt-4">
+            {bg && (
+              <div className="mt-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+                  <Transport clock={clock} duration={duration} />
+                  {/* A still has no length of its own, so this is where the deck
+                      gets one. Capped because the export records in real time. */}
+                  {bg?.kind === "image" && (
+                    <label className="flex items-center gap-2.5">
+                      <span className="flex items-center gap-1.5 whitespace-nowrap text-[11px] font-bold uppercase tracking-[0.09em] text-ink-faint">
+                        Length
+                        <HelpTip id="pop.stillLength" />
+                      </span>
+                      <input
+                        type="range"
+                        min={STILL_MIN_S}
+                        max={STILL_MAX_S}
+                        step={0.5}
+                        value={stillSeconds}
+                        onChange={(e) => setLength(Number(e.target.value))}
+                        className="focus-stamp w-40 accent-stamp-600"
+                        aria-label="Timeline length in seconds"
+                      />
+                      <span className="w-16 shrink-0 tabular-nums text-xs text-ink-faint">
+                        {stillSeconds}s / {STILL_MAX_S}s
+                      </span>
+                    </label>
+                  )}
+                </div>
                 <Timeline
                   beats={beats}
                   duration={duration}
@@ -446,16 +660,13 @@ export function NuggetBuilder() {
                   playhead={playhead}
                   onSelect={setSelectedId}
                   onChange={(id, next) => setBeats((bs) => bs.map((b) => (b.id === id ? { ...b, ...next } : b)))}
-                  onScrub={(t) => {
-                    setPlayhead(t);
-                    if (videoRef.current) videoRef.current.currentTime = t;
-                  }}
+                  onScrub={clock.seek}
                   onRequestOverride={setOverrideFor}
                 />
               </div>
             )}
 
-          {videoMeta ? (
+          {bg ? (
             <div className="space-y-4">
               <div className="flex flex-wrap items-center gap-2">
                 <button
@@ -502,6 +713,19 @@ export function NuggetBuilder() {
                   className="focus-stamp rounded-full border border-hairline bg-white px-3.5 py-2 text-xs font-bold text-ink transition-all hover:-translate-y-0.5 hover:border-stamp-300"
                 >
                   Add arrow
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Spans the deck rather than being tucked after the last
+                    // beat: it is scenery, not a moment.
+                    const b = newScreenBeat(duration);
+                    setBeats((bs) => [...bs, b]);
+                    setSelectedId(b.id);
+                  }}
+                  className="focus-stamp rounded-full border border-hairline bg-white px-3.5 py-2 text-xs font-bold text-ink transition-all hover:-translate-y-0.5 hover:border-stamp-300"
+                >
+                  Add screen
                 </button>
                 {beats.length > 1 && selected && (
                   <button
@@ -579,21 +803,23 @@ export function NuggetBuilder() {
               <div className="flex flex-wrap items-center gap-3">
                 <button
                   type="button"
-                  disabled={!videoFile || blocking.length > 0 || !!rendering || !canRecordVideo()}
+                  disabled={!bg || blocking.length > 0 || !!rendering || !canRecordVideo()}
                   onClick={async () => {
-                    if (!videoFile) return;
+                    if (!bg) return;
                     setRenderError(null);
                     setRendering({ stage: "Preparing" });
                     try {
                       const { blob, ext } = await renderNuggets({
-                        file: videoFile,
+                        file: bg.file,
+                        kind: bg.kind,
+                        duration,
                         beats,
                         canvas,
                         onProgress: setRendering,
                       });
                       const a = document.createElement("a");
                       a.href = URL.createObjectURL(blob);
-                      a.download = `${exportBasename(videoName)}-nuggets.${ext}`;
+                      a.download = `${exportBasename(bg?.name ?? null)}-nuggets.${ext}`;
                       a.click();
                       URL.revokeObjectURL(a.href);
                     } catch (err) {
@@ -611,13 +837,13 @@ export function NuggetBuilder() {
 
                 <button
                   type="button"
-                  disabled={!videoFile || blocking.length > 0}
+                  disabled={!bg || bg.kind === "image" || blocking.length > 0}
                   onClick={async () => {
-                    if (!videoFile || !videoMeta) return;
-                    const base = exportBasename(videoName);
+                    if (!bg || bg.kind !== "video") return;
+                    const base = exportBasename(bg?.name ?? null);
                     const deck = buildDeck({
-                      id: uid(), canvas, fps: 30, beats, regions, videoName,
-                      duration: videoMeta.duration, width: videoMeta.width, height: videoMeta.height,
+                      id: uid(), canvas, fps: 30, beats, regions, videoName: bg.name,
+                      duration: bg.duration, width: bg.width, height: bg.height,
                     });
                     // The render route validates the same deck with the same
                     // schema and validator. Catching it here means the failure
@@ -628,7 +854,7 @@ export function NuggetBuilder() {
                       return;
                     }
                     setExportError(null);
-                    const bytes = new Uint8Array(await videoFile.arrayBuffer());
+                    const bytes = new Uint8Array(await bg.file.arrayBuffer());
                     const json = new TextEncoder().encode(JSON.stringify(deck, null, 2));
                     const zip = makeZip([
                       { name: deck.video.filename, bytes },
@@ -648,8 +874,10 @@ export function NuggetBuilder() {
                   {blocking.length
                     ? `${blocking.length} issue${blocking.length > 1 ? "s" : ""} to resolve first.`
                     : rendering
-                      ? "Runs in real time, so about as long as the clip."
-                      : `${exportBasename(videoName)}.zip — the video and ${exportBasename(videoName)}.deck.json`}
+                      ? "Runs in real time, so about as long as the deck."
+                      : bg?.kind === "image"
+                        ? "Render video only — the zip is for the Claude skill, which has no idea what a still background is."
+                        : `${exportBasename(bg?.name ?? null)}.zip — the video and ${exportBasename(bg?.name ?? null)}.deck.json`}
                 </span>
               </div>
 
@@ -668,7 +896,7 @@ export function NuggetBuilder() {
                 </div>
               )}
             </div>
-          ) : videoSrc ? (
+          ) : bg ? (
             <p className="mt-4 text-xs text-ink-faint">Reading the video&rsquo;s duration…</p>
           ) : null}
 
@@ -807,7 +1035,138 @@ export function NuggetBuilder() {
                     side switch. It was a dropdown three sliders down the list
                     before, which is a place nobody looks for "put it on the
                     other side". */}
-                {kind === "well" && selected.well && (
+                {/* A bare well has none of a framed well's furniture, so it gets
+                    its own controls rather than a panel of disabled ones. */}
+                {kind === "well" && selected.well?.bare && (
+                  <fieldset className="space-y-4 rounded-xl border border-hairline bg-paper/60 p-3.5">
+                    <legend className="flex items-center gap-1.5 px-1 text-[11px] font-bold uppercase tracking-[0.09em] text-ink-faint">
+                      Screen
+                      <HelpTip id="pop.screen" />
+                    </legend>
+
+                    <Field
+                      label="Media"
+                      help="pop.wellMedia"
+                      hint={selected.well.src ? "Loaded." : "The picture or clip that plays on the screen."}
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <UploadButton
+                          label={selected.well.src ? "Replace…" : "Upload…"}
+                          accept="image/*,video/*"
+                          onFile={(uri, file) =>
+                            patch({
+                              well: {
+                                ...selected.well!,
+                                src: uri,
+                                kind: file.type.startsWith("video/") ? "video" : "image",
+                              },
+                            })
+                          }
+                        />
+                        {selected.well.src && (
+                          <button
+                            type="button"
+                            onClick={() => patch({ well: { ...selected.well!, src: undefined } })}
+                            className="focus-stamp rounded-xl border border-hairline bg-white px-3 py-2 text-xs font-bold text-ink/70 transition-all hover:-translate-y-0.5 hover:border-red-300"
+                          >
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                    </Field>
+
+                    <Field label="Aspect" help="pop.screenAspect" hint="Shape of the screen you are matching.">
+                      <Select
+                        value={String(selected.well.aspect ?? 9 / 19.5)}
+                        onChange={(v) => patch({ well: { ...selected.well!, aspect: Number(v) } })}
+                        options={SCREEN_ASPECTS.map((a) => ({ id: String(a.value), label: a.label }))}
+                      />
+                    </Field>
+
+                    <Field
+                      label="Width"
+                      help="pop.screenWidth"
+                      hint={`${Math.round(CANVASES[canvas].w * 0.34 * (selected.well.size ?? 1))}px on a ${CANVASES[canvas].w}px canvas`}
+                    >
+                      <input
+                        type="range" min={0.2} max={3} step={0.05}
+                        value={selected.well.size ?? 1}
+                        onChange={(e) => patch({ well: { ...selected.well!, size: Number(e.target.value) } })}
+                        className="focus-stamp w-full accent-stamp-600"
+                      />
+                    </Field>
+
+                    <Field
+                      label="Corner radius"
+                      help="pop.screenRadius"
+                      hint={(selected.well.radius ?? 0) === 0 ? "Square corners" : `${selected.well.radius}px`}
+                    >
+                      <input
+                        type="range" min={0} max={120} step={1}
+                        value={selected.well.radius ?? 0}
+                        onChange={(e) => patch({ well: { ...selected.well!, radius: Number(e.target.value) } })}
+                        className="focus-stamp w-full accent-stamp-600"
+                      />
+                    </Field>
+
+                    <Field
+                      label="Glass"
+                      help="pop.screenGloss"
+                      hint={
+                        (selected.well.gloss ?? 0) === 0
+                          ? "Off — a flat paste."
+                          : `${Math.round((selected.well.gloss ?? 0) * 100)}% · sheen and a darkened edge`
+                      }
+                    >
+                      <input
+                        type="range" min={0} max={1} step={0.05}
+                        value={selected.well.gloss ?? 0}
+                        onChange={(e) => patch({ well: { ...selected.well!, gloss: Number(e.target.value) } })}
+                        className="focus-stamp w-full accent-stamp-600"
+                      />
+                    </Field>
+
+                    <Field
+                      label="Perspective"
+                      help="pop.screenPin"
+                      hint={
+                        selected.well.quad
+                          ? "Drag the four corners onto the screen in the photo."
+                          : "Pin the corners to lay it into the scene."
+                      }
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={pinning}
+                          onClick={async () => {
+                            const well = selected.well!;
+                            setPinning(true);
+                            try {
+                              patch({ well: { ...well, quad: await proposeQuad(bg, canvas, well.aspect ?? 1) } });
+                            } finally {
+                              setPinning(false);
+                            }
+                          }}
+                          className="focus-stamp rounded-xl border border-hairline bg-white px-3 py-2 text-xs font-bold text-ink transition-all hover:-translate-y-0.5 hover:border-stamp-300 disabled:opacity-50"
+                        >
+                          {pinning ? "Looking…" : selected.well.quad ? "Find the screen again" : "Pin to the scene"}
+                        </button>
+                        {selected.well.quad && (
+                          <button
+                            type="button"
+                            onClick={() => patch({ well: { ...selected.well!, quad: undefined } })}
+                            className="focus-stamp rounded-xl border border-hairline bg-white px-3 py-2 text-xs font-bold text-ink/70 transition-all hover:-translate-y-0.5 hover:border-red-300"
+                          >
+                            Unpin
+                          </button>
+                        )}
+                      </div>
+                    </Field>
+                  </fieldset>
+                )}
+
+                {kind === "well" && selected.well && !selected.well.bare && (
                   <fieldset className="space-y-4 rounded-xl border border-hairline bg-paper/60 p-3.5">
                     <legend className="flex items-center gap-1.5 px-1 text-[11px] font-bold uppercase tracking-[0.09em] text-ink-faint">
                       Media well

@@ -133,6 +133,31 @@ export function renderBeat(
       const C = CANVASES[canvas];
 
       /*
+       * A bare well is drawn by neither module.
+       *
+       * media.js makes a framed rectangle and compose() makes a medallion, and
+       * this is neither: it is the picture on its own, cropped to a rounded
+       * rectangle, meant to pass for something already in the photograph. So
+       * the SVG is deliberately empty and the media is placed by the caller —
+       * as a real element here, and straight onto the canvas in the export.
+       * That is also what lets phase 4 corner-pin it, which an SVG baked at a
+       * fixed size could not do.
+       */
+      if (beat.well.bare) {
+        const w = Math.round(C.w * 0.34 * (beat.well.size ?? 1));
+        const h = Math.round(w / (beat.well.aspect || 1));
+        return {
+          // Valid and transparent, rather than empty: the render route decodes
+          // every beat's SVG, and an empty string is not an image.
+          svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"/>`,
+          w, h, medSize: 0, capH: 0, arrows: [],
+          aperture: beat.well.src
+            ? { x: 0, y: 0, w, h, radius: Math.max(0, beat.well.radius ?? 0) }
+            : undefined,
+        };
+      }
+
+      /*
        * A shape well is one of the eighteen frames with a hole in it, so it is
        * compose()'s medallion rather than media.js's framed rectangle.
        *

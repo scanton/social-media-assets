@@ -1,13 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CANVASES } from "@/lib/popkit/catalogue";
 import { renderBeat, safeZone } from "@/lib/popkit/preview";
 import { tryGlyphDataUri } from "@/lib/popkit/glyphs";
-import type { Beat, CanvasId, ProtectedRegion } from "@/lib/popkit/deck";
-import { regionCoversTime, silencedByClatter } from "@/lib/popkit/rules";
-import { playCue, warmCues } from "@/lib/popkit/cue-player";
-import { beatScale } from "@/lib/popkit/kit/motion.js";
+import { beatScaleFor, type Anchor, type Beat, type CanvasId, type ProtectedRegion } from "@/lib/popkit/deck";
+import { quadSize, quadToCssMatrix, type Quad } from "@/lib/perspective";
+import { glossCss, glossEdgeCss } from "@/lib/popkit/screen-gloss";
+import type { Transport as Clock } from "@/lib/popkit/use-playhead";
+import { regionCoversTime } from "@/lib/popkit/rules";
 import { cx } from "../ui";
 
 /**
@@ -48,28 +49,32 @@ const STAGE_MAX_VH = 68;
 
 export function VideoStage({
   src,
+  kind,
   canvas,
   beats,
   selectedId,
   onSelect,
   onMove,
+  onMoveCorner,
   showSafeZone,
   regions,
   drawingRegion,
   onDrawRegion,
   onSelectRegion,
   selectedRegionId,
-  videoRef,
-  onTime,
-  playhead,
+  clock,
   videoWidth,
 }: {
   src: string | null;
+  /** A clip plays; a still just sits there and the clock free-runs. */
+  kind: "video" | "image";
   canvas: CanvasId;
   beats: Beat[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   onMove: (id: string, anchor: { x: number; y: number }) => void;
+  /** Drag one corner of a pinned screen. Fractions of the canvas. */
+  onMoveCorner: (id: string, corner: number, at: { x: number; y: number }) => void;
   showSafeZone: boolean;
   regions: ProtectedRegion[];
   /** When true, dragging on the frame draws a region instead of moving a nugget. */
@@ -77,10 +82,8 @@ export function VideoStage({
   onDrawRegion: (r: { x: number; y: number; w: number; h: number }) => void;
   onSelectRegion: (id: string | null) => void;
   selectedRegionId: string | null;
-  videoRef?: React.RefObject<HTMLVideoElement | null>;
-  onTime?: (t: number) => void;
-  /** Beats and regions are shown only when live at this moment. */
-  playhead: number;
+  /** The deck's clock. The stage reads it and no longer keeps its own. */
+  clock: Clock;
   /** The source's own pixel width, so the stage never upscales past it. */
   videoWidth?: number;
 }) {
@@ -88,7 +91,6 @@ export function VideoStage({
   const [box, setBox] = useState({ w: 0, h: 0 });
   const dragging = useRef<{ id: string; dx: number; dy: number } | null>(null);
   const [draft, setDraft] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
-  const [playing, setPlaying] = useState(false);
 
   /** Pointer position as a fraction of the frame. */
   const atFraction = (e: React.PointerEvent) => {
@@ -115,72 +117,7 @@ export function VideoStage({
     return () => ro.disconnect();
   }, [src]);
 
-  /**
-   * Which beats the anti-clatter rule silences, from the kit's own function.
-   *
-   * The preview has to agree with the export about this or it teaches the wrong
-   * thing: a cue you hear while editing and never hear in the render is worse
-   * than one you never hear at all.
-   */
-  const silenced = useMemo(() => silencedByClatter(beats), [beats]);
-
-  /** Last playhead the cue pass saw, so each entrance fires once. */
-  const lastT = useRef(0);
-
-  /**
-   * Drive the playhead from rAF while the video plays, and sound each beat as
-   * it arrives.
-   *
-   * `timeupdate` fires about four times a second, which is fine for a readout
-   * and useless for both jobs here: a 300ms spring would arrive in two steps,
-   * and a cue would land up to a quarter of a second late. The event still
-   * handles seeks and the paused case; this covers playback.
-   */
-  /**
-   * Advance to `t`, sounding any beat whose entrance was crossed getting there.
-   *
-   * Idempotent, because `lastT` only moves forward: calling it twice for the
-   * same span sounds nothing the second time. That is what lets both the rAF
-   * loop and `timeupdate` call it without doubling every cue.
-   */
-  const advanceTo = useCallback(
-    (t: number) => {
-      // Entrance only, per rule 1 of the sound pack. A backwards jump is a
-      // seek, and a seek is not a performance.
-      if (t >= lastT.current) {
-        for (const b of beats) {
-          if (b.t > lastT.current && b.t <= t && b.cue && b.cue !== "silent" && !silenced.has(b.id)) {
-            playCue(b.cue);
-          }
-        }
-      }
-      lastT.current = t;
-      onTime?.(t);
-    },
-    [beats, silenced, onTime],
-  );
-
-  /**
-   * rAF while playing, for precision; `timeupdate` regardless, for survival.
-   *
-   * rAF is the only thing fine-grained enough for a 300ms spring and a 28ms
-   * cue, and it is also the first thing a browser stops when the tab is not
-   * visible. Leaning on it alone means playback in a background tab runs
-   * silently. `timeupdate` keeps firing at about 4Hz there, so cues still land,
-   * late but present, and the two cannot double up because `advanceTo` only
-   * ever moves forward.
-   */
-  useEffect(() => {
-    if (!playing || !videoRef?.current) return;
-    let raf = 0;
-    const tick = () => {
-      const v = videoRef.current;
-      if (v) advanceTo(v.currentTime);
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [playing, videoRef, advanceTo]);
+  const { playhead, playing, attach } = clock;
 
   const preset = CANVASES[canvas];
   const scale = box.w ? box.w / preset.w : 0;
@@ -256,38 +193,35 @@ export function VideoStage({
       style={{ maxWidth: stageMaxWidth }}
     >
       <div ref={boxRef} className="relative w-full" style={{ aspectRatio: `${preset.w} / ${preset.h}` }}>
-        {src ? (
+        {src && kind === "image" ? (
+          /*
+           * `object-cover`, and it has to be.
+           *
+           * Phase 2 letterboxed this to match how the video element behaves,
+           * with the export cropping to cover instead — a rendered clip cannot
+           * have bars baked into it. That divergence was survivable while
+           * beats only floated on top. It stops being survivable the moment a
+           * screen is aligned to something *in* the photograph: corners lined
+           * up against a letterboxed preview would land somewhere else once
+           * the render cropped. The editor now shows the crop the export will
+           * make, so what is aligned is what is drawn.
+           */
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={src} alt="" className="absolute inset-0 h-full w-full object-cover" />
+        ) : src ? (
           <video
-            ref={videoRef}
+            ref={attach}
             src={src}
             className="absolute inset-0 h-full w-full object-contain"
             controls
             muted
             playsInline
-            onTimeUpdate={(e) => advanceTo((e.target as HTMLVideoElement).currentTime)}
-            onSeeked={(e) => {
-              // Seeking is not playback: move the mark without sounding
-              // everything scrubbed past.
-              lastT.current = (e.target as HTMLVideoElement).currentTime;
-              onTime?.((e.target as HTMLVideoElement).currentTime);
-            }}
-            onPlay={(e) => {
-              // Nudged back a hair so a beat starting exactly here still counts
-              // as a crossing rather than being already behind us.
-              // Not clamped at zero: a beat entering at exactly 0.000 is the
-              // ordinary case, and clamping made its entrance land on the mark
-              // rather than after it, so the opening cue never sounded.
-              lastT.current = (e.target as HTMLVideoElement).currentTime - 0.001;
-              warmCues();
-              setPlaying(true);
-            }}
-            onPause={() => setPlaying(false)}
-            onEnded={() => setPlaying(false)}
           />
         ) : (
           <div className="absolute inset-0 grid place-items-center text-center">
             <p className="max-w-xs text-sm leading-relaxed text-white/60">
-              Load a video to position nuggets over it. The canvas preset sets the frame.
+              Load a video or an image to position nuggets over it. The canvas preset
+              sets the frame.
             </p>
           </div>
         )}
@@ -397,12 +331,39 @@ export function VideoStage({
             const live = playhead >= beat.t && playhead <= beat.out;
             // The same curve the render route runs, off the same module, so the
             // pop previewed here is the pop that gets exported.
-            const pop = animating ? beatScale(playhead, beat.t, beat.out) : 1;
+            const pop = animating ? beatScaleFor(beat, playhead) : 1;
 
             const w = preview.w * scale;
             const h = preview.h * scale;
             const align = beat.align ?? "center";
             const offsetX = align === "left" ? 0 : align === "right" ? -w : -w / 2;
+
+            /*
+             * A pinned screen is placed by its four corners and nothing else.
+             *
+             * anchor/size/rotate/pop all describe a thing floating over the
+             * frame; this one is pretending to be a surface inside it, and the
+             * quad already says where that surface is. Running it through the
+             * ordinary path would fight the transform.
+             */
+            if (beat.well?.bare && beat.well.quad && beat.well.src) {
+              return (
+                <PinnedScreen
+                  key={beat.id}
+                  beat={beat}
+                  quad={beat.well.quad}
+                  box={box}
+                  canvasW={preset.w}
+                  live={live}
+                  selected={selectedId === beat.id}
+                  playing={playing}
+                  at={playhead - beat.t}
+                  interactive={!drawingRegion}
+                  onSelect={() => onSelect(beat.id)}
+                  onCorner={(i, p) => onMoveCorner(beat.id, i, p)}
+                />
+              );
+            }
 
             return (
               <div
@@ -432,13 +393,45 @@ export function VideoStage({
                 {/* Under the SVG, showing through the aperture the frame masks
                     out. Same arrangement the render route composites in. */}
                 {preview.aperture && beat.well?.src && (
-                  <WellClip
-                    src={beat.well.src}
-                    rect={preview.aperture}
-                    scale={w / preview.w}
-                    playing={playing && live}
-                    at={playhead - beat.t}
-                  />
+                  <>
+                    <WellMedia
+                      src={beat.well.src}
+                      kind={beat.well.kind}
+                      rect={preview.aperture}
+                      scale={w / preview.w}
+                      playing={playing && live}
+                      at={playhead - beat.t}
+                    />
+                    {!!beat.well.gloss && (
+                      <span
+                        aria-hidden="true"
+                        className="pointer-events-none absolute"
+                        style={{
+                          left: preview.aperture.x * (w / preview.w),
+                          top: preview.aperture.y * (w / preview.w),
+                          width: preview.aperture.w * (w / preview.w),
+                          height: preview.aperture.h * (w / preview.w),
+                          borderRadius: preview.aperture.radius * (w / preview.w),
+                          backgroundImage: glossCss(beat.well.gloss),
+                          boxShadow: glossEdgeCss(
+                            beat.well.gloss,
+                            preview.aperture.w * (w / preview.w),
+                            preview.aperture.h * (w / preview.w),
+                          ),
+                        }}
+                      />
+                    )}
+                  </>
+                )}
+                {/* A screen with nothing in it draws nothing at all, which
+                    reads as broken rather than as empty. */}
+                {beat.well?.bare && !beat.well.src && (
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-0 grid place-items-center rounded border-2 border-dashed border-white/50 bg-white/5 text-[10px] font-bold uppercase tracking-wider text-white/70"
+                  >
+                    Screen
+                  </span>
                 )}
                 <span
                   className="absolute inset-0"
@@ -467,14 +460,16 @@ export function VideoStage({
  * move the clip too or the preview stops being a preview. So it follows the
  * playhead when parked and runs on its own only while the deck actually plays.
  */
-function WellClip({
+function WellMedia({
   src,
+  kind,
   rect,
   scale,
   playing,
   at,
 }: {
   src: string;
+  kind: "image" | "video";
   /** The aperture, in canvas px. */
   rect: { x: number; y: number; w: number; h: number; radius: number };
   /** Canvas px to screen px. */
@@ -487,7 +482,7 @@ function WellClip({
 
   useEffect(() => {
     const v = ref.current;
-    if (!v) return;
+    if (!v || kind !== "video") return;
     if (playing) {
       void v.play().catch(() => {
         /* autoplay refused: the poster frame stays, which is not nothing */
@@ -501,7 +496,22 @@ function WellClip({
       const want = Math.max(0, at) % v.duration;
       if (Math.abs(v.currentTime - want) > 0.04) v.currentTime = want;
     }
-  }, [playing, at]);
+  }, [playing, at, kind]);
+
+  const box = {
+    left: rect.x * scale,
+    top: rect.y * scale,
+    width: rect.w * scale,
+    height: rect.h * scale,
+    borderRadius: rect.radius * scale,
+  };
+
+  // `object-cover` on both: the well decides its own shape, and media that
+  // does not match is cropped rather than squashed to fit.
+  if (kind === "image") {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={src} alt="" className="pointer-events-none absolute object-cover" style={box} />;
+  }
 
   return (
     <video
@@ -512,13 +522,165 @@ function WellClip({
       playsInline
       preload="auto"
       className="pointer-events-none absolute object-cover"
-      style={{
-        left: rect.x * scale,
-        top: rect.y * scale,
-        width: rect.w * scale,
-        height: rect.h * scale,
-        borderRadius: rect.radius * scale,
-      }}
+      style={box}
     />
+  );
+}
+
+
+/* ========================= the pinned screen ========================= */
+
+const CORNER_LABELS = ["Top left", "Top right", "Bottom right", "Bottom left"];
+
+/**
+ * A bare well corner-pinned into the scene.
+ *
+ * The media is laid out as an ordinary `width x height` box and then mapped
+ * onto the quad by a CSS matrix3d built from the same homography the render
+ * route warps with — so the editor is not approximating the export, it is
+ * running the identical map through a different renderer.
+ *
+ * `border-radius` is applied before the transform, which is exactly right: the
+ * corners curve in the surface's own space and come out foreshortened with it,
+ * the way a real screen's would.
+ */
+function PinnedScreen({
+  beat,
+  quad,
+  box,
+  canvasW,
+  live,
+  selected,
+  playing,
+  at,
+  interactive,
+  onSelect,
+  onCorner,
+}: {
+  beat: Beat;
+  quad: [Anchor, Anchor, Anchor, Anchor];
+  /** The stage's pixel size, which the fractions are resolved against. */
+  box: { w: number; h: number };
+  /** Canvas width, so a radius given in canvas px lands at the right size. */
+  canvasW: number;
+  live: boolean;
+  selected: boolean;
+  playing: boolean;
+  at: number;
+  interactive: boolean;
+  onSelect: () => void;
+  onCorner: (corner: number, at: { x: number; y: number }) => void;
+}) {
+  const well = beat.well!;
+  const px: Quad = [0, 1, 2, 3].map((i) => ({
+    x: quad[i].x * box.w,
+    y: quad[i].y * box.h,
+  })) as Quad;
+
+  /*
+   * The untransformed box is sized from the quad rather than fixed, so the
+   * media is rasterised at roughly the resolution it will be seen at instead
+   * of being scaled up from something small and going soft.
+   */
+  const { w: qw, h: qh } = quadSize(px);
+  const w = Math.max(2, Math.round(qw));
+  const h = Math.max(2, Math.round(qh));
+  const matrix = quadToCssMatrix(px, w, h);
+  const radiusPx = ((well.radius ?? 0) * box.w) / Math.max(1, canvasW);
+
+  const drag = useRef<number | null>(null);
+  /** The whole-pin drag: where it started, and the quad it started from. */
+  const body = useRef<{ x: number; y: number; from: Anchor[] } | null>(null);
+
+  return (
+    <>
+      <div
+        onPointerDown={(e) => {
+          if (!interactive) return;
+          onSelect();
+          // Dragging the surface moves the whole pin. Dragging four corners to
+          // relocate something without reshaping it is not a way to work.
+          const host = (e.currentTarget as HTMLElement).offsetParent as HTMLElement | null;
+          const r = host?.getBoundingClientRect();
+          if (!r) return;
+          capture(e.currentTarget as Element, e.pointerId);
+          body.current = {
+            x: (e.clientX - r.left) / r.width,
+            y: (e.clientY - r.top) / r.height,
+            from: quad.map((q) => ({ ...q })),
+          };
+        }}
+        onPointerMove={(e) => {
+          const b = body.current;
+          if (!b) return;
+          const host = (e.currentTarget as HTMLElement).offsetParent as HTMLElement | null;
+          const r = host?.getBoundingClientRect();
+          if (!r) return;
+          const dx = (e.clientX - r.left) / r.width - b.x;
+          const dy = (e.clientY - r.top) / r.height - b.y;
+          b.from.forEach((p, i) => onCorner(i, { x: p.x + dx, y: p.y + dy }));
+        }}
+        onPointerUp={() => (body.current = null)}
+        onPointerCancel={() => (body.current = null)}
+        className={cx(
+          "absolute left-0 top-0 origin-top-left touch-none",
+          interactive && "cursor-grab active:cursor-grabbing",
+          !live && "opacity-25",
+        )}
+        style={{ width: w, height: h, transform: matrix, transformOrigin: "0 0" }}
+      >
+        <WellMedia
+          src={well.src!}
+          kind={well.kind}
+          rect={{ x: 0, y: 0, w, h, radius: radiusPx }}
+          scale={1}
+          playing={playing && live}
+          at={at}
+        />
+        {/* Inside the transformed box, so the sheen foreshortens with the
+            surface rather than lying flat across the frame. */}
+        {!!well.gloss && (
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0"
+            style={{
+              borderRadius: radiusPx,
+              backgroundImage: glossCss(well.gloss),
+              boxShadow: glossEdgeCss(well.gloss, w, h),
+            }}
+          />
+        )}
+      </div>
+
+      {/* Handles ride above the surface rather than on it, so a corner dragged
+          to the very edge of the frame is still catchable. */}
+      {selected && interactive &&
+        px.map((p, i) => (
+          <button
+            key={i}
+            type="button"
+            aria-label={`${CORNER_LABELS[i]} corner`}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              capture(e.currentTarget, e.pointerId);
+              drag.current = i;
+            }}
+            onPointerMove={(e) => {
+              if (drag.current !== i) return;
+              const host = e.currentTarget.offsetParent as HTMLElement | null;
+              const r = host?.getBoundingClientRect();
+              if (!r) return;
+              onCorner(i, {
+                x: Math.min(1.5, Math.max(-0.5, (e.clientX - r.left) / r.width)),
+                y: Math.min(1.5, Math.max(-0.5, (e.clientY - r.top) / r.height)),
+              });
+            }}
+            onPointerUp={() => (drag.current = null)}
+            onPointerCancel={() => (drag.current = null)}
+            className="pointer-events-auto absolute z-10 h-4 w-4 -translate-x-1/2 -translate-y-1/2 cursor-grab touch-none rounded-full border-2 border-white bg-stamp-600 shadow-[0_2px_8px_rgba(0,0,0,0.5)] active:cursor-grabbing"
+            style={{ left: p.x, top: p.y }}
+          />
+        ))}
+    </>
   );
 }
