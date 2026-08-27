@@ -274,18 +274,29 @@ time either side changed. `/llms-shared.txt` is the artifact for that: the
 narrative with the control reference left off, because the rules are the
 product's and the controls are ours.
 
-All three files are readable cross-origin (`Access-Control-Allow-Origin: *` — see
-`headers()` in [`next.config.ts`](next.config.ts)) so another build can pull one
-at build time rather than vendoring it. Each ends with a deterministic content
-stamp:
+**Take it from the repo, not from a deployment.** This repo is public, so the
+file has a stable unauthenticated URL:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/scanton/social-media-assets/main/public/llms-shared.txt -o public/llms.txt
+```
+
+That is the dependable source. The Vercel deployment is a demo — it exists to
+show the app before it goes onto the HeartStamp site, and a build that depends on
+a demo staying up has a failure mode nobody is watching for. The three files are
+also readable cross-origin (`Access-Control-Allow-Origin: *`, see `headers()` in
+[`next.config.ts`](next.config.ts)) so fetching from a running instance works, but
+prefer the repo.
+
+Each file ends with a deterministic content stamp:
 
 ```
 version: 5d4c68013543
 ```
 
 Same source in, same stamp out — no date, no build number — so a consumer can
-diff the stamp it has against the one being served and know whether it is stale
-without reading the whole file.
+diff the stamp it has against the one upstream and know whether it is stale
+without reading the whole file. That is the check worth putting in CI.
 
 ## Scripts
 
