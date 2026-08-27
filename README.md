@@ -250,10 +250,21 @@ a `<link rel="alternate">` in `<head>` is the standard announcement; a
 in a page whose `<head>` we do not own; and a visible link in the footer is there
 because someone asking an assistant for help usually starts by pasting a URL.
 
-**When embedding, set `NEXT_PUBLIC_STUDIO_ORIGIN`** to the studio's own origin.
-Those references are relative by default, which is right standalone but wrong
-inside a HeartStamp page — there, `/llms.txt` resolves against heartstamp.com.
-See [`src/lib/llms.ts`](src/lib/llms.ts).
+**When embedding, set `NEXT_PUBLIC_STUDIO_BASE_URL`.** Those references are
+relative by default, which is right standalone and wrong inside a HeartStamp
+page: the studio is hosted at `heartstamp.com/admin/social-assets`, so a relative
+`/llms.txt` resolves to `heartstamp.com/llms.txt` — the host's root, which has no
+such file. An assistant following it gets a 404 and concludes the studio is
+undocumented.
+
+```bash
+NEXT_PUBLIC_STUDIO_BASE_URL=https://heartstamp.com/admin/social-assets
+```
+
+That value is right **if** heartstamp.com forwards sub-paths through to this app.
+If it does not, use the studio's own origin instead — it serves `/llms.txt`
+whatever the host does. Fetch `<value>/llms.txt` once and believe the result
+rather than the reasoning. See [`src/lib/llms.ts`](src/lib/llms.ts).
 
 ## Scripts
 
