@@ -7,14 +7,16 @@ import {
   FRAMES, OBJECT_GLYPHS, OCCASION_GLYPHS, WELLS, WELL_SHAPE_NAMES, glyphLabel,
 } from "@/lib/popkit/catalogue";
 import {
-  STAMPY_NAMES, STAMPY_PREFIX, STAMPY_USE, isStampy, tryGlyphDataUri,
+  STAMPY_NAMES, STAMPY_PREFIX, STAMPY_USE, isStampy, stampyUrl, tryGlyphDataUri,
 } from "@/lib/popkit/glyphs";
 import {
   CAPTION_MAX_CHARS, GLYPH_FRAC_DEFAULT, GLYPH_FRAC_KIT_DEFAULT, SOUND_CUES,
   MEDALLION_SCALE_DEFAULT, MEDALLION_SCALE_KIT_DEFAULT,
   beatKind, defaultDwellSeconds, floorForBeat,
   STILL_DEFAULT_S, STILL_MAX_S, STILL_MIN_S,
-  type Background, type Beat, type CanvasId, type ProtectedRegion, type SoundCue,
+  MEDALLION_SIDES, medallionCount,
+  type Background, type Beat, type BeatArrow, type BeatMedallion, type BeatMedallions,
+  type CanvasId, type MedallionSide, type ProtectedRegion, type SoundCue,
 } from "@/lib/popkit/deck";
 import { fitBeat, renderBeat, safeWidth } from "@/lib/popkit/preview";
 import { frame } from "@/lib/popkit/kit/frames.js";
@@ -71,7 +73,7 @@ function newBeat(canvas: CanvasId): Beat {
     colorway: "house",
     align: "center",
     anchor: { x: 0.5, y: 0.55 },
-    medallion: { side: "left", frame: "circle", glyphFrac: GLYPH_FRAC_DEFAULT },
+    medallions: { left: { frame: "circle", glyphFrac: GLYPH_FRAC_DEFAULT } },
     arrows: [{ name: "dart", from: "left", anchor: 225, scale: 0.6, over: false, layer: "mid" }],
     cue: DEFAULT_CUE,
     haptic: "none",
@@ -262,6 +264,7 @@ export function NuggetBuilder() {
   const [overrideFor, setOverrideFor] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string[] | null>(null);
   const [pinning, setPinning] = useState(false);
+  const [medTarget, setMedTarget] = useState<MedallionSide>("left");
   const [rendering, setRendering] = useState<RenderProgress | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
   // "Nothing fits" is recorded against the beat it was true of, not as a plain
@@ -274,7 +277,7 @@ export function NuggetBuilder() {
   // into. compose() will happily return a cluster wider than the canvas and say
   // nothing, so this is the only place the overflow becomes visible.
   const fitKey = selected
-    ? JSON.stringify([selected.text, selected.medallion, selected.arrows, selected.caption, canvas])
+    ? JSON.stringify([selected.text, selected.medallions, selected.arrows, selected.caption, canvas])
     : null;
   const noFit = noFitFor !== null && noFitFor === fitKey;
 
@@ -282,19 +285,44 @@ export function NuggetBuilder() {
     selected && setBeats((bs) => bs.map((b) => (b.id === selected.id ? { ...b, ...next } : b)));
 
   /**
-   * Moving the medallion moves the arrow with it. An arrow hung off a medallion
-   * names its host by side (`from`), so flipping only the medallion would leave
-   * the arrow pointing at an end that no longer has one — compose() then finds
-   * no host and falls through to hanging it off a caption edge instead.
+   * Which ends carry a medallion. The presence control writes this.
+   *
+   * An arrow hung off a medallion names its host by side, so an end that stops
+   * carrying one leaves its arrow pointing at nothing — compose() then finds no
+   * host and quietly hangs it off a caption edge instead. Arrows are moved to
+   * whichever end still has a medallion, or left alone if both do.
    */
-  const setSide = (side: "left" | "right") => {
-    if (!selected?.medallion) return;
+  const setPresence = (next: { left: boolean; right: boolean }) => {
+    if (!selected) return;
+    const cur = selected.medallions ?? {};
+    const made: BeatMedallions = {
+      left: next.left ? cur.left ?? { frame: "circle", glyphFrac: GLYPH_FRAC_DEFAULT } : undefined,
+      right: next.right ? cur.right ?? { frame: "circle", glyphFrac: GLYPH_FRAC_DEFAULT } : undefined,
+    };
+    const survivor: MedallionSide | null = made.left && made.right ? null : made.left ? "left" : made.right ? "right" : null;
+
+    /*
+     * An arrow whose host just disappeared has nothing to hang off, and
+     * compose() would quietly reattach it to a caption edge rather than fail.
+     * So it goes with its medallion - except in the one case where that is
+     * plainly not what was meant: a single medallion moved to the other end,
+     * where the arrow should follow it across.
+     */
+    const kept = (selected.arrows ?? []).filter((a) => !a.from || made[a.from]);
+    const moved =
+      survivor && kept.length === 0 && (selected.arrows ?? []).length === 1
+        ? [{ ...selected.arrows![0], from: survivor }]
+        : kept;
+
     patch({
-      medallion: { ...selected.medallion, side },
-      arrows: selected.arrows?.map((a) => (a.from ? { ...a, from: side } : a)),
-      captionPadL: side === "left" ? gapPad : undefined,
-      captionPadR: side === "right" ? gapPad : undefined,
+      medallions: made,
+      arrows: moved,
+      // The gap belongs to an end that has something to be clear of.
+      captionPadL: made.left ? selected.captionPadL ?? DEFAULT_CAPTION_PAD : undefined,
+      captionPadR: made.right ? selected.captionPadR ?? DEFAULT_CAPTION_PAD : undefined,
     });
+    // Never leave the editor pointed at an end that no longer has one.
+    if (!made[medTarget]) setMedTarget(made.left ? "left" : "right");
   };
 
   /**
@@ -316,12 +344,66 @@ export function NuggetBuilder() {
   const showsGlyphs = kind === "nugget";
   const showsArrow = kind !== "well";
 
-  const medSide = selected?.medallion?.side ?? "left";
-  const gapPad = (medSide === "left" ? selected?.captionPadL : selected?.captionPadR) ?? DEFAULT_CAPTION_PAD;
+  /*
+   * Which medallion the per-side controls edit.
+   *
+   * Only meaningful when there are two. With one there is no mode at all — the
+   * target follows the only medallion there is, and no selector is drawn.
+   */
+  const present = { left: Boolean(selected?.medallions?.left), right: Boolean(selected?.medallions?.right) };
+  const bothSides = present.left && present.right;
+  const target: MedallionSide = bothSides ? medTarget : present.right ? "right" : "left";
+  const med = selected?.medallions?.[target];
+
+  /** Edit the targeted medallion, leaving the other end alone. */
+  const patchMed = (next: Partial<BeatMedallion>) => {
+    if (!selected || !med) return;
+    patch({ medallions: { ...selected.medallions, [target]: { ...med, ...next } } });
+  };
+
+  /*
+   * The arrow belonging to the targeted medallion.
+   *
+   * An arrow names its host by side, so with two medallions `from` is the
+   * arrow's identity in the same way it is the medallion's — arrows[0] is not
+   * "the arrow", it is whichever happened to be added first. Editing that one
+   * while looking at the other end is what made changing the left medallion's
+   * arrow rewrite the right one's.
+   *
+   * A beat with no medallion still gets a single arrow off a caption edge,
+   * which is the old behaviour and stays as it was.
+   */
+  const arrowSide: MedallionSide | null = med ? target : null;
+  const arrow =
+    (arrowSide
+      ? selected?.arrows?.find((a) => a.from === arrowSide)
+      : selected?.arrows?.find((a) => !a.from) ?? selected?.arrows?.[0]) ?? null;
+
+  /** Set or clear this host's arrow, leaving any other end's untouched. */
+  const setArrow = (next: BeatArrow | null) => {
+    if (!selected) return;
+    const others = (selected.arrows ?? []).filter((a) =>
+      arrowSide ? a.from !== arrowSide : Boolean(a.from) && a !== arrow,
+    );
+    patch({ arrows: next ? [...others, next] : others });
+  };
+  const patchArrow = (next: Partial<BeatArrow>) => arrow && setArrow({ ...arrow, ...next });
+
+  // Each end has its own gap, because each end has its own thing to clear.
+  const gapPad = (target === "left" ? selected?.captionPadL : selected?.captionPadR) ?? DEFAULT_CAPTION_PAD;
   const setGapPad = (v: number) =>
-    patch(medSide === "left"
-      ? { captionPadL: v, captionPadR: undefined }
-      : { captionPadR: v, captionPadL: undefined });
+    patch(target === "left" ? { captionPadL: v } : { captionPadR: v });
+
+  /*
+   * The v10 deck schema declares one medallion with a `side`, and the skill's
+   * render route reads that field. A two-medallion beat cannot be written down
+   * in it, and a route that found nothing would draw a bare caption rather than
+   * fail — so the zip is refused rather than made quietly wrong.
+   */
+  const twoMedallionBeat = useMemo(() => {
+    const i = beats.findIndex((b) => medallionCount(b.medallions) > 1);
+    return i === -1 ? null : i + 1;
+  }, [beats]);
 
   const duration = bg ? (bg.kind === "video" ? bg.duration : stillSeconds) : 0;
 
@@ -599,6 +681,10 @@ export function NuggetBuilder() {
             selectedId={selected?.id ?? null}
             onSelect={setSelectedId}
             onMove={(id, anchor) => setBeats((bs) => bs.map((b) => (b.id === id ? { ...b, anchor } : b)))}
+            onSelectMedallion={(id, side) => {
+              setSelectedId(id);
+              setMedTarget(side);
+            }}
             onMoveCorner={(id, corner, at) =>
               setBeats((bs) =>
                 bs.map((b) => {
@@ -669,6 +755,15 @@ export function NuggetBuilder() {
           {bg ? (
             <div className="space-y-4">
               <div className="flex flex-wrap items-center gap-2">
+                {/* One tip for the row rather than six.
+                    These are the six things a deck can be made of, and the
+                    useful question is "which of these do I want", which is a
+                    question about the set. Six separate tips would answer it
+                    six times over and never side by side. */}
+                <span className="mr-0.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.09em] text-ink-faint">
+                  Add
+                  <HelpTip id="pop.addRow" />
+                </span>
                 <button
                   type="button"
                   onClick={() => {
@@ -837,7 +932,7 @@ export function NuggetBuilder() {
 
                 <button
                   type="button"
-                  disabled={!bg || bg.kind === "image" || blocking.length > 0}
+                  disabled={!bg || bg.kind === "image" || blocking.length > 0 || twoMedallionBeat !== null}
                   onClick={async () => {
                     if (!bg || bg.kind !== "video") return;
                     const base = exportBasename(bg?.name ?? null);
@@ -877,6 +972,8 @@ export function NuggetBuilder() {
                       ? "Runs in real time, so about as long as the deck."
                       : bg?.kind === "image"
                         ? "Render video only — the zip is for the Claude skill, which has no idea what a still background is."
+                        : twoMedallionBeat !== null
+                          ? `Render video only — beat ${twoMedallionBeat} has two medallions, which the skill's render route cannot draw.`
                         : `${exportBasename(bg?.name ?? null)}.zip — the video and ${exportBasename(bg?.name ?? null)}.deck.json`}
                 </span>
               </div>
@@ -1295,17 +1392,78 @@ export function NuggetBuilder() {
                 {showsMedallion && (
                 <fieldset className="space-y-4 rounded-xl border border-hairline bg-paper/60 p-3.5">
                   <legend className="flex items-center gap-1.5 px-1 text-[11px] font-bold uppercase tracking-[0.09em] text-ink-faint">
-                    Medallion
+                    Medallions
                     <HelpTip id="pop.medallion" />
                   </legend>
 
-                  <Field label="Side" help="pop.side" hint="The glyph and its arrow move with it.">
-                    <SideToggle
-                      value={selected.medallion?.side ?? "left"}
-                      disabled={!selected.medallion}
-                      onChange={setSide}
-                    />
+                  <Field label="Which ends" help="pop.medallionSides" hint="One on each end, or neither.">
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {([
+                        { id: "none", label: "None", on: { left: false, right: false } },
+                        { id: "left", label: "Left", on: { left: true, right: false } },
+                        { id: "right", label: "Right", on: { left: false, right: true } },
+                        { id: "both", label: "Both", on: { left: true, right: true } },
+                      ] as const).map((o) => {
+                        const active = present.left === o.on.left && present.right === o.on.right;
+                        return (
+                          <button
+                            key={o.id}
+                            type="button"
+                            aria-pressed={active}
+                            onClick={() => setPresence(o.on)}
+                            className={cx(
+                              "focus-stamp rounded-xl border px-2 py-2 text-xs font-bold transition-all",
+                              active
+                                ? "border-stamp-600 bg-stamp-50 text-ink"
+                                : "border-hairline bg-white text-ink/70 hover:border-stamp-300",
+                            )}
+                          >
+                            {o.label}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </Field>
+
+                  {/*
+                    * Only with two. With one there is nothing to choose between,
+                    * and a selector showing one option is a mode to lose track
+                    * of for no benefit.
+                    *
+                    * Real previews rather than the words "left" and "right":
+                    * what you are picking between is two drawings, and the
+                    * fastest way to say which is which is to show them.
+                    */}
+                  {bothSides && (
+                    <Field label="Editing" help="pop.medallionTarget" hint="Or click one on the frame.">
+                      <div className="grid grid-cols-2 gap-2">
+                        {MEDALLION_SIDES.map((side) => (
+                          <button
+                            key={side}
+                            type="button"
+                            aria-pressed={target === side}
+                            onClick={() => setMedTarget(side)}
+                            className={cx(
+                              "focus-stamp flex items-center gap-2 rounded-xl border px-2.5 py-2 text-left transition-all",
+                              target === side
+                                ? "border-stamp-600 bg-stamp-50 shadow-[0_0_0_2px_rgba(190,30,46,0.12)]"
+                                : "border-hairline bg-white hover:border-stamp-300",
+                            )}
+                          >
+                            <MedallionThumb spec={selected.medallions?.[side]} colorway={selected.colorway} />
+                            <span className="min-w-0">
+                              <span className="block text-[11px] font-bold uppercase tracking-wide text-ink">
+                                {side}
+                              </span>
+                              <span className="block truncate text-[10px] text-ink-faint">
+                                {selected.medallions?.[side]?.frame ?? "—"}
+                              </span>
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </Field>
+                  )}
 
                   <Field
                     label="Size"
@@ -1320,7 +1478,7 @@ export function NuggetBuilder() {
                       value={selected.medallionScale ?? MEDALLION_SCALE_KIT_DEFAULT}
                       onChange={(e) => patch({ medallionScale: Number(e.target.value) })}
                       className="focus-stamp w-full accent-stamp-600"
-                      disabled={!selected.medallion}
+                      disabled={!med}
                     />
                   </Field>
 
@@ -1337,7 +1495,7 @@ export function NuggetBuilder() {
                       value={selected.overlap ?? OVERLAP_KIT_DEFAULT}
                       onChange={(e) => patch({ overlap: Number(e.target.value) })}
                       className="focus-stamp w-full accent-stamp-600"
-                      disabled={!selected.medallion}
+                      disabled={!med}
                     />
                   </Field>
 
@@ -1345,34 +1503,25 @@ export function NuggetBuilder() {
                     label="Well media"
                     help="pop.wellMedia"
                     hint={
-                      selected.medallion?.media
-                        ? `${selected.medallion.mediaIsVideo ? "A clip" : "A still"} fills the shape. Clips are drawn by this renderer, not by the skill route.`
+                      med?.media
+                        ? `${med?.mediaIsVideo ? "A clip" : "A still"} fills the shape. Clips are drawn by this renderer, not by the skill route.`
                         : "Put a picture or a clip in the shape instead of a flat fill."
                     }
                   >
                     <div className="flex flex-wrap items-center gap-2">
                       <UploadButton
-                        label={selected.medallion?.media ? "Replace…" : "Upload…"}
+                        label={med?.media ? "Replace…" : "Upload…"}
                         accept="image/*,video/*"
                         onFile={(uri, file) =>
-                          selected.medallion &&
-                          patch({
-                            medallion: {
-                              ...selected.medallion,
-                              media: uri,
-                              mediaIsVideo: file.type.startsWith("video/"),
-                            },
-                          })
+                          med &&
+                          patchMed({ media: uri, mediaIsVideo: file.type.startsWith("video/") })
                         }
                       />
-                      {selected.medallion?.media && (
+                      {med?.media && (
                         <button
                           type="button"
                           onClick={() =>
-                            selected.medallion &&
-                            patch({
-                              medallion: { ...selected.medallion, media: undefined, mediaIsVideo: undefined },
-                            })
+                            med && patchMed({ media: undefined, mediaIsVideo: undefined })
                           }
                           className="focus-stamp rounded-xl border border-hairline bg-white px-3 py-2 text-xs font-bold text-ink/70 transition-all hover:-translate-y-0.5 hover:border-red-300"
                         >
@@ -1385,7 +1534,7 @@ export function NuggetBuilder() {
                   <Field
                     label="Gap to the text"
                     help="pop.gap"
-                    hint={`${gapPad}px padding on the ${medSide} end · this distance does not change with medallion size, so this is the dial that closes it`}
+                    hint={`${gapPad}px padding on the ${target} end · this distance does not change with medallion size, so this is the dial that closes it`}
                   >
                     <input
                       type="range"
@@ -1395,7 +1544,7 @@ export function NuggetBuilder() {
                       value={gapPad}
                       onChange={(e) => setGapPad(Number(e.target.value))}
                       className="focus-stamp w-full accent-stamp-600"
-                      disabled={!selected.medallion}
+                      disabled={!med}
                     />
                   </Field>
                 </fieldset>
@@ -1515,14 +1664,14 @@ export function NuggetBuilder() {
 )}
 
 {showsMedallion && (
-                <Disclosure id="frame" label="Medallion frame" help="pop.frame" value={selected.medallion?.frame ?? "none"} count={frameOptions.length}>
+                <Disclosure id="frame" label="Medallion frame" help="pop.frame" value={med?.frame ?? "none"} count={frameOptions.length}>
                   <CataloguePicker
                     label="" options={frameOptions} columns={9}
-                    value={selected.medallion?.frame}
+                    value={med?.frame}
                     onChange={(f) =>
                       patch({
-                        medallion: f
-                          ? { side: selected.medallion?.side ?? "left", ...selected.medallion, frame: f }
+                        medallions: f
+                          ? { ...selected.medallions, [target]: { ...med, frame: f } }
                           : undefined,
                       })
                     }
@@ -1532,58 +1681,70 @@ export function NuggetBuilder() {
 )}
 
 {showsMedallion && (
-                <Disclosure id="border" label="Border treatment" help="pop.border" value={selected.medallion?.borders?.[0] ?? "register default"} count={borderOptions.length}>
+                <Disclosure id="border" label="Border treatment" help="pop.border" value={med?.borders?.[0] ?? "register default"} count={borderOptions.length}>
                   <CataloguePicker
                     label="" options={borderOptions} columns={7} allowNone
-                    value={selected.medallion?.borders?.[0]}
+                    value={med?.borders?.[0]}
                     onChange={(b) =>
-                      selected.medallion &&
-                      patch({ medallion: { ...selected.medallion, borders: b ? [b] : undefined } })
+                      med && patchMed({ borders: b ? [b] : undefined })
                     }
                   />
                 </Disclosure>
 )}
 
 {showsArrow && (
-                <Disclosure id="arrow" label="Arrow" help="pop.arrow" value={selected.arrows?.[0]?.name ?? "none"} count={arrowOptions.length}>
+                <Disclosure
+                  id="arrow"
+                  label={bothSides ? `Arrow · ${target}` : "Arrow"}
+                  help="pop.arrow"
+                  value={arrow?.name ?? "none"}
+                  count={arrowOptions.length}
+                >
                   <CataloguePicker
                     label="" options={arrowOptions} columns={9} allowNone
-                    value={selected.arrows?.[0]?.name}
+                    value={arrow?.name}
                     onChange={(name) =>
-                      patch({
-                        arrows: name
-                          ? [{ ...(selected.arrows?.[0] ?? { from: medSide, anchor: 225, scale: 0.6 }), name, over: false, layer: selected.arrows?.[0]?.layer ?? "mid" }]
-                          : [],
-                      })
+                      setArrow(
+                        name
+                          ? {
+                              ...(arrow ?? {
+                                // Only claim a host that exists; without a
+                                // medallion the kit hangs it off a caption edge.
+                                ...(arrowSide ? { from: arrowSide } : {}),
+                                anchor: 225,
+                                scale: 0.6,
+                              }),
+                              name,
+                              over: false,
+                              layer: arrow?.layer ?? "mid",
+                            }
+                          : null,
+                      )
                     }
                   />
-                  {selected.arrows?.length ? (
+                  {arrow ? (
                     <div className="mt-4 space-y-4">
                       <Field
                         label="Arrow angle"
                         help="pop.arrowAngle"
-                        hint={`${selected.arrows[0].anchor ?? 225}° round the medallion · 0 is up, 90 is right`}
+                        hint={`${arrow.anchor ?? 225}° round the medallion · 0 is up, 90 is right`}
                       >
                         <input
                           type="range"
                           min={0}
                           max={355}
                           step={5}
-                          value={selected.arrows[0].anchor ?? 225}
-                          onChange={(e) => {
-                            const a = selected.arrows?.[0];
-                            if (a) patch({ arrows: [{ ...a, anchor: Number(e.target.value) }] });
-                          }}
+                          value={arrow.anchor ?? 225}
+                          onChange={(e) => patchArrow({ anchor: Number(e.target.value) })}
                           className="focus-stamp w-full accent-stamp-600"
                         />
                       </Field>
                       <Field label="Arrow layer" help="pop.arrowLayer" hint="Where the arrow draws in the stack.">
                         <Select
-                          value={selected.arrows[0].layer ?? "mid"}
-                          onChange={(v) => {
-                            const a = selected.arrows?.[0];
-                            if (a) patch({ arrows: [{ ...a, layer: v as NonNullable<Beat["arrows"]>[number]["layer"] }] });
-                          }}
+                          value={arrow.layer ?? "mid"}
+                          onChange={(v) =>
+                            patchArrow({ layer: v as NonNullable<Beat["arrows"]>[number]["layer"] })
+                          }
                           options={[
                             { id: "mid", label: "Over the caption, under the medallion" },
                             { id: "under", label: "Behind the caption (tail tucks under)" },
@@ -1599,13 +1760,13 @@ export function NuggetBuilder() {
 {showsGlyphs && (
                 <Disclosure
                   id="object" label="Object glyph" help="pop.objectGlyph" count={objectOptions.length}
-                  value={selected.medallion?.glyph?.startsWith("obj-") ? glyphLabel(selected.medallion.glyph) : "none"}
+                  value={med?.glyph?.startsWith("obj-") ? glyphLabel(med.glyph) : "none"}
                 >
                   <CataloguePicker
                     label="" options={objectOptions} columns={8} allowNone searchable
-                    value={selected.medallion?.glyph && selected.medallion.glyph.startsWith("obj-") ? selected.medallion.glyph : undefined}
+                    value={med?.glyph?.startsWith("obj-") ? med.glyph : undefined}
                     onChange={(glyph) =>
-                      selected.medallion && patch({ medallion: { ...selected.medallion, glyph } })
+                      med && patchMed({ glyph })
                     }
                   />
                 </Disclosure>
@@ -1614,33 +1775,33 @@ export function NuggetBuilder() {
 {showsGlyphs && (
                 <Disclosure
                   id="occasion" label="Occasion glyph" help="pop.occasionGlyph" count={occasionOptions.length}
-                  value={selected.medallion?.glyph && !selected.medallion.glyph.startsWith("obj-") ? glyphLabel(selected.medallion.glyph) : "none"}
+                  value={med?.glyph && !med.glyph.startsWith("obj-") ? glyphLabel(med.glyph) : "none"}
                 >
                   <CataloguePicker
                     label="" options={occasionOptions} columns={8} allowNone searchable
-                    value={selected.medallion?.glyph && !selected.medallion.glyph.startsWith("obj-") ? selected.medallion.glyph : undefined}
+                    value={med?.glyph && !med.glyph.startsWith("obj-") ? med.glyph : undefined}
                     onChange={(glyph) =>
-                      selected.medallion && patch({ medallion: { ...selected.medallion, glyph } })
+                      med && patchMed({ glyph })
                     }
                   />
                 </Disclosure>
 )}
 
 {showsGlyphs && (
-                <Disclosure id="custom" label="Your own glyph" help="pop.customGlyph" value={selected.medallion?.glyph?.startsWith("data:") ? "uploaded" : "none"}>
+                <Disclosure id="custom" label="Your own glyph" help="pop.customGlyph" value={med?.glyph?.startsWith("data:") ? "uploaded" : "none"}>
                   <div className="flex flex-wrap items-center gap-2">
                     <UploadButton
                       label="Upload a glyph…"
                       accept="image/png,image/svg+xml,image/jpeg,image/webp"
                       onFile={(uri) =>
-                        selected.medallion && patch({ medallion: { ...selected.medallion, glyph: uri } })
+                        med && patchMed({ glyph: uri })
                       }
                     />
-                    {selected.medallion?.glyph?.startsWith("data:") && (
+                    {med?.glyph?.startsWith("data:") && (
                       <button
                         type="button"
                         onClick={() =>
-                          selected.medallion && patch({ medallion: { ...selected.medallion, glyph: undefined } })
+                          med && patchMed({ glyph: undefined })
                         }
                         className="focus-stamp rounded-xl border border-hairline bg-white px-3 py-2 text-xs font-bold text-ink/70 transition-all hover:-translate-y-0.5 hover:border-red-300"
                       >
@@ -1658,13 +1819,13 @@ export function NuggetBuilder() {
 {showsGlyphs && (
                 <Disclosure
                   id="stampy" label="Stampy" help="pop.stampy" count={stampyOptions.length}
-                  value={isStampy(selected.medallion?.glyph) ? selected.medallion!.glyph!.slice(STAMPY_PREFIX.length).replace(/-/g, " ") : "none"}
+                  value={isStampy(med?.glyph) ? med!.glyph!.slice(STAMPY_PREFIX.length).replace(/-/g, " ") : "none"}
                 >
                   <CataloguePicker
                     label="" options={stampyOptions} columns={7} allowNone searchable
-                    value={isStampy(selected.medallion?.glyph) ? selected.medallion?.glyph : undefined}
+                    value={isStampy(med?.glyph) ? med?.glyph : undefined}
                     onChange={(glyph) =>
-                      selected.medallion && patch({ medallion: { ...selected.medallion, glyph } })
+                      med && patchMed({ glyph })
                     }
                     hint="Artwork, not code. The head is matched across expressions, so props spill rather than shrink the face."
                   />
@@ -1672,22 +1833,21 @@ export function NuggetBuilder() {
 )}
                 </Accordion>
 
-                {selected.medallion?.glyph && (
+                {med?.glyph && (
                   <div className="border-t border-hairline pt-4 pb-4">
                     <Field
                       label="Glyph size"
                       help="pop.glyphSize"
-                      hint={`${(selected.medallion.glyphFrac ?? GLYPH_FRAC_KIT_DEFAULT).toFixed(2)}× the frame's safe box · kit default is ${GLYPH_FRAC_KIT_DEFAULT}`}
+                      hint={`${(med.glyphFrac ?? GLYPH_FRAC_KIT_DEFAULT).toFixed(2)}× the frame's safe box · kit default is ${GLYPH_FRAC_KIT_DEFAULT}`}
                     >
                       <input
                         type="range"
                         min={0.6}
                         max={1.6}
                         step={0.05}
-                        value={selected.medallion.glyphFrac ?? GLYPH_FRAC_KIT_DEFAULT}
+                        value={med.glyphFrac ?? GLYPH_FRAC_KIT_DEFAULT}
                         onChange={(e) =>
-                          selected.medallion &&
-                          patch({ medallion: { ...selected.medallion, glyphFrac: Number(e.target.value) } })
+                          med && patchMed({ glyphFrac: Number(e.target.value) })
                         }
                         className="focus-stamp w-full accent-stamp-600"
                       />
@@ -1856,65 +2016,6 @@ function UploadButton({
 }
 
 /**
- * Left or right, drawn as the two sides of a nugget rather than named in a list.
- *
- * A dropdown reads as configuration; this reads as the choice it is, and the
- * little marks show which end the medallion lands on without anyone parsing
- * "left of the text" against a preview they are already looking at.
- */
-function SideToggle({
-  value,
-  disabled,
-  onChange,
-}: {
-  value: "left" | "right";
-  disabled?: boolean;
-  onChange: (side: "left" | "right") => void;
-}) {
-  const opts = [
-    { id: "left" as const, label: "Left of the text" },
-    { id: "right" as const, label: "Right of the text" },
-  ];
-  return (
-    <div role="radiogroup" aria-label="Medallion side" className="grid grid-cols-2 gap-2">
-      {opts.map((o) => {
-        const on = value === o.id;
-        return (
-          <button
-            key={o.id}
-            type="button"
-            role="radio"
-            aria-checked={on}
-            disabled={disabled}
-            onClick={() => onChange(o.id)}
-            className={cx(
-              "focus-stamp flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold transition-all",
-              on ? "border-stamp-600 bg-stamp-100 text-ink" : "border-hairline bg-white text-ink/60 hover:border-stamp-300",
-              disabled && "cursor-not-allowed opacity-40",
-            )}
-          >
-            <svg viewBox="0 0 34 14" aria-hidden="true" className="h-3.5 w-8 shrink-0">
-              {o.id === "left" ? (
-                <>
-                  <circle cx="6" cy="7" r="5.2" fill="currentColor" />
-                  <rect x="12" y="3.4" width="20" height="7.2" rx="3.6" fill="currentColor" opacity="0.32" />
-                </>
-              ) : (
-                <>
-                  <rect x="2" y="3.4" width="20" height="7.2" rx="3.6" fill="currentColor" opacity="0.32" />
-                  <circle cx="28" cy="7" r="5.2" fill="currentColor" />
-                </>
-              )}
-            </svg>
-            {o.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-/**
  * Everything the deck currently fails or is flagged for, in one place.
  *
  * Errors block export; warnings do not. That split is the spec's, not a choice
@@ -2006,4 +2107,52 @@ function safe(fn: () => string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * A medallion, drawn small, for the target selector.
+ *
+ * The kit's own frame art rather than an icon, with the glyph dropped inside
+ * it: what you are choosing between is two specific drawings, and two circles
+ * that differ only by their glyph would be indistinguishable without one. A
+ * generic dot would make you read the word underneath instead of just looking,
+ * which is the whole thing this is trying to avoid.
+ */
+function MedallionThumb({ spec, colorway }: { spec?: BeatMedallion; colorway?: string }) {
+  const svg = useMemo(() => {
+    if (!spec?.frame) return null;
+    try {
+      const name = spec.glyph;
+      const uri = !name
+        ? undefined
+        : name.startsWith("data:")
+          ? name
+          : isStampy(name)
+            ? stampyUrl(name)
+            : tryGlyphDataUri(name, 128);
+      const inner = uri
+        ? `<image href="${uri}" x="20" y="20" width="60" height="60" preserveAspectRatio="xMidYMid meet"/>`
+        : "";
+      return frameSvg(frame(spec.frame), 36, {
+        fill: spec.fill,
+        borders: spec.borders,
+        colorway,
+        inner,
+      }) as string;
+    } catch {
+      // A half-picked medallion is normal while someone is still choosing.
+      return null;
+    }
+  }, [spec, colorway]);
+
+  if (!svg) {
+    return <span aria-hidden="true" className="h-9 w-9 shrink-0 rounded-full border border-dashed border-hairline" />;
+  }
+  return (
+    <span
+      aria-hidden="true"
+      className="h-9 w-9 shrink-0 [&>svg]:h-full [&>svg]:w-full"
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
+  );
 }

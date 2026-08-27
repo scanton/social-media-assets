@@ -4,7 +4,7 @@ import { compose } from "./kit/compose.js";
 import { wellLayout, wellSvg } from "./kit/media.js";
 import { CANVASES } from "./catalogue";
 import { isStampy, stampyHeadScale, stampyUrl } from "./glyphs";
-import { GLYPH_FRAC_KIT_DEFAULT, type Beat, type CanvasId } from "./deck";
+import { GLYPH_FRAC_KIT_DEFAULT, MEDALLION_SIDES, type Beat, type CanvasId } from "./deck";
 
 /**
  * Turns a beat into the same SVG the render route will produce for it.
@@ -60,8 +60,12 @@ export function beatToComposeOptions(beat: Beat, canvas: CanvasId): Record<strin
   if (beat.caption) opts.caption = beat.caption;
   if (beat.colorway) opts.colorway = beat.colorway;
 
-  if (beat.medallion) {
-    const { side, frame, glyph, borders, fill, glyphFrac, media, mediaFit } = beat.medallion;
+  // Both ends, independently. compose() has always taken a `left` and a
+  // `right`; this used to hand it exactly one of them.
+  for (const side of MEDALLION_SIDES) {
+    const spec = beat.medallions?.[side];
+    if (!spec) continue;
+    const { frame, glyph, borders, fill, glyphFrac, media, mediaFit } = spec;
     const med: Record<string, unknown> = { frame };
     if (fill) med.fill = fill;
     /*
@@ -76,8 +80,8 @@ export function beatToComposeOptions(beat: Beat, canvas: CanvasId): Record<strin
      * because compose() draws them after the fill either way.
      */
     if (media) {
-      med.media = beat.medallion.mediaIsVideo ? TRANSPARENT_PIXEL : media;
-      if (beat.medallion.mediaIsVideo) med.fill = "none";
+      med.media = spec.mediaIsVideo ? TRANSPARENT_PIXEL : media;
+      if (spec.mediaIsVideo) med.fill = "none";
     }
     if (mediaFit) med.mediaFit = mediaFit;
     if (glyphFrac !== undefined) med.glyphFrac = glyphFrac;
@@ -201,8 +205,11 @@ export function renderBeat(
     }
 
     const opts = beatToComposeOptions(beat, canvas);
-    const med = beat.medallion?.side ? (opts[beat.medallion.side] as Record<string, unknown>) : null;
-    if (med && typeof med.glyph === "string") {
+    // Each end resolves its own glyph: two medallions can carry two different
+    // ones, and resolving only the first would blank the second.
+    for (const side of MEDALLION_SIDES) {
+      const med = opts[side] as Record<string, unknown> | undefined;
+      if (!med || typeof med.glyph !== "string") continue;
       const name = med.glyph;
       // An uploaded glyph is already what compose() wants: a data URI. It has no
       // catalogue entry to resolve, and looking one up would drop it.

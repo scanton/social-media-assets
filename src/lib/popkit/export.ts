@@ -1,7 +1,7 @@
 "use client";
 
 import { beatToComposeOptions } from "./preview";
-import type { Beat, CanvasId, Deck, ProtectedRegion } from "./deck";
+import type { Beat, CanvasId, Deck, DeckBeat, MedallionSide, ProtectedRegion } from "./deck";
 import { validateDeck } from "./kit/deck-validate.js";
 import SCHEMA from "./kit/deck.schema.json";
 
@@ -56,9 +56,33 @@ export function buildDeck({
     video: { filename: `${base}.${videoExtension(videoName)}`, duration, width, height },
     // Beats in timeline order, so the render route's filter_complex is built in
     // the order a person sees them rather than the order they were added.
-    beats: [...beats].sort((a, b) => a.t - b.t),
+    beats: [...beats].sort((a, b) => a.t - b.t).map(toDeckBeat),
     ...(regions.length ? { protectedRegions: regions } : {}),
   };
+}
+
+
+/**
+ * The beat as the v10 schema declares it.
+ *
+ * The editor models both ends of a caption as `medallions: { left, right }`,
+ * because once there can be two, which end one is on is its identity rather
+ * than a field. The schema predates that: it declares a single `medallion`
+ * with a `side`, and the beat is `additionalProperties: false`, so the editor's
+ * shape cannot simply be spread into it.
+ *
+ * One medallion translates cleanly. Two cannot be expressed at all — and the
+ * skill's render route would read `medallion`, find nothing, and draw a bare
+ * caption rather than fail. The builder gates the zip on that before ever
+ * getting here; this drops to the left one only so a deck that somehow arrives
+ * anyway is still valid rather than silently malformed.
+ */
+function toDeckBeat(beat: Beat): DeckBeat {
+  const { medallions, ...rest } = beat;
+  const only = medallions?.left ?? medallions?.right;
+  if (!only) return rest;
+  const side: MedallionSide = medallions?.left ? "left" : "right";
+  return { ...rest, medallion: { side, ...only } };
 }
 
 /**

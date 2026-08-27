@@ -65,10 +65,28 @@ export interface Anchor {
   y: number;
 }
 
+/** Which end of the caption a medallion hangs off. */
+export type MedallionSide = "left" | "right";
+
+/** Both ends, in the order they read. */
+export const MEDALLION_SIDES: MedallionSide[] = ["left", "right"];
+
+/**
+ * Both ends of the caption, either of which may be empty.
+ *
+ * compose() has taken a `left` and a `right` since the beginning; only this
+ * app modelled a single one with a `side` field naming which end it was on.
+ * Once there can be two, "which side is it on" stops being a property of a
+ * medallion and starts being its identity, so it is the key rather than a
+ * field — a shape that cannot express the same medallion twice.
+ */
+export interface BeatMedallions {
+  left?: BeatMedallion;
+  right?: BeatMedallion;
+}
+
 /** A medallion hung on one end of the caption. Mirrors compose()'s `left`/`right`. */
 export interface BeatMedallion {
-  /** Which end of the caption it hangs off. */
-  side: "left" | "right";
   /** One of the 18 frames, catalogue page H. */
   frame: string;
   /** One of the 62 glyphs — 47 occasions, 15 objects. Omit for a plain fill. */
@@ -261,6 +279,8 @@ export interface Beat {
   t: number;
   /** Exit, in seconds. Explicit rather than inferred, so the render route never guesses. */
   out: number;
+  /** Up to two, one on each end. See BeatMedallions. */
+  medallions?: BeatMedallions;
   /**
    * Skips the entrance and exit springs, holding full size for its whole span.
    *
@@ -318,7 +338,6 @@ export interface Beat {
   align?: "left" | "center" | "right";
   anchor: Anchor;
   rotate?: number;
-  medallion?: BeatMedallion;
   /** Present on a well beat. See `BeatWell`. */
   well?: BeatWell;
   arrows?: BeatArrow[];
@@ -348,6 +367,15 @@ export interface ProtectedRegion {
   label?: string;
 }
 
+/**
+ * A beat as the deck FILE carries it, which is no longer the beat the editor
+ * edits: the file predates two medallions and declares a single one with a
+ * `side`. `toDeckBeat` in export.ts is the one place that translates.
+ */
+export type DeckBeat = Omit<Beat, "medallions"> & {
+  medallion?: BeatMedallion & { side: MedallionSide };
+};
+
 export interface Deck {
   /** Schema version, so the render route can refuse a deck it predates. */
   v: 1;
@@ -361,7 +389,7 @@ export interface Deck {
     width: number;
     height: number;
   };
-  beats: Beat[];
+  beats: DeckBeat[];
   protectedRegions?: ProtectedRegion[];
 }
 
@@ -429,10 +457,10 @@ export type BeatKind = "nugget" | "well" | "arrow";
  * nugget's is reading time, a well's is looking time, and an arrow points at
  * something rather than being read at all.
  */
-export function beatKind(beat: Pick<Beat, "text" | "medallion" | "arrows" | "well">): BeatKind {
+export function beatKind(beat: Pick<Beat, "text" | "medallions" | "arrows" | "well">): BeatKind {
   if (beat.well) return "well";
   if (beat.text && beat.text.trim()) return "nugget";
-  if (beat.medallion) return "well";
+  if (hasMedallion(beat.medallions)) return "well";
   if (beat.arrows?.length) return "arrow";
   return "nugget";
 }
@@ -471,7 +499,7 @@ export function dwellFloorSeconds(text: string | undefined): number {
  * than dwell seconds, so holding a bare arrow on screen for two and a half
  * seconds would be applying the wrong rule rather than a strict one.
  */
-export function floorForBeat(beat: Pick<Beat, "text" | "medallion" | "arrows">): number {
+export function floorForBeat(beat: Pick<Beat, "text" | "medallions" | "arrows">): number {
   return beatKind(beat) === "arrow" ? POINTER_LEAD_MIN_S : dwellFloorSeconds(beat.text);
 }
 
@@ -519,3 +547,11 @@ export function beatScaleFor(beat: Pick<Beat, "t" | "out" | "noPop">, t: number)
   if (t < beat.t || t > beat.out) return 0;
   return beat.noPop ? 1 : (beatScale(t, beat.t, beat.out) as number);
 }
+
+
+/** Whether either end carries one. */
+export const hasMedallion = (m?: BeatMedallions): boolean => Boolean(m?.left || m?.right);
+
+/** How many ends carry one. */
+export const medallionCount = (m?: BeatMedallions): number =>
+  (m?.left ? 1 : 0) + (m?.right ? 1 : 0);

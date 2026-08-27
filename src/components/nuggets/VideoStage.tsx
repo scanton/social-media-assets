@@ -4,7 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CANVASES } from "@/lib/popkit/catalogue";
 import { renderBeat, safeZone } from "@/lib/popkit/preview";
 import { tryGlyphDataUri } from "@/lib/popkit/glyphs";
-import { beatScaleFor, type Anchor, type Beat, type CanvasId, type ProtectedRegion } from "@/lib/popkit/deck";
+import {
+  beatScaleFor,
+  type Anchor, type Beat, type CanvasId, type MedallionSide, type ProtectedRegion,
+} from "@/lib/popkit/deck";
 import { quadSize, quadToCssMatrix, type Quad } from "@/lib/perspective";
 import { glossCss, glossEdgeCss } from "@/lib/popkit/screen-gloss";
 import type { Transport as Clock } from "@/lib/popkit/use-playhead";
@@ -54,6 +57,7 @@ export function VideoStage({
   beats,
   selectedId,
   onSelect,
+  onSelectMedallion,
   onMove,
   onMoveCorner,
   showSafeZone,
@@ -72,6 +76,13 @@ export function VideoStage({
   beats: Beat[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  /**
+   * Clicking a medallion points the properties panel at that one.
+   *
+   * Direct manipulation, because with two medallions the alternative is
+   * reading a label to find out which one the controls below are aimed at.
+   */
+  onSelectMedallion?: (id: string, side: MedallionSide) => void;
   onMove: (id: string, anchor: { x: number; y: number }) => void;
   /** Drag one corner of a pinned screen. Fractions of the canvas. */
   onMoveCorner: (id: string, corner: number, at: { x: number; y: number }) => void;
@@ -156,9 +167,26 @@ export function VideoStage({
   const safe = safeZone(canvas);
 
   const onPointerDown = useCallback(
-    (e: React.PointerEvent, beat: Beat) => {
+    (e: React.PointerEvent, beat: Beat, medSize: number, clusterW: number) => {
       e.preventDefault();
       onSelect(beat.id);
+
+      /*
+       * Which medallion was hit, if either.
+       *
+       * A medallion sits at one end of the cluster and is `medSize` across, so
+       * the ends are the whole test — no need to ask compose() where it put
+       * them. Only worth asking when there are two: with one, the panel is
+       * already pointed at it.
+       */
+      if (onSelectMedallion && beat.medallions?.left && beat.medallions?.right && medSize > 0) {
+        const el = e.currentTarget as HTMLElement;
+        const b = el.getBoundingClientRect();
+        const xInCluster = ((e.clientX - b.left) / Math.max(1, b.width)) * clusterW;
+        if (xInCluster <= medSize) onSelectMedallion(beat.id, "left");
+        else if (xInCluster >= clusterW - medSize) onSelectMedallion(beat.id, "right");
+      }
+
       const r = boxRef.current?.getBoundingClientRect();
       if (!r) return;
       dragging.current = {
@@ -168,7 +196,7 @@ export function VideoStage({
       };
       capture(e.target as Element, e.pointerId);
     },
-    [onSelect],
+    [onSelect, onSelectMedallion],
   );
 
   const onPointerMove = useCallback(
@@ -370,7 +398,7 @@ export function VideoStage({
                 key={beat.id}
                 role="button"
                 tabIndex={0}
-                onPointerDown={(e) => onPointerDown(e, beat)}
+                onPointerDown={(e) => onPointerDown(e, beat, preview.medSize, preview.w)}
                 className={cx(
                   // compose() writes explicit width/height onto the SVG, so
                   // without this it renders at its intrinsic canvas size and

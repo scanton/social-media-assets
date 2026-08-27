@@ -506,6 +506,37 @@ export const HELP: Record<string, HelpEntry> = {
     body:
       "An overlay showing where the platform's own interface sits over your video. Anything you put outside it may be covered by a caption, a username or a row of buttons on a real phone. It is a guide only — it never appears in the export.",
   },
+  "pop.addRow": {
+    title: "What you can add",
+    body:
+      "Six things, and the difference between them is what they are for rather than how they look. The first four become beats on the timeline; the last two act on what is already there.",
+    terms: [
+      {
+        term: "Add beat",
+        what: "A caption nugget — words in a shell, usually with a medallion and an arrow. The default thing, and the one with a reading-time floor: text needs about three and a half seconds to be read at all.",
+      },
+      {
+        term: "Add well",
+        what: "A framed window holding a picture or a clip — a screenshot, a reaction, a before-and-after. It has its own furniture: a caption lip, a kicker, a border. Ten named formats, or any of the eighteen frames with a hole in it.",
+      },
+      {
+        term: "Add arrow",
+        what: "A pointer on its own, with no caption attached. Answers to pointer lead rather than reading time, so it can be brief — it marks something for a moment rather than being read.",
+      },
+      {
+        term: "Add screen",
+        what: "A bare well with no frame at all, meant to pass for a surface already in the shot: the screen of a phone, a monitor, a billboard. Holds the whole timeline and does not pop in, and its corners can be dragged onto the real thing.",
+      },
+      {
+        term: "Delete beat",
+        what: "Removes the selected beat. Only offered while more than one exists, because a deck with nothing in it is not a state worth being able to reach by accident.",
+      },
+      {
+        term: "Mark protected region",
+        what: "Draws a box over something already in your footage that nothing should cover — a logo, a watermark, a burned-in caption. Then drag on the frame to place it. An arrow landing inside one is a blocking error rather than a warning, and it needs 16px of clearance. Give it a time window if the thing is only there for part of the clip.",
+      },
+    ],
+  },
   "pop.region": {
     title: "Protected regions",
     body:
@@ -565,6 +596,16 @@ export const HELP: Record<string, HelpEntry> = {
     title: "Side",
     body:
       "Which side of the caption the medallion sits on. The arrow moves with it, so this flips the whole cluster rather than just the badge.",
+  },
+  "pop.medallionSides": {
+    title: "Which ends",
+    body:
+      "A caption can carry a medallion on either end, both, or neither. Turning one off takes its glyph and its gap with it, and moves any arrow that was hanging off it to the end that still has one — an arrow whose host disappears silently reattaches itself to a caption edge instead.",
+  },
+  "pop.medallionTarget": {
+    title: "Editing",
+    body:
+      "Which of the two the frame, border, glyph and media controls below are pointed at. Only appears when there are two, because with one there is nothing to choose between. The previews are the real medallions rather than the words — two circles that differ only by their glyph are otherwise impossible to tell apart. Clicking one on the frame selects it too.",
   },
   "pop.medallionSize": {
     title: "Medallion size",
@@ -646,7 +687,7 @@ export const HELP: Record<string, HelpEntry> = {
   "pop.arrow": {
     title: "Arrow",
     body:
-      "A pointer running from the nugget to whatever it is talking about. Thirty-four of them, and they fall into families: cursors that look like a mouse or a tap, darts and blades that are plain and sharp, drawn ones that look hand-made, and leaders that are more line than arrow.",
+      "A pointer running from the nugget to whatever it is talking about. Thirty-four of them, and they fall into families: cursors that look like a mouse or a tap, darts and blades that are plain and sharp, drawn ones that look hand-made, and leaders that are more line than arrow. Each medallion carries its own, so with two you get two — this edits whichever one the Editing selector is pointed at, and removing a medallion takes its arrow with it.",
     terms: [
       { term: "Cursors", what: "cursor, cursorFat, cursorDrag, cursorTap — an interface pointer. Best when you are showing something being clicked or tapped." },
       { term: "Darts and blades", what: "dart, wedge, tube, blade, nub, barb — plain, sharp and neutral. The default choice." },
