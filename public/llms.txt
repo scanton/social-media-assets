@@ -290,5 +290,7 @@ which choice to pick.
 
 ---
 
-`llms.txt` is generated from `src/lib/help.ts` and `src/lib/options.ts`. Do not
-edit by hand; run `pnpm llms` instead.
+`llms.txt` is generated from `src/lib/help.ts` and `src/lib/options.ts` in the
+HeartStamp Asset Studio codebase. Do not edit by hand; run `pnpm llms`.
+
+version: ca958a704583

@@ -1,0 +1,159 @@
+> **Portable copy.** This is the product-level guide, with no reference to any
+> one implementation's controls. It is generated from the HeartStamp Asset
+> Studio codebase and is meant to be served by any build of this product —
+> including the HeartStamp admin app, which is a separate implementation against
+> HeartStamp's own design system.
+>
+> Everything below is about the product: what it makes, what a render costs, and
+> the rules that were learned by breaking things. All of it holds whatever the
+> buttons look like. Where a route or a control name here does not match the app
+> you are actually looking at, **the app wins** — the names are from the
+> reference implementation and are illustrative.
+>
+> The reference implementation also publishes a full control reference at
+> `/llms-full.txt`. That part is generated from its own component registry and
+> does not travel; if your build needs one, generate it from yours.
+
+# HeartStamp Asset Studio
+
+> A browser tool that turns greeting-card artwork into social-media assets —
+> lifestyle stills, TikTok/Reels/Shorts video, and annotated "nugget" clips.
+> Written for AI assistants helping someone operate it.
+
+You are almost certainly reading this because someone asked you for help with
+this tool. It is a graphical app: there is no agent API, no headless mode, and
+no way to drive it except a browser. What you can usefully do is know what it
+makes, know which part to send someone to, know the vocabulary, and know the
+handful of rules that are not guessable and that cost money to learn the hard
+way. That is what this file is.
+
+## Read this before you render anything
+
+**Every generation spends the user's own money, immediately.**
+
+Each person supplies their own fal.ai key, so renders bill their fal account
+rather than a shared one. There is no free tier inside the app, no preview, and
+no undo — a submitted job is a charge. This is the single most important thing
+on this page.
+
+Step 2 is where this bites, because its batch multiplies:
+
+    images = camera angles × orientations × variations
+
+Four angles, two orientations and two variations is sixteen images, not eight,
+and it is easy to tick four boxes without doing that arithmetic. One exception:
+supplying your own background photograph locks the camera angles — the picture
+already decides where the camera is — so the batch collapses to
+`orientations × variations`.
+
+The app is on your side here. Step 2 shows the resulting count next to the render
+button before you commit, and past twelve it warns outright that these are
+billable renders on your fal account. Renders run three at a time and are
+cancellable mid-flight.
+
+**Read the count out to the user and get an explicit yes before triggering a
+render**, especially a batch. Do not treat "make me some scenes" as authorisation
+for sixteen of them.
+
+Video costs more than stills and takes minutes rather than seconds. That is the
+whole reason the printed-card path stops at a still: you can look at eight
+framings for the price of eight images instead of eight videos.
+
+**Do not handle the fal key.** It is entered through the app's own dialog and
+kept in an httpOnly cookie the page cannot read. Never ask a user to paste a key
+to you, never put one in a file, a URL or a command. If they are not connected,
+point them at the key dialog in the header and at fal.ai/dashboard/keys.
+
+## What the studio makes
+
+Three surfaces, and picking the right one is most of the help you can give.
+
+**`/` — the card pipeline.** The main event, and the only part that knows what a
+greeting card is. Upload artwork, put it in a photographed scene, animate it.
+What you are selling picks the route:
+
+- **Printed card** — three steps. Artwork → a lifestyle still with the front
+  printed on the card → motion. It goes through a still because a video model
+  handed artwork as a reference re-draws it; `image-to-video` reproduces frame
+  one exactly, so the still is what pins the artwork down.
+- **Digital card** — two steps. Upload the 2–15s card animation, then one render
+  straight to video. No still needed: the clip is played back on the device's
+  screen rather than re-imagined, so it survives.
+
+**`/nuggets` — PopKit.** Annotation over a finished clip or a still image:
+captions, medallions, arrows, media wells that pop in at chosen moments. It never
+alters the footage; it draws on top and re-encodes both together in the browser.
+This is where you go to explain, caption, or point at something — not to generate
+imagery.
+
+**`/freeform` — the bench.** Direct access to every image and video model fal
+offers, with that model's own settings read live from fal's schema. No card
+knowledge, no pipeline, no house rules. Use it when the pipeline's assumptions
+are in the way, or to try a model the pipeline does not offer.
+
+## Rules that are not guessable
+
+These are all consequences of real renders failing, and each one will waste the
+user's money if you ignore it.
+
+**Nobody's face is ever shown.** Every "who's in frame" option is written around
+hands, shoulders, backs of heads and crops above the chin. Generated faces
+animate badly, and a wrong face sinks an otherwise good shot. Do not write a
+prompt asking for a face, and do not suggest one as an improvement.
+
+**An inside spread decides which motions exist.** With a spread uploaded, every
+motion opens the card and the spread rides along so the real artwork is revealed.
+Without one, nothing opens, because the model would have to invent an interior.
+Uploading or removing a spread flips the whole motion set, and the current
+selection is re-validated. If a motion "disappeared", this is why.
+
+**There is no seed.** GPT-Image-2 exposes none, so "variations" means N separate
+calls with a prompt nudge, not N seeds. You cannot reproduce a specific image, and
+you cannot ask for "the same one but…". The only honest advice is to re-roll and
+keep what lands.
+
+**Nothing is stored server-side, and nothing lasts.** Config and asset URLs live
+in the browser's localStorage; the media itself only ever lives on fal's CDN.
+Uploads are expired by fal after about a week, and generated output goes the same
+way — the app does not assume a deadline, it checks: the asset roll has a **Remove
+expired items** control that sweeps for dead URLs, and it will quietly drop things
+that have gone. **Anything worth keeping must be downloaded.** Clearing site data
+loses the session too. Say this early, before someone spends an afternoon building
+a roll they think is saved.
+
+**Nobody touches the screen.** Taps never line up with what is playing, so hands
+support a device from its edges only, and the motions are written to match.
+
+**The logo is composited, not prompted.** A model asked to draw a brand mark
+returns an approximation in a different place every time, so the real PNG is
+burned in on a canvas. Scene stills are clean; the mark appears on video only.
+Do not suggest prompting for it.
+
+**PopKit exports in real time.** The encode records the deck as it plays, so a
+sixty-second deck takes sixty seconds and the tab has to stay open and visible.
+That is also why the still-background timeline is capped at a minute.
+
+## Helping without a browser
+
+If you cannot see the app, the useful things you can still do are: work out which
+surface and which route the user needs; explain what a control does (the whole
+reference is below); write prompt text for the "extra direction" box or the
+bench; do the batch arithmetic before they spend; and talk through why a render
+came out wrong using the rules above. Ask what is on their screen rather than
+assuming — the app self-heals a restored session and drops assets that are gone,
+so what they have may not be what they left.
+
+If you are driving a browser, the flow is top-to-bottom on the page: the header
+picks printed or digital, each step unlocks when the one above it has what it
+needs, and the render button at the bottom of a step carries the count and the
+cost. The "?" beside every control opens the same text you will find below.
+
+---
+
+
+---
+
+`llms-shared.txt` is generated from `src/lib/help.ts` and `src/lib/options.ts` in the
+HeartStamp Asset Studio codebase. Do not edit by hand; run `pnpm llms`.
+
+version: 5d4c68013543

@@ -225,6 +225,7 @@ a client-rendered page:
 | --- | --- |
 | `/llms.txt` | What the studio makes, the rules that cost money to learn, and one line per control. ~17 KB. |
 | `/llms-full.txt` | The same, with every control and every option written out in full. ~51 KB. |
+| `/llms-shared.txt` | The narrative alone, with no reference to this app's controls — for other builds of the same product. ~8 KB. |
 
 **Both are generated — do not edit them.** `scripts/build-llms-txt.mjs` renders
 them from [`src/lib/help.ts`](src/lib/help.ts) and
@@ -263,10 +264,28 @@ base the guide is actually served from and every reference goes absolute.
 It is **not** for the HeartStamp admin app at `heartstamp.com/admin/social-assets`.
 That is a separate implementation of the same product against HeartStamp's own
 design system — it does not serve this app's files, and pointing at it would send
-assistants somewhere that has never heard of `/llms.txt`. If that app wants a
-guide of its own, `public/llms.txt` is a static generated file and copies cleanly;
-regenerate it from here whenever the taxonomy moves. See
+assistants somewhere that has never heard of `/llms.txt`. See
 [`src/lib/llms.ts`](src/lib/llms.ts).
+
+### Serving the guide from another build
+
+The admin app needs its own guide, and a hand-copied one would drift the first
+time either side changed. `/llms-shared.txt` is the artifact for that: the
+narrative with the control reference left off, because the rules are the
+product's and the controls are ours.
+
+All three files are readable cross-origin (`Access-Control-Allow-Origin: *` — see
+`headers()` in [`next.config.ts`](next.config.ts)) so another build can pull one
+at build time rather than vendoring it. Each ends with a deterministic content
+stamp:
+
+```
+version: 5d4c68013543
+```
+
+Same source in, same stamp out — no date, no build number — so a consumer can
+diff the stamp it has against the one being served and know whether it is stale
+without reading the whole file.
 
 ## Scripts
 

@@ -904,5 +904,7 @@ How fast anything moves. All optional, and off unless you pick one. Whatever you
 
 ---
 
-`llms-full.txt` is generated from `src/lib/help.ts` and `src/lib/options.ts`. Do not
-edit by hand; run `pnpm llms` instead.
+`llms-full.txt` is generated from `src/lib/help.ts` and `src/lib/options.ts` in the
+HeartStamp Asset Studio codebase. Do not edit by hand; run `pnpm llms`.
+
+version: 60af9c91a569

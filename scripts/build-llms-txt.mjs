@@ -33,6 +33,7 @@ import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
+import { createHash } from "node:crypto";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const CHECK = process.argv.includes("--check");
@@ -295,6 +296,24 @@ which choice to pick.
 
 `;
 
+const SHARED_HEAD = `> **Portable copy.** This is the product-level guide, with no reference to any
+> one implementation's controls. It is generated from the HeartStamp Asset
+> Studio codebase and is meant to be served by any build of this product —
+> including the HeartStamp admin app, which is a separate implementation against
+> HeartStamp's own design system.
+>
+> Everything below is about the product: what it makes, what a render costs, and
+> the rules that were learned by breaking things. All of it holds whatever the
+> buttons look like. Where a route or a control name here does not match the app
+> you are actually looking at, **the app wins** — the names are from the
+> reference implementation and are illustrative.
+>
+> The reference implementation also publishes a full control reference at
+> \`/llms-full.txt\`. That part is generated from its own component registry and
+> does not travel; if your build needs one, generate it from yours.
+
+`;
+
 const FULL_HEAD = `# Reference: every control in the app
 
 Generated from the app's own help registry, so it matches what the "?" buttons
@@ -302,11 +321,24 @@ say. Where a control offers a list of choices, each choice is explained too.
 
 `;
 
-const footer = (name) => `
+/**
+ * A content stamp, so a copy elsewhere can tell whether it has gone stale.
+ *
+ * The hash is of the document itself and nothing else — no date, no build
+ * number. Anything varying per run would make `--check` fail on a clean tree
+ * and turn the drift guard into noise everyone learns to ignore. Two builds of
+ * the same source produce the same stamp, which is the property a consumer
+ * needs to diff against.
+ */
+const stamp = (body) => createHash("sha256").update(body).digest("hex").slice(0, 12);
+
+const footer = (name, body) => `
 ---
 
-\`${name}\` is generated from \`src/lib/help.ts\` and \`src/lib/options.ts\`. Do not
-edit by hand; run \`pnpm llms\` instead.
+\`${name}\` is generated from \`src/lib/help.ts\` and \`src/lib/options.ts\` in the
+HeartStamp Asset Studio codebase. Do not edit by hand; run \`pnpm llms\`.
+
+version: ${stamp(body)}
 `;
 
 /* --------------------------------- main ----------------------------------- */
@@ -323,11 +355,22 @@ const { HELP } = loadRegistries();
 const FILES = [
   ["llms.txt", PREAMBLE + INDEX_HEAD + renderReference(HELP, { full: false })],
   ["llms-full.txt", PREAMBLE + FULL_HEAD + renderReference(HELP, { full: true })],
+  /*
+   * The narrative alone, for other builds of the same product.
+   *
+   * It is the same text rather than a second edition of it: the rules are the
+   * product's, not this implementation's, and maintaining a parallel copy for
+   * the admin app is the exact failure this generator exists to avoid. Only the
+   * control reference is left off, because that genuinely is ours — it is
+   * derived from our component registry and describes buttons another build
+   * does not have.
+   */
+  ["llms-shared.txt", SHARED_HEAD + PREAMBLE],
 ];
 
 let stale = false;
 for (const [name, body] of FILES) {
-  const doc = body + footer(name);
+  const doc = body + footer(name, body);
   const to = path.join(ROOT, "public", name);
   const current = (() => {
     try { return readFileSync(to, "utf8"); } catch { return null; }

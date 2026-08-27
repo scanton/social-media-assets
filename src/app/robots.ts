@@ -21,7 +21,7 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: "*",
       disallow: "/",
-      allow: ["/llms.txt", "/llms-full.txt"],
+      allow: ["/llms.txt", "/llms-full.txt", "/llms-shared.txt"],
     },
   };
 }
