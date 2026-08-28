@@ -502,7 +502,7 @@ The frame size the annotations are laid out for, and the safe zone inside it. It
 
 ### Stamp the HeartStamp logo
 
-Burns the wordmark into the bottom-right corner of the rendered clip, in the same place and at the same size the card pipelines put it — 28% of the short edge, 4% in. It is drawn over the nuggets rather than under them, so check nothing important is sitting in that corner. Off by default: a nugget deck is as often a working cut or an explainer as it is a finished HeartStamp asset. Note that the 4% margin puts it below the safe zone on every preset — on reels it lands where TikTok draws its action rail, so the mark may be partly covered on that platform. The render picks white or black lettering from whatever the corner of the last frame looks like; the preview always shows the white one, because sampling that in the editor would mean seeking the clip you are watching.
+Burns the wordmark into the bottom-right corner of the rendered clip, in the same place and at the same size the card pipelines put it — 28% of the short edge, 4% in. It is drawn over the nuggets rather than under them, so check nothing important is sitting in that corner. Off by default: a nugget deck is as often a working cut or an explainer as it is a finished HeartStamp asset. Note that the 4% margin puts it below the safe zone on every preset — on reels it lands where TikTok draws its action rail, so the mark may be partly covered on that platform. It comes in two colourways — white lettering for a dark corner, black for a light one — and which you get is read from the pixels the mark will cover, on the last frame of the background. The end is what a paused or looping player lingers on. The preview reads the same pixels, so what you see on the stage is the colourway you will get.
 
 ### The safe zone
 
@@ -915,4 +915,4 @@ How fast anything moves. All optional, and off unless you pick one. Whatever you
 `llms-full.txt` is generated from `src/lib/help.ts` and `src/lib/options.ts` in the
 HeartStamp Asset Studio codebase. Do not edit by hand; run `pnpm llms`.
 
-version: 29886f2c2901
+version: 15c59fe42dbe

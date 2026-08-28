@@ -7,7 +7,7 @@ import { tryGlyphDataUri } from "./glyphs";
 import { wellLayout } from "./kit/media.js";
 import { CUE_TABLE } from "./cues";
 import { makeTicker, pickRecorderMime, seekTo, type RenderProgress } from "@/lib/video-encode";
-import { heartStampLogo, paintLogo, pickLogoVariant, type LogoSet, type LogoVariant } from "@/lib/watermark";
+import { coverFit, heartStampLogo, paintLogo, variantForBackground, type LogoSet, type LogoVariant } from "@/lib/watermark";
 import { beatScaleFor, type Beat, type CanvasId } from "./deck";
 import {
   coverCrop, drawImageInQuad, quadSize, roundedQuadPath, sourceHeight, sourceWidth, type Quad,
@@ -365,14 +365,7 @@ export async function renderNuggets({
   if (!duration) throw new Error("The deck has no length, so there is nothing to render.");
 
   /** Cover, so the frame is filled and the overflow is cropped. */
-  const stillFit = image
-    ? (() => {
-        const k = Math.max(w / (image.naturalWidth || 1), h / (image.naturalHeight || 1));
-        const dw = (image.naturalWidth || 1) * k;
-        const dh = (image.naturalHeight || 1) * k;
-        return { dx: (w - dw) / 2, dy: (h - dh) / 2, dw, dh };
-      })()
-    : null;
+  const stillFit = image ? coverFit(image.naturalWidth, image.naturalHeight, w, h) : null;
 
   /** The clock. The element's when there is one, counted from the start when not. */
   let startedAt = 0;
@@ -500,28 +493,13 @@ export async function renderNuggets({
     /*
      * Measured on a scratch canvas, NOT on the one being recorded.
      *
-     * The recording canvas is already wired to a capture track by this point,
-     * and anything drawn on it before the loop starts can be flushed out as a
-     * frame — so painting the bare background here to read its corner put one
-     * frame of un-composed background at the head of every render. On a still
-     * with a screen well that is the phone with its blank screen showing,
-     * before the well appears: the deck looked like it started a frame late,
-     * and the mark was missing from that frame too.
-     *
-     * Same size as the real canvas because the sample rect is in canvas pixels
-     * — a scaled-down scratch would read a different patch of the picture.
+     * The render canvas is already wired to a capture track by this point, and
+     * anything drawn on it before the paint loop starts can be flushed out as a
+     * frame — which put one frame of un-composed background at the head of
+     * every stamped render.
      */
-    const scratch = document.createElement("canvas");
-    scratch.width = w;
-    scratch.height = h;
-    const sctx = scratch.getContext("2d", { alpha: false });
-    if (sctx) {
-      if (video) sctx.drawImage(video, 0, 0, w, h);
-      else if (image && stillFit) sctx.drawImage(image, stillFit.dx, stillFit.dy, stillFit.dw, stillFit.dh);
-      logoVariant = pickLogoVariant(sctx, logos.onDark, w, h);
-    }
-    scratch.width = 0;
-    scratch.height = 0;
+    const source = video ?? image;
+    if (source) logoVariant = variantForBackground(logos, source, w, h, stillFit);
 
     if (video) await seekTo(video, 0);
   }

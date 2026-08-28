@@ -13,7 +13,9 @@ import { glossCss, glossEdgeCss } from "@/lib/popkit/screen-gloss";
 import type { Transport as Clock } from "@/lib/popkit/use-playhead";
 import { regionCoversTime } from "@/lib/popkit/rules";
 import { cx } from "../ui";
-import { LOGO_SRC, logoBox } from "@/lib/watermark";
+import {
+  LOGO_SRC, coverFit, heartStampLogo, logoBox, variantForBackground, type LogoVariant,
+} from "@/lib/watermark";
 
 /**
  * The video with the composed nugget floating over it, draggable.
@@ -172,6 +174,93 @@ export function VideoStage({
   /* Canvas px, resolved to percentages at the point of use so the overlay
      tracks the stage at whatever width it is being shown at. */
   const logoPreview = logoBox(preset.w, preset.h);
+
+  /*
+   * Which colourway the render will choose, worked out here so the preview
+   * shows it.
+   *
+   * The mark has two versions — white lettering for a dark corner, black for a
+   * light one — and the render picks between them by reading the pixels it is
+   * about to cover. Showing one of them unconditionally meant the preview was
+   * a different colour from the output about half the time, on the one control
+   * whose entire job is to say what the corner will look like.
+   *
+   * A clip is measured on its LAST frame, matching the render: the end is what
+   * a paused or looping player lingers on. That needs a seek, and seeking the
+   * element on screen would drag the playhead out from under whoever is
+   * working — so this loads a second, detached element from the same source and
+   * seeks that one instead. The render does the same thing for the same reason.
+   *
+   * Defaults to on-dark, which is what a failed read falls back to anyway:
+   * white lettering carries the brand colour and survives a mid-tone far better
+   * than black does.
+   */
+  const [logoVariant, setLogoVariant] = useState<LogoVariant>("onDark");
+  useEffect(() => {
+    if (!showLogo || !src) return;
+    let cancelled = false;
+    const el = kind === "video" ? document.createElement("video") : new Image();
+
+    const finish = (variant: LogoVariant) => {
+      if (!cancelled) setLogoVariant(variant);
+    };
+
+    void (async () => {
+      const logos = await heartStampLogo().catch(() => null);
+      if (!logos || cancelled) return;
+
+      if (el instanceof HTMLVideoElement) {
+        el.src = src;
+        el.muted = true;
+        el.playsInline = true;
+        el.preload = "auto";
+        await new Promise<void>((r) => {
+          el.onloadeddata = () => r();
+          el.onerror = () => r();
+        });
+        if (cancelled || !el.videoWidth) return;
+        if (Number.isFinite(el.duration) && el.duration > 0) {
+          // A hair before the end: exactly `duration` can land past the last
+          // decodable frame and yield a blank one.
+          await new Promise<void>((r) => {
+            el.onseeked = () => r();
+            el.onerror = () => r();
+            el.currentTime = Math.max(0, el.duration - 0.08);
+          });
+        }
+        if (cancelled) return;
+        finish(variantForBackground(logos, el, el.videoWidth, el.videoHeight, null));
+        el.src = "";
+        return;
+      }
+
+      /*
+       * `onload`, not `decode()`. A promise from decode() can sit unresolved
+       * indefinitely in a tab the browser has backgrounded, which would leave
+       * the preview showing the wrong colourway with nothing to indicate why.
+       * The rest of the render path loads images this way for the same reason.
+       */
+      el.src = src;
+      await new Promise<void>((r) => {
+        el.onload = () => r();
+        el.onerror = () => r();
+      });
+      if (cancelled || !el.naturalWidth) return;
+      finish(
+        variantForBackground(
+          logos,
+          el,
+          preset.w,
+          preset.h,
+          coverFit(el.naturalWidth, el.naturalHeight, preset.w, preset.h),
+        ),
+      );
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [showLogo, src, kind, preset.w, preset.h]);
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent, beat: Beat, medSize: number, clusterW: number) => {
@@ -498,7 +587,7 @@ export function VideoStage({
           // gain; this is a fixed overlay sized in percentages of the stage.
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={LOGO_SRC.onDark}
+            src={LOGO_SRC[logoVariant]}
             alt=""
             aria-hidden="true"
             className="pointer-events-none absolute"

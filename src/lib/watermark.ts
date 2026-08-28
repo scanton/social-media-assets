@@ -185,3 +185,57 @@ export function paintLogo(
   ctx.drawImage(logo, x, y, w, h);
   return chosen;
 }
+
+/**
+ * Where a still lands when cover-cropped into a frame.
+ *
+ * Exported because the two places that have to agree about which pixels the
+ * mark covers both need it: the render, which draws the still this way every
+ * frame, and the editor, which has to sample the same patch to predict the
+ * colourway. A second copy of `Math.max` here would be a colourway that is
+ * right until someone changes how a still is fitted.
+ */
+export function coverFit(sourceW: number, sourceH: number, width: number, height: number) {
+  const k = Math.max(width / (sourceW || 1), height / (sourceH || 1));
+  const dw = (sourceW || 1) * k;
+  const dh = (sourceH || 1) * k;
+  return { dx: (width - dw) / 2, dy: (height - dh) / 2, dw, dh };
+}
+
+/**
+ * Which colourway a background calls for, without touching anything on screen.
+ *
+ * Draws the frame onto a canvas of its own and reads the corner. A scratch
+ * canvas rather than a live one is the whole point: painting a measurement onto
+ * a canvas that something is recording put a frame of bare background at the
+ * head of every stamped render, and painting it onto one the user is watching
+ * would be worse.
+ *
+ * Same dimensions as the real frame, because the sample rect is in frame pixels
+ * — a scaled-down copy reads a different patch of the picture and can pick the
+ * opposite colourway on a corner that is close to the threshold.
+ */
+export function variantForBackground(
+  logos: LogoSet,
+  source: CanvasImageSource,
+  width: number,
+  height: number,
+  /** Where a cover-cropped still lands. Omit for a clip, which fills the frame. */
+  fit?: { dx: number; dy: number; dw: number; dh: number } | null,
+): LogoVariant {
+  const cv = document.createElement("canvas");
+  cv.width = width;
+  cv.height = height;
+  const ctx = cv.getContext("2d", { alpha: false });
+  if (!ctx) return "onDark";
+
+  if (fit) ctx.drawImage(source, fit.dx, fit.dy, fit.dw, fit.dh);
+  else ctx.drawImage(source, 0, 0, width, height);
+
+  const variant = pickLogoVariant(ctx, logos.onDark, width, height);
+  // Let the backing store go now rather than at the next collection; these are
+  // full-frame canvases and the editor makes a new one per background.
+  cv.width = 0;
+  cv.height = 0;
+  return variant;
+}
