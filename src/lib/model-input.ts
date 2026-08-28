@@ -58,6 +58,37 @@ function acceptsObject(prop: JsonSchemaProp): boolean {
   return branches(prop).some((b) => b.type === "object" || (!b.type && !b.enum && !b.anyOf));
 }
 
+/**
+ * True when the property will only accept a number.
+ *
+ * `null` branches are ignored: a nullable integer is still an integer as far as
+ * a string value is concerned.
+ */
+function numericOnly(prop: JsonSchemaProp): boolean {
+  const declared = branches(prop)
+    .map((b) => b.type)
+    .filter((t): t is string => typeof t === "string" && t !== "null");
+  return declared.length > 0 && declared.every((t) => t === "integer" || t === "number");
+}
+
+/** A bound, wherever in the union it was declared. */
+function bound(prop: JsonSchemaProp, key: "minimum" | "maximum"): number | undefined {
+  for (const b of branches(prop)) {
+    if (typeof b[key] === "number") return b[key];
+  }
+  return undefined;
+}
+
+function fit(value: number, prop: JsonSchemaProp): number {
+  let n = value;
+  const max = bound(prop, "maximum");
+  const min = bound(prop, "minimum");
+  if (typeof max === "number") n = Math.min(n, max);
+  if (typeof min === "number") n = Math.max(n, min);
+  // An integer field rejects 7.5 for the same reason it rejects "auto".
+  return branches(prop).some((b) => b.type === "integer") ? Math.round(n) : n;
+}
+
 /** Picks the enum member closest in magnitude — `"8"` → `"8s"`, `"4k"` → `"1080p"`. */
 function nearestEnum(value: unknown, options: unknown[]): unknown | undefined {
   if (options.includes(value)) return value;
@@ -101,11 +132,32 @@ function coerce(value: unknown, prop: JsonSchemaProp): unknown | undefined {
     return acceptsObject(prop) ? value : undefined;
   }
 
+  /*
+   * A string aimed at a numeric property.
+   *
+   * The studio's tuning values are strings because the model this pipeline grew
+   * up around spells them that way — Seedance declares `duration` as an enum of
+   * `"auto"`, `"4"`, `"5"`… A model that declares it as a plain integer can read
+   * neither form: `"8"` needs converting, and `"auto"` has no integer in it at
+   * all.
+   *
+   * This used to fall through the bottom of the function untouched, so the
+   * string went out as-is and fal rejected the whole job before rendering a
+   * frame:
+   *
+   *   duration: Input should be a valid integer, unable to parse string
+   *
+   * Recover the magnitude where there is one, and drop the property where there
+   * is not so the model's own default applies — which is what `"auto"` was
+   * asking for. That is the rule this file already claimed to follow.
+   */
+  if (typeof value === "string" && numericOnly(prop)) {
+    const n = magnitude(value);
+    return n === null ? undefined : fit(n, prop);
+  }
+
   if (typeof value === "number") {
-    let n = value;
-    if (typeof prop.maximum === "number") n = Math.min(n, prop.maximum);
-    if (typeof prop.minimum === "number") n = Math.max(n, prop.minimum);
-    return n;
+    return fit(value, prop);
   }
 
   if (typeof value === "boolean") {

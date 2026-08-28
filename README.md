@@ -240,6 +240,10 @@ the script.
 pnpm llms
 ```
 
+```bash
+pnpm check:models
+```
+
 `pnpm build` runs it first, so a stale guide cannot ship. `pnpm llms --check`
 fails if the committed files are out of date, which is the form to put in CI.
 
@@ -297,6 +301,30 @@ version: 5d4c68013543
 Same source in, same stamp out — no date, no build number — so a consumer can
 diff the stamp it has against the one upstream and know whether it is stale
 without reading the whole file. That is the check worth putting in CI.
+
+## Checking model compatibility
+
+The studio describes a job once and `lib/model-input.ts` projects it onto
+whatever model was picked. When that projection is wrong, fal rejects the job and
+the only person who finds out is the user who spent the click.
+
+```bash
+pnpm check:models
+```
+
+Walks fal's catalogue, adapts each workflow's real payload against each model's
+real schema, and validates every property that comes out. No job is submitted and
+nothing is billed.
+
+It exists because `duration` is a string enum on Seedance (`"auto"`, `"4"`, …)
+and a plain integer on Gemini, MiniMax, Grok and Pixverse — eight models whose
+renders failed with `unable to parse string as an integer` before a frame was
+drawn. Deliberately not part of `pnpm build`: it reads a few hundred schemas over
+the network, which is not something a build should depend on being up.
+
+If you add a workflow or change a payload, update `PAYLOADS` in
+[`scripts/check-model-inputs.mjs`](scripts/check-model-inputs.mjs) to match — a
+stale copy there reports success for a shape nothing sends.
 
 ## Scripts
 

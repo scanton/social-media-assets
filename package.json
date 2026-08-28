@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "node scripts/build-llms-txt.mjs && next build",
     "llms": "node scripts/build-llms-txt.mjs",
+    "check:models": "node scripts/check-model-inputs.mjs",
     "start": "next start",
     "lint": "eslint"
   },
