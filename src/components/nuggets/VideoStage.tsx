@@ -13,6 +13,7 @@ import { glossCss, glossEdgeCss } from "@/lib/popkit/screen-gloss";
 import type { Transport as Clock } from "@/lib/popkit/use-playhead";
 import { regionCoversTime } from "@/lib/popkit/rules";
 import { cx } from "../ui";
+import { LOGO_SRC, logoBox } from "@/lib/watermark";
 
 /**
  * The video with the composed nugget floating over it, draggable.
@@ -61,6 +62,7 @@ export function VideoStage({
   onMove,
   onMoveCorner,
   showSafeZone,
+  showLogo,
   regions,
   drawingRegion,
   onDrawRegion,
@@ -87,6 +89,8 @@ export function VideoStage({
   /** Drag one corner of a pinned screen. Fractions of the canvas. */
   onMoveCorner: (id: string, corner: number, at: { x: number; y: number }) => void;
   showSafeZone: boolean;
+  /** Preview the HeartStamp wordmark the render will stamp on. */
+  showLogo?: boolean;
   regions: ProtectedRegion[];
   /** When true, dragging on the frame draws a region instead of moving a nugget. */
   drawingRegion: boolean;
@@ -165,6 +169,9 @@ export function VideoStage({
   const capWidth = videoWidth && videoWidth > 0 ? videoWidth : preset.w;
   const stageMaxWidth = `min(${capWidth}px, calc(${STAGE_MAX_VH}vh * ${preset.w} / ${preset.h}))`;
   const safe = safeZone(canvas);
+  /* Canvas px, resolved to percentages at the point of use so the overlay
+     tracks the stage at whatever width it is being shown at. */
+  const logoPreview = logoBox(preset.w, preset.h);
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent, beat: Beat, medSize: number, clusterW: number) => {
@@ -470,6 +477,39 @@ export function VideoStage({
             );
           })}
         </div>
+
+        {/*
+          * The wordmark, over everything — the same order the render paints it
+          * in, because a nugget landing on top of the mark reads as a mistake
+          * where a nugget landing on the footage does not.
+          *
+          * Geometry comes from logoBox, which the canvas painter also uses, so
+          * "28% of the short edge, 4% in" lives in one place and the preview
+          * cannot drift from the render by a constant.
+          *
+          * Always the on-dark colourway here. The render measures the corner of
+          * the last frame and picks light or dark from it; the editor has no
+          * cheap way to sample that without seeking the clip the user is
+          * watching, and this preview is here to answer where the mark lands
+          * and what it covers rather than which of two colourways it will be.
+          */}
+        {showLogo && (
+          // next/image would rewrite a static SVG through the optimiser for no
+          // gain; this is a fixed overlay sized in percentages of the stage.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={LOGO_SRC.onDark}
+            alt=""
+            aria-hidden="true"
+            className="pointer-events-none absolute"
+            style={{
+              left: `${(logoPreview.x / preset.w) * 100}%`,
+              top: `${(logoPreview.y / preset.h) * 100}%`,
+              width: `${(logoPreview.w / preset.w) * 100}%`,
+              height: `${(logoPreview.h / preset.h) * 100}%`,
+            }}
+          />
+        )}
       </div>
     </div>
   );

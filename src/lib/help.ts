@@ -501,6 +501,11 @@ export const HELP: Record<string, HelpEntry> = {
       { term: "Square", what: "1080×1080. Feed posts." },
     ],
   },
+  "pop.logo": {
+    title: "Stamp the HeartStamp logo",
+    body:
+      "Burns the wordmark into the bottom-right corner of the rendered clip, in the same place and at the same size the card pipelines put it — 28% of the short edge, 4% in. It is drawn over the nuggets rather than under them, so check nothing important is sitting in that corner. Off by default: a nugget deck is as often a working cut or an explainer as it is a finished HeartStamp asset. Note that the 4% margin puts it below the safe zone on every preset — on reels it lands where TikTok draws its action rail, so the mark may be partly covered on that platform. The render picks white or black lettering from whatever the corner of the last frame looks like; the preview always shows the white one, because sampling that in the editor would mean seeking the clip you are watching.",
+  },
   "pop.safeZone": {
     title: "The safe zone",
     body:

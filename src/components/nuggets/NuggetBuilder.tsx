@@ -39,6 +39,7 @@ import { Accordion, Disclosure } from "./Disclosure";
 import { Transport } from "./Transport";
 import { VideoStage } from "./VideoStage";
 import { Field, Select, Switch, cx } from "../ui";
+import { logoBox } from "@/lib/watermark";
 import { HelpTip } from "../HelpTip";
 import { detectScreenQuad } from "@/lib/screen-detect";
 import { usePlayhead } from "@/lib/popkit/use-playhead";
@@ -244,6 +245,17 @@ export function NuggetBuilder() {
   const [canvas, setCanvas] = useState<CanvasId>("reels");
 
   const [showSafeZone, setShowSafeZone] = useState(true);
+  /*
+   * Off by default. The card pipelines stamp every clip because everything they
+   * make is a HeartStamp asset going straight out; a nugget deck is as often a
+   * working cut, an explainer or something headed somewhere the mark would be
+   * wrong. Opt in.
+   *
+   * Component state rather than a deck field: the deck schema is the skill's
+   * contract and has nowhere to put this, and the mark is a property of this
+   * render rather than of the composition. Export zip is unaffected.
+   */
+  const [stampLogo, setStampLogo] = useState(false);
   const [beats, setBeats] = useState<Beat[]>(() => [newBeat("reels")]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [regions, setRegions] = useState<ProtectedRegion[]>([]);
@@ -434,6 +446,23 @@ export function NuggetBuilder() {
         }
       : null;
   }, [beats]);
+
+  /*
+   * The mark sits below the safe zone on every preset, which is not a bug in
+   * the placement — it is the card pipeline's 4% margin, and matching it is the
+   * whole point. But on reels the safe zone reserves 420px at the bottom for
+   * TikTok's action rail and caption, and the mark lands well inside that, so
+   * it is worth saying out loud before someone renders in real time and finds a
+   * row of buttons over their logo.
+   *
+   * Said rather than enforced, like every other safe-zone warning here.
+   */
+  const logoOutsideSafeZone = useMemo(() => {
+    const c = CANVASES[canvas];
+    const b = logoBox(c.w, c.h);
+    const over = Math.round(b.y + b.h - (c.h - c.safe.b));
+    return over > 0 ? over : null;
+  }, [canvas]);
 
   const duration = bg ? (bg.kind === "video" ? bg.duration : stillSeconds) : 0;
 
@@ -727,6 +756,7 @@ export function NuggetBuilder() {
               )
             }
             showSafeZone={showSafeZone}
+            showLogo={stampLogo}
             regions={regions}
             drawingRegion={drawingRegion}
             selectedRegionId={selectedRegionId}
@@ -940,6 +970,7 @@ export function NuggetBuilder() {
                         duration,
                         beats,
                         canvas,
+                        logo: stampLogo,
                         onProgress: setRendering,
                       });
                       const a = document.createElement("a");
@@ -1034,6 +1065,19 @@ export function NuggetBuilder() {
 
           <div className="flex flex-wrap items-center gap-3">
             <Switch checked={showSafeZone} onChange={setShowSafeZone} label="Show safe zone" help="pop.safeZone" />
+            <Switch
+              checked={stampLogo}
+              onChange={setStampLogo}
+              label="Stamp the HeartStamp logo"
+              help="pop.logo"
+              hint={
+                !stampLogo
+                  ? "Off — nothing is added to the frame."
+                  : logoOutsideSafeZone
+                    ? `Bottom right, over the nuggets — and ${logoOutsideSafeZone}px below the ${canvas} safe zone, where platform UI sits.`
+                    : "Bottom right, over the nuggets. Rendered video only."
+              }
+            />
             {selected && (
               <p className="font-mono text-[11px] text-ink-faint">
                 anchor {selected.anchor.x.toFixed(3)}, {selected.anchor.y.toFixed(3)}

@@ -6,7 +6,8 @@ import { silencedByClatter } from "./rules";
 import { tryGlyphDataUri } from "./glyphs";
 import { wellLayout } from "./kit/media.js";
 import { CUE_TABLE } from "./cues";
-import { makeTicker, pickRecorderMime, type RenderProgress } from "@/lib/video-encode";
+import { makeTicker, pickRecorderMime, seekTo, type RenderProgress } from "@/lib/video-encode";
+import { heartStampLogo, paintLogo, pickLogoVariant, type LogoSet, type LogoVariant } from "@/lib/watermark";
 import { beatScaleFor, type Beat, type CanvasId } from "./deck";
 import {
   coverCrop, drawImageInQuad, quadSize, roundedQuadPath, sourceHeight, sourceWidth, type Quad,
@@ -292,6 +293,7 @@ export async function renderNuggets({
   duration: deckSeconds,
   beats,
   canvas,
+  logo = false,
   onProgress,
   signal,
 }: {
@@ -302,6 +304,8 @@ export async function renderNuggets({
   duration?: number;
   beats: Beat[];
   canvas: CanvasId;
+  /** Stamp the HeartStamp wordmark into the bottom-right corner. */
+  logo?: boolean;
   onProgress?: (p: RenderProgress) => void;
   signal?: AbortSignal;
 }): Promise<NuggetRenderResult> {
@@ -426,6 +430,38 @@ export async function renderNuggets({
     recorder.onstop = () => r();
   });
 
+  /*
+   * The wordmark, and which of its two colourways the corner needs.
+   *
+   * Measured on the LAST frame rather than the first, for the reason the card
+   * pipeline measures it there: the end is what a paused or looping player
+   * lingers on, and a deck that opens dark and ends bright would otherwise
+   * choose white lettering against the opening and lose it exactly when
+   * somebody is looking. Chosen once and held — sampling every frame lets the
+   * mark flip colour mid-clip the moment something bright crosses the corner.
+   *
+   * Seeking is free here: this <video> belongs to the render, not to the
+   * editor, so the playhead the user is watching never moves.
+   *
+   * The background is what gets measured, not the finished composite. A nugget
+   * that happens to be over the corner at the end is transient; the footage
+   * under it is what the mark actually has to survive.
+   */
+  let logos: LogoSet | null = null;
+  let logoVariant: LogoVariant | undefined;
+  if (logo) {
+    logos = await heartStampLogo();
+    if (video && Number.isFinite(video.duration) && video.duration > 0) {
+      // A hair before the end: seeking to exactly `duration` can land past the
+      // last decodable frame and yield a blank or stale one.
+      await seekTo(video, Math.max(0, video.duration - 0.08));
+    }
+    if (video) ctx2d.drawImage(video, 0, 0, w, h);
+    else if (image && stillFit) ctx2d.drawImage(image, stillFit.dx, stillFit.dy, stillFit.dw, stillFit.dh);
+    logoVariant = pickLogoVariant(ctx2d, logos.onDark, w, h);
+    if (video) await seekTo(video, 0);
+  }
+
   let lastT = -0.001;
   const paint = () => {
     const t = now();
@@ -546,6 +582,15 @@ export async function renderNuggets({
       ctx2d.drawImage(a.img, -dw / 2, -dh / 2, dw, dh);
       ctx2d.restore();
     }
+
+    /*
+     * Last, so it sits over the nuggets rather than under them.
+     *
+     * The mark is the one thing on the frame that is not part of the
+     * composition — a nugget landing on top of it would read as a mistake in
+     * a way a nugget landing on the footage does not.
+     */
+    if (logos) paintLogo(ctx2d, logos, w, h, logoVariant);
 
     // Entrance only, once per crossing, on the video's clock rather than the
     // audio clock so a long render cannot drift out of sync with itself.

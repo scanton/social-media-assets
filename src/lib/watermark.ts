@@ -88,13 +88,34 @@ function loadLogos(): Promise<LogoSet> {
 
 export const heartStampLogo = loadLogos;
 
-/** Where the wordmark lands, in canvas pixels. */
-function logoRect(logo: ImageBitmap, width: number, height: number) {
+/**
+ * The wordmark's own proportions, for callers with no bitmap to measure.
+ *
+ * The two SVGs are 140x35. A DOM overlay needs the same box as the canvas
+ * painter without loading and rasterising anything to ask.
+ */
+export const LOGO_ASPECT = 35 / 140;
+
+/**
+ * Where the wordmark lands, in the pixels of whatever it is being drawn into.
+ *
+ * Exported because the PopKit editor draws the same mark as a DOM element over
+ * a scaled stage while the render paints it into a canvas. Two implementations
+ * of "bottom right, 28% of the short edge, 4% in" would agree until one of
+ * these constants moved, and then the preview would quietly stop predicting
+ * the render.
+ */
+export function logoBox(width: number, height: number, aspect = LOGO_ASPECT) {
   const shortEdge = Math.min(width, height);
   const w = Math.round(shortEdge * LOGO_SCALE);
-  const h = Math.round(w * (logo.height / logo.width));
+  const h = Math.round(w * aspect);
   const margin = Math.round(shortEdge * LOGO_MARGIN);
   return { x: width - w - margin, y: height - h - margin, w, h };
+}
+
+/** Where the wordmark lands, in canvas pixels. */
+function logoRect(logo: ImageBitmap, width: number, height: number) {
+  return logoBox(width, height, logo.height / logo.width);
 }
 
 /**
