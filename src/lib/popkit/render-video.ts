@@ -496,9 +496,33 @@ export async function renderNuggets({
       // last decodable frame and yield a blank or stale one.
       await seekTo(video, Math.max(0, video.duration - 0.08));
     }
-    if (video) ctx2d.drawImage(video, 0, 0, w, h);
-    else if (image && stillFit) ctx2d.drawImage(image, stillFit.dx, stillFit.dy, stillFit.dw, stillFit.dh);
-    logoVariant = pickLogoVariant(ctx2d, logos.onDark, w, h);
+
+    /*
+     * Measured on a scratch canvas, NOT on the one being recorded.
+     *
+     * The recording canvas is already wired to a capture track by this point,
+     * and anything drawn on it before the loop starts can be flushed out as a
+     * frame — so painting the bare background here to read its corner put one
+     * frame of un-composed background at the head of every render. On a still
+     * with a screen well that is the phone with its blank screen showing,
+     * before the well appears: the deck looked like it started a frame late,
+     * and the mark was missing from that frame too.
+     *
+     * Same size as the real canvas because the sample rect is in canvas pixels
+     * — a scaled-down scratch would read a different patch of the picture.
+     */
+    const scratch = document.createElement("canvas");
+    scratch.width = w;
+    scratch.height = h;
+    const sctx = scratch.getContext("2d", { alpha: false });
+    if (sctx) {
+      if (video) sctx.drawImage(video, 0, 0, w, h);
+      else if (image && stillFit) sctx.drawImage(image, stillFit.dx, stillFit.dy, stillFit.dw, stillFit.dh);
+      logoVariant = pickLogoVariant(sctx, logos.onDark, w, h);
+    }
+    scratch.width = 0;
+    scratch.height = 0;
+
     if (video) await seekTo(video, 0);
   }
 
