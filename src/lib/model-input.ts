@@ -244,3 +244,39 @@ export function readSupports(schema: InputSchema | null): ModelSupports {
     numImages: has("num_images"),
   };
 }
+
+/**
+ * What the model says about the reference clips it will accept.
+ *
+ * This is prose, not schema. fal expresses "up to three seconds" in a
+ * `description` and enforces it at submit — nothing in the JSON Schema says so,
+ * so no amount of adapting can satisfy it and the studio cannot know it is
+ * about to fail. Gemini Omni Flash caps reference video at three seconds; a
+ * digital card animation is two to fifteen, sweet spot eight to thirteen. Every
+ * render on that pairing is rejected, and the only signal was a validation
+ * error after the fact.
+ *
+ * So the sentence is lifted out and shown in the picker. Only the ones
+ * mentioning seconds: the rest of the description is format and file-size trivia
+ * that has never been the thing that failed, and a paragraph nobody reads warns
+ * about nothing.
+ *
+ * Deliberately not parsed into a number. The phrasings in the catalogue include
+ * "at most three seconds", "between 2 and 15 seconds" and "2-15 seconds each,
+ * combined duration at most 15 seconds" — word numerals, ranges, and per-clip
+ * versus combined. A parser would be wrong quietly, which is worse than the
+ * model's own words being shown as it wrote them.
+ */
+export function readClipLimit(schema: InputSchema | null): string | undefined {
+  if (!schema) return undefined;
+  const name = inputAliases("video_urls").find((a) => a in schema.properties);
+  const description = name ? schema.properties[name]?.description : undefined;
+  if (!description) return undefined;
+
+  const limits = description
+    .split(/(?<=\.)\s+/)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => /\bseconds?\b/i.test(sentence));
+
+  return limits.length ? limits.join(" ") : undefined;
+}

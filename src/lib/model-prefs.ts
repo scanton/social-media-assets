@@ -88,6 +88,8 @@ export type CatalogEntry = {
   thumbnailUrl?: string;
   isDefault: boolean;
   supports: ModelSupports;
+  /** Reference clip length, in the model'''s own words. See readClipLimit. */
+  clipLimit?: string;
 };
 
 export type CatalogResponse = {

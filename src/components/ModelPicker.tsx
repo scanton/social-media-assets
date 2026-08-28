@@ -169,6 +169,22 @@ export function ModelPicker({ slot }: { slot: ModelSlotId }) {
                 </p>
               )}
 
+              {/*
+                * Louder than the one above, because it is a different kind of
+                * problem. A dropped control gives you a render you did not
+                * quite ask for; a clip the model will not accept gives you no
+                * render at all, and the studio cannot adapt around it — the
+                * limit is enforced by fal and absent from the schema. Gemini
+                * Omni Flash takes three seconds of reference video, and a card
+                * animation is eight to thirteen.
+                */}
+              {current?.clipLimit && (
+                <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs leading-relaxed text-rose-900">
+                  <span className="font-semibold">Reference clip limits:</span> {current.clipLimit}{" "}
+                  Your card animation has to fit, or the render is rejected before it starts.
+                </p>
+              )}
+
               {partial ? (
                 <p className="text-xs text-ink-faint">
                   fal&apos;s model list is unreachable, so only the built-in default is offered.

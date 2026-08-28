@@ -1,6 +1,6 @@
 import "server-only";
 import { MODEL_SLOTS, type ModelSlot, type ModelSlotId, inputAliases } from "@/lib/models";
-import { readSupports, type ModelSupports } from "@/lib/model-input";
+import { readClipLimit, readSupports, type ModelSupports } from "@/lib/model-input";
 
 /**
  * Reads fal's model catalogue and works out which models a given step can
@@ -37,6 +37,13 @@ export type CatalogModel = {
   isDefault: boolean;
   /** Which studio controls this model honours — the rest are dropped at submit. */
   supports: ModelSupports;
+  /**
+   * What the model says about reference clip length, in its own words.
+   *
+   * Enforced by fal but absent from the schema, so it cannot be adapted around
+   * — it has to be read before choosing. Undefined when the model says nothing.
+   */
+  clipLimit?: string;
 };
 
 type RawModel = {
@@ -174,6 +181,7 @@ export async function compatibleModels(slot: ModelSlot): Promise<CatalogModel[]>
         thumbnailUrl: typeof model.thumbnailUrl === "string" ? model.thumbnailUrl : undefined,
         isDefault: model.id === slot.fallback,
         supports: readSupports(schema),
+        clipLimit: readClipLimit(schema),
       });
     }
   };
@@ -190,11 +198,13 @@ export async function compatibleModels(slot: ModelSlot): Promise<CatalogModel[]>
   // The default is offered even if the catalogue is down or has dropped it —
   // the picker must never present an empty list.
   if (!compatible.some((m) => m.isDefault)) {
+    const fallbackSchema = await fetchInputSchema(slot.fallback);
     compatible.unshift({
       id: slot.fallback,
       title: slot.fallback,
       isDefault: true,
-      supports: readSupports(await fetchInputSchema(slot.fallback)),
+      supports: readSupports(fallbackSchema),
+      clipLimit: readClipLimit(fallbackSchema),
     });
   }
   return compatible;
