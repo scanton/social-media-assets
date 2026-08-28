@@ -153,6 +153,20 @@ export interface BeatWell {
   src?: string;
   /** A still for a clip, used anywhere video cannot be drawn. */
   poster?: string;
+  /**
+   * Fill the well by stretching, instead of cropping to cover it.
+   *
+   * The well decides its own shape, so media that does not match has to give
+   * somewhere. Cropping is the right default — a squashed face reads as a
+   * mistake and a tighter crop usually does not — but it is the wrong answer
+   * when what falls outside the aperture is the part that mattered. A logo in
+   * the corner of a clip is the case that prompted this: the frame was a
+   * fraction wider than the screen it was going into, and cover trimmed the
+   * mark off both edges.
+   *
+   * Off means cover, which is what every existing deck expects.
+   */
+  stretch?: boolean;
   caption?: string;
   kicker?: string;
   badge?: { text: string; bg?: string };

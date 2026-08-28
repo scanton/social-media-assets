@@ -754,7 +754,7 @@ export const HELP: Record<string, HelpEntry> = {
   "pop.screenAspect": {
     title: "Aspect",
     body:
-      "The shape of the screen you are matching. It decides how the media is cropped to fit — a 16:9 clip in a phone-shaped screen loses its sides rather than being squashed — and gives the corner handles a sensible rectangle to start from.",
+      "The shape of the screen you are matching. It decides how the media is fitted — by default a 16:9 clip in a phone-shaped screen loses its sides rather than being squashed, and \"Stretch to fill\" below reverses that trade — and it gives the corner handles a sensible rectangle to start from.",
   },
   "pop.screenWidth": {
     title: "Width",
@@ -784,12 +784,17 @@ export const HELP: Record<string, HelpEntry> = {
   "pop.wellShapeField": {
     title: "Shape",
     body:
-      "The aspect the media is cropped to inside the well. Ignored when a shape well is chosen above, because the frame itself already decides it.",
+      "The aspect the media is fitted to inside the well — cropped to it by default, or stretched to it with \"Stretch to fill\" below. Ignored when a shape well is chosen above, because the frame itself already decides it.",
   },
   "pop.wellSize": {
     title: "Well size",
     body:
       "How big the well is drawn, independently of any text size. A well has no words to stay legible, so it is sized to suit the frame rather than to suit reading.",
+  },
+  "pop.wellStretch": {
+    title: "Stretch to fill",
+    body:
+      "Off, the media is cropped to cover the well: it keeps its proportions and whatever falls outside the shape is trimmed. On, it is stretched to fit exactly — nothing is lost and the picture is distorted instead. Worth turning on when what the crop was cutting off is the part that mattered, like a logo in the corner of a clip. A few percent of stretch is invisible; a lot is not.",
   },
   "pop.wellCaption": {
     title: "Well caption",

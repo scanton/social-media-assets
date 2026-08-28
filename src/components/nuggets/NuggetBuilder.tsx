@@ -405,6 +405,36 @@ export function NuggetBuilder() {
     return i === -1 ? null : i + 1;
   }, [beats]);
 
+  /*
+   * Well features the deck schema has no field for, and so the skill cannot be
+   * told about.
+   *
+   * The schema is synced from the skill and is `additionalProperties: false` on
+   * `well`, which is the right strictness: a field it has never heard of is one
+   * its render route would ignore. Exporting anyway would produce a zip that
+   * validates in spirit and renders wrong — a stretched well cropped back to
+   * cover, which is the exact failure the toggle exists to fix, returning
+   * silently and somewhere the user is no longer looking.
+   *
+   * The spatial family was already in this position and nobody had noticed:
+   * `bare`, `quad`, `radius` and `gloss` shipped without ever reaching the
+   * schema, so Export zip on a pinned screen failed with a list of raw
+   * validator strings instead of a sentence. Same cause, same refusal.
+   */
+  const webOnlyWell = useMemo(() => {
+    const i = beats.findIndex((b) => b.well && (b.well.bare || b.well.quad || b.well.stretch));
+    const w = i === -1 ? null : beats[i].well;
+    return w
+      ? {
+          beat: i + 1,
+          what:
+            w.bare || w.quad
+              ? "is laid into the scene with a corner-pin"
+              : "stretches its media to fill",
+        }
+      : null;
+  }, [beats]);
+
   const duration = bg ? (bg.kind === "video" ? bg.duration : stillSeconds) : 0;
 
   /*
@@ -932,7 +962,10 @@ export function NuggetBuilder() {
 
                 <button
                   type="button"
-                  disabled={!bg || bg.kind === "image" || blocking.length > 0 || twoMedallionBeat !== null}
+                  disabled={
+                    !bg || bg.kind === "image" || blocking.length > 0
+                    || twoMedallionBeat !== null || webOnlyWell !== null
+                  }
                   onClick={async () => {
                     if (!bg || bg.kind !== "video") return;
                     const base = exportBasename(bg?.name ?? null);
@@ -974,6 +1007,8 @@ export function NuggetBuilder() {
                         ? "Render video only — the zip is for the Claude skill, which has no idea what a still background is."
                         : twoMedallionBeat !== null
                           ? `Render video only — beat ${twoMedallionBeat} has two medallions, which the skill's render route cannot draw.`
+                        : webOnlyWell !== null
+                          ? `Render video only — beat ${webOnlyWell.beat} ${webOnlyWell.what}, which the deck format has no way to say.`
                         : `${exportBasename(bg?.name ?? null)}.zip — the video and ${exportBasename(bg?.name ?? null)}.deck.json`}
                 </span>
               </div>
@@ -1223,6 +1258,18 @@ export function NuggetBuilder() {
                       />
                     </Field>
 
+                    <Switch
+                      checked={Boolean(selected.well.stretch)}
+                      onChange={(v) => patch({ well: { ...selected.well!, stretch: v } })}
+                      label="Stretch to fill"
+                      help="pop.wellStretch"
+                      hint={
+                        selected.well.stretch
+                          ? "Distorted to fit exactly — nothing cropped."
+                          : "Cropped to cover — proportions kept, edges trimmed."
+                      }
+                    />
+
                     <Field
                       label="Perspective"
                       help="pop.screenPin"
@@ -1342,7 +1389,7 @@ export function NuggetBuilder() {
                     </Field>
 
                     <div className="grid gap-4 sm:grid-cols-2">
-                      <Field label="Shape" help="pop.wellShapeField" hint={selected.well.frame ? "Set by the shape well above." : "Sets the aspect the media is cropped to."}>
+                      <Field label="Shape" help="pop.wellShapeField" hint={selected.well.frame ? "Set by the shape well above." : "Sets the aspect the media is fitted to."}>
                         <Select
                           value={selected.well.shape ?? "rounded"}
                           onChange={(shape) => patch({ well: { ...selected.well!, shape } })}
@@ -1366,6 +1413,18 @@ export function NuggetBuilder() {
                         />
                       </Field>
                     </div>
+
+                    <Switch
+                      checked={Boolean(selected.well.stretch)}
+                      onChange={(v) => patch({ well: { ...selected.well!, stretch: v } })}
+                      label="Stretch to fill"
+                      help="pop.wellStretch"
+                      hint={
+                        selected.well.stretch
+                          ? "Distorted to fit exactly — nothing cropped."
+                          : "Cropped to cover — proportions kept, edges trimmed."
+                      }
+                    />
 
                     {!selected.well.frame && (
                     <Field label="Caption" help="pop.wellCaption" hint="Sits under the media, inside the frame. Leave empty for none.">

@@ -695,7 +695,7 @@ Lay the screen into the scene by dragging its four corners onto the real thing i
 
 ### Aspect
 
-The shape of the screen you are matching. It decides how the media is cropped to fit — a 16:9 clip in a phone-shaped screen loses its sides rather than being squashed — and gives the corner handles a sensible rectangle to start from.
+The shape of the screen you are matching. It decides how the media is fitted — by default a 16:9 clip in a phone-shaped screen loses its sides rather than being squashed, and "Stretch to fill" below reverses that trade — and it gives the corner handles a sensible rectangle to start from.
 
 ### Width
 
@@ -719,11 +719,15 @@ The picture or clip that sits in the shape. It rides inside the deck rather than
 
 ### Shape
 
-The aspect the media is cropped to inside the well. Ignored when a shape well is chosen above, because the frame itself already decides it.
+The aspect the media is fitted to inside the well — cropped to it by default, or stretched to it with "Stretch to fill" below. Ignored when a shape well is chosen above, because the frame itself already decides it.
 
 ### Well size
 
 How big the well is drawn, independently of any text size. A well has no words to stay legible, so it is sized to suit the frame rather than to suit reading.
+
+### Stretch to fill
+
+Off, the media is cropped to cover the well: it keeps its proportions and whatever falls outside the shape is trimmed. On, it is stretched to fit exactly — nothing is lost and the picture is distorted instead. Worth turning on when what the crop was cutting off is the part that mattered, like a logo in the corner of a clip. A few percent of stretch is invisible; a lot is not.
 
 ### Well caption
 
@@ -907,4 +911,4 @@ How fast anything moves. All optional, and off unless you pick one. Whatever you
 `llms-full.txt` is generated from `src/lib/help.ts` and `src/lib/options.ts` in the
 HeartStamp Asset Studio codebase. Do not edit by hand; run `pnpm llms`.
 
-version: 60af9c91a569
+version: 45ffc8ec6609

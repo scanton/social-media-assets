@@ -429,6 +429,7 @@ export function VideoStage({
                       scale={w / preview.w}
                       playing={playing && live}
                       at={playhead - beat.t}
+                      stretch={beat.well.stretch}
                     />
                     {!!beat.well.gloss && (
                       <span
@@ -495,9 +496,12 @@ function WellMedia({
   scale,
   playing,
   at,
+  stretch,
 }: {
   src: string;
   kind: "image" | "video";
+  /** Fill the aperture by stretching rather than cropping to cover it. */
+  stretch?: boolean;
   /** The aperture, in canvas px. */
   rect: { x: number; y: number; w: number; h: number; radius: number };
   /** Canvas px to screen px. */
@@ -534,11 +538,20 @@ function WellMedia({
     borderRadius: rect.radius * scale,
   };
 
-  // `object-cover` on both: the well decides its own shape, and media that
-  // does not match is cropped rather than squashed to fit.
+  /*
+   * Cover unless the well asks to stretch. The well decides its own shape, so
+   * media that does not match is cropped rather than squashed — right until the
+   * cropped part is the part that mattered, which is what `stretch` is for.
+   *
+   * `fill` rather than `contain`: contain would letterbox, and inside a well
+   * that means the frame's own fill showing through the gaps, or a bare screen
+   * with bars painted onto it. Neither is a thing anyone wants to render.
+   */
+  const fit = stretch ? "object-fill" : "object-cover";
+
   if (kind === "image") {
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={src} alt="" className="pointer-events-none absolute object-cover" style={box} />;
+    return <img src={src} alt="" className={cx("pointer-events-none absolute", fit)} style={box} />;
   }
 
   return (
@@ -549,7 +562,7 @@ function WellMedia({
       loop
       playsInline
       preload="auto"
-      className="pointer-events-none absolute object-cover"
+      className={cx("pointer-events-none absolute", fit)}
       style={box}
     />
   );
@@ -664,6 +677,7 @@ function PinnedScreen({
           scale={1}
           playing={playing && live}
           at={at}
+          stretch={well.stretch}
         />
         {/* Inside the transformed box, so the sheen foreshortens with the
             surface rather than lying flat across the frame. */}

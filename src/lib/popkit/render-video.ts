@@ -485,7 +485,14 @@ export async function renderNuggets({
           ctx2d.clip();
         }
         drawImageInQuad(ctx2d, m, q, {
-          srcRect: coverCrop({ width: sourceWidth(m), height: sourceHeight(m) }, q),
+          /*
+           * Omitting srcRect maps the whole frame onto the quad, which is
+           * exactly what stretching means here — nothing is left outside to be
+           * cropped, and the aspect gives instead.
+           */
+          srcRect: b.well.stretch
+            ? undefined
+            : coverCrop({ width: sourceWidth(m), height: sourceHeight(m) }, q),
           /*
            * Coarser than the 32 the card compositor uses. That density exists
            * to land print artwork pixel-accurately in a one-off composite; this
@@ -512,17 +519,26 @@ export async function renderNuggets({
         ctx2d.beginPath();
         ctx2d.roundRect(well.L.mediaX, well.L.mediaY, well.L.mediaW, well.L.mediaH, well.L.radius);
         ctx2d.clip();
-        // cover, not contain: letterboxing inside the aperture would show the
-        // frame's own fill through the gaps
+        /*
+         * Cover unless the well asks to stretch, and never contain:
+         * letterboxing inside the aperture would show the frame's own fill
+         * through the gaps.
+         *
+         * Stretching is the degenerate case of the same drawImage — the media
+         * is laid straight into the aperture and the aspect gives — so both
+         * paths end at the same call rather than diverging.
+         */
         const m = well.media;
         const vw = (m instanceof HTMLVideoElement ? m.videoWidth : m.naturalWidth) || 1;
         const vh = (m instanceof HTMLVideoElement ? m.videoHeight : m.naturalHeight) || 1;
-        const cover = Math.max(well.L.mediaW / vw, well.L.mediaH / vh);
+        const cover = b.well?.stretch ? 0 : Math.max(well.L.mediaW / vw, well.L.mediaH / vh);
+        const dw2 = cover ? vw * cover : well.L.mediaW;
+        const dh2 = cover ? vh * cover : well.L.mediaH;
         ctx2d.drawImage(
           m,
-          well.L.mediaX + (well.L.mediaW - vw * cover) / 2,
-          well.L.mediaY + (well.L.mediaH - vh * cover) / 2,
-          vw * cover, vh * cover,
+          well.L.mediaX + (well.L.mediaW - dw2) / 2,
+          well.L.mediaY + (well.L.mediaH - dh2) / 2,
+          dw2, dh2,
         );
         ctx2d.restore();
       }
