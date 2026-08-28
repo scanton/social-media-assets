@@ -392,6 +392,46 @@ export async function renderNuggets({
     window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
   const actx = new AC();
   const dest = actx.createMediaStreamDestination();
+
+  /*
+   * A silent source, connected for the whole render, and load-bearing.
+   *
+   * MediaRecorder muxes to the SHORTEST track it is handed. A
+   * MediaStreamAudioDestinationNode with nothing ever routed into it delivers
+   * almost no samples, so the audio track is a fraction of a second long and
+   * the finished file is cut to it — however many frames were painted.
+   *
+   * Nothing routes into it when the background is a still and no beat carries a
+   * cue. A clip-backed deck is safe because createMediaElementSource feeds the
+   * destination continuously, and any deck with a cue is safe because the first
+   * one kicks the graph into producing. A still with a screen well and no sound
+   * is the case that has neither, and it is a perfectly ordinary deck to build.
+   *
+   * Measured end to end in the builder: thirteen seconds of timeline, still
+   * background, cue set to "No sound" produced a 0.08 second, 19 KB file — the
+   * "only one frame long" this fixes. The same deck with one cue on it came
+   * back full length, which is why it went unnoticed: every default beat has a
+   * cue already.
+   *
+   * Attached unconditionally rather than only for stills. A clip whose audio
+   * track is missing or silent reaches the same dead end by a different route,
+   * and a node that adds zero to the mix costs nothing on the paths that were
+   * already fine.
+   */
+  const silence = actx.createConstantSource();
+  const mute = actx.createGain();
+  mute.gain.value = 0;
+  silence.connect(mute);
+  mute.connect(dest);
+  silence.start();
+
+  /*
+   * A context left suspended by autoplay policy produces no samples either, and
+   * would take the cues down with it. The render is always started by a click,
+   * so this normally resolves immediately.
+   */
+  if (actx.state === "suspended") await actx.resume().catch(() => {});
+
   if (video) {
     try {
       actx.createMediaElementSource(video).connect(dest);
@@ -648,6 +688,7 @@ export async function renderNuggets({
   video?.pause();
   for (const { media: m } of wells.values()) if (m instanceof HTMLVideoElement) m.pause();
   URL.revokeObjectURL(url);
+  silence.stop();
   void actx.close();
 
   onProgress?.({ stage: "Rendering", pct: 100 });
