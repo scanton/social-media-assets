@@ -27,9 +27,17 @@ const SKIP = new Set([
   "end_user_id", "output_format",
 ]);
 
-/** Reads a property through an `anyOf`, which is how fal declares unions. */
+/**
+ * Reads a property through its union.
+ *
+ * `anyOf` is fal's; `allOf` is how Cog points at an enum defined elsewhere,
+ * which every Replicate model does. Those are inlined before they get here, but
+ * a property that arrives un-inlined would otherwise render as "this model's
+ * own default is used" over a dropdown that should have existed.
+ */
 function branches(prop: JsonSchemaProp): JsonSchemaProp[] {
-  return prop.anyOf?.length ? [prop, ...prop.anyOf] : [prop];
+  const union = prop.anyOf?.length ? prop.anyOf : prop.allOf;
+  return union?.length ? [prop, ...union] : [prop];
 }
 
 function enumOf(prop: JsonSchemaProp): unknown[] | null {

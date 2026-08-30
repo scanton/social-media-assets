@@ -65,10 +65,73 @@ export function schemaFromVersion(version: unknown): InputSchema | null {
     ?.components?.schemas;
   const input = schemas?.Input as { properties?: unknown; required?: unknown } | undefined;
   if (!input || typeof input.properties !== "object" || !input.properties) return null;
+
+  const props = input.properties as Record<string, JsonSchemaProp>;
+  const resolved: Record<string, JsonSchemaProp> = {};
+  for (const [key, prop] of Object.entries(props)) resolved[key] = deref(prop, schemas ?? {});
+
   return {
-    properties: input.properties as Record<string, JsonSchemaProp>,
+    properties: resolved,
     required: Array.isArray(input.required) ? (input.required as string[]) : [],
   };
+}
+
+/**
+ * Inlines the `$ref` indirection Cog puts every enum behind.
+ *
+ * Replicate models are built with Cog, which emits an enum as its own component
+ * and points at it:
+ *
+ *   "quality": { "allOf": [{ "$ref": "#/components/schemas/quality" }],
+ *                "description": "…", "default": "auto" }
+ *   components.schemas.quality: { "type": "string", "enum": ["low","medium",…] }
+ *
+ * The website resolves those before drawing its API tab, so the published
+ * schema *looks* like it has the values inline. The API does not, and a reader
+ * that takes the property at face value sees a field with a description, a
+ * default, and no type or enum at all — which is exactly what the freeform page
+ * showed: "this model's own default is used" over every dropdown that should
+ * have existed, on gpt-image-2's quality and aspect ratio among others.
+ *
+ * Plain scalars are unaffected because Cog writes those inline, which is why
+ * the sliders and text boxes worked while only the enums were missing.
+ *
+ * The property's own keys win over the referenced ones: the ref carries the
+ * type and the values, the property carries the description and the default
+ * that this particular model chose.
+ */
+function deref(
+  prop: JsonSchemaProp,
+  schemas: Record<string, unknown>,
+  depth = 0,
+): JsonSchemaProp {
+  if (depth > 4 || !prop || typeof prop !== "object") return prop;
+
+  const withRef = prop as JsonSchemaProp & { allOf?: unknown[]; $ref?: string };
+
+  const follow = (ref: unknown): JsonSchemaProp | null => {
+    if (typeof ref !== "string") return null;
+    const name = ref.split("/").pop();
+    const target = name ? schemas[name] : undefined;
+    return target && typeof target === "object" ? (target as JsonSchemaProp) : null;
+  };
+
+  let base: JsonSchemaProp = {};
+  if (withRef.$ref) base = follow(withRef.$ref) ?? {};
+  else if (Array.isArray(withRef.allOf)) {
+    for (const branch of withRef.allOf) {
+      const b = branch as { $ref?: string };
+      const target = b?.$ref ? follow(b.$ref) : (branch as JsonSchemaProp);
+      if (target) base = { ...base, ...deref(target, schemas, depth + 1) };
+    }
+  } else {
+    return prop;
+  }
+
+  const { allOf: _allOf, $ref: _ref, ...own } = withRef;
+  void _allOf;
+  void _ref;
+  return { ...base, ...own };
 }
 
 const listed = (m: ReplicateModel): ReplicateListed | null => {

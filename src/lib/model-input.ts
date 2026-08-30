@@ -35,9 +35,18 @@ function magnitude(value: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/** Flattens `anyOf` so a property declared as a union is inspected as a whole. */
+/**
+ * Flattens a union so a property declared as one is inspected as a whole.
+ *
+ * `anyOf` is how fal declares a nullable or multi-typed input. `allOf` is how
+ * Cog — and therefore every Replicate model — points at an enum it defined
+ * elsewhere. Those refs are inlined when the schema is read, so this should
+ * rarely see one; it looks anyway, because the cost is a property access and
+ * the failure mode is an enum silently becoming a free-text field.
+ */
 function branches(prop: JsonSchemaProp): JsonSchemaProp[] {
-  return prop.anyOf?.length ? [prop, ...prop.anyOf] : [prop];
+  const union = prop.anyOf?.length ? prop.anyOf : prop.allOf;
+  return union?.length ? [prop, ...union] : [prop];
 }
 
 function enumValues(prop: JsonSchemaProp): unknown[] | null {
