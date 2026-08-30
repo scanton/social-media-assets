@@ -187,11 +187,26 @@ export function Freeform() {
     chosenBy[catKey] ??
     (models.some((m) => m.id === preferred) ? preferred : models[0]?.id) ??
     "";
-  const schema = schemaBy[`${provider}:${model}`] ?? null;
+  /*
+   * One key for everything held about the chosen model, written down once.
+   *
+   * It has to carry the provider — `openai/gpt-image-2` is a real model on both
+   * with different inputs on each — and it has to be the SAME string wherever
+   * it is used. It was briefly not: the schema and the values were read under
+   * `provider:model` and written under `model`, so every dropdown change and
+   * every slider drag landed in a key nothing read, and the panel sat there
+   * looking broken while the state underneath filled up correctly.
+   *
+   * A key that is built in more than one place is a key that will drift again,
+   * so it is built here and passed around.
+   */
+  const modelKey = `${provider}:${model}`;
+
+  const schema = schemaBy[modelKey] ?? null;
   const current = models.find((m) => m.id === model);
   // Memoised because it feeds a useCallback: a fresh {} each render would make
   // that callback new each render too.
-  const values = useMemo(() => valuesBy[`${provider}:${model}`] ?? {}, [valuesBy, provider, model]);
+  const values = useMemo(() => valuesBy[modelKey] ?? {}, [valuesBy, modelKey]);
   // Derived rather than a flag: "not fetched yet" is exactly "not in the map".
   const loadingModels = modelsBy[catKey] === undefined;
 
@@ -231,16 +246,15 @@ export function Freeform() {
   }, [category, catKey, provider, modelsBy]);
 
   /* ---- the chosen model's own knobs, once per model ---- */
-  const schemaKey = `${provider}:${model}`;
   useEffect(() => {
-    if (!model || schemaBy[schemaKey]) return;
+    if (!model || schemaBy[modelKey]) return;
     let cancelled = false;
     // Same reason as the catalogue above: one URL must not mean two schemas.
     fetch(`/api/fal/schema?model=${encodeURIComponent(model)}&provider=${provider}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((body: { schema?: InputSchema } | null) => {
         if (cancelled || !body?.schema) return;
-        setSchemaBy((s) => ({ ...s, [schemaKey]: body.schema as InputSchema }));
+        setSchemaBy((s) => ({ ...s, [modelKey]: body.schema as InputSchema }));
         // Start from the model's own defaults rather than blank, so a render
         // works before anything has been touched — then apply ours over the
         // top for the few fields we disagree with. See HOUSE_DEFAULTS.
@@ -251,13 +265,13 @@ export function Freeform() {
         for (const [k, v] of Object.entries(HOUSE_DEFAULTS[model] ?? {})) {
           if (k in body.schema.properties) next[k] = v;
         }
-        setValuesBy((s) => (s[schemaKey] ? s : { ...s, [schemaKey]: next }));
+        setValuesBy((s) => (s[modelKey] ? s : { ...s, [modelKey]: next }));
       })
       .catch(() => undefined);
     return () => {
       cancelled = true;
     };
-  }, [model, provider, schemaKey, schemaBy]);
+  }, [model, provider, modelKey, schemaBy]);
 
   const finalPrompt = useMemo(
     () => compilePrompt(prompt, picks, isVideo, schema),
@@ -555,7 +569,9 @@ export function Freeform() {
             <SchemaFields
               schema={schema}
               values={values}
-              onChange={(k, v) => setValuesBy((s) => ({ ...s, [model]: { ...(s[model] ?? {}), [k]: v } }))}
+              onChange={(k, v) =>
+                setValuesBy((s) => ({ ...s, [modelKey]: { ...(s[modelKey] ?? {}), [k]: v } }))
+              }
             />
           </div>
 
