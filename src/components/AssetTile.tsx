@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { mediaSrc } from "@/lib/client-api";
+import { assetPreview } from "@/lib/client-api";
 import { downloadUrl } from "@/lib/client-api";
 import type { Asset } from "@/lib/studio-types";
 import { isVideo } from "@/lib/studio-types";
@@ -45,7 +45,20 @@ export function AssetTile({
   // fal drops media after a while, so a tile from last week points at nothing.
   // Rendering a broken <img> is the one outcome worth avoiding.
   const health = useAssetHealth(asset.url);
-  const missing = health === "gone" || health === "unreachable" || health === "checking";
+  const preview = assetPreview(asset.url);
+  /*
+   * A poster we hold locally is shown whatever the remote says.
+   *
+   * Health describes whether the provider still has the file, which is the
+   * right gate for media the browser fetches from them. It is the wrong gate
+   * for a still captured here: refusing to draw a picture we already have,
+   * because a probe of a URL that was never displayable came back
+   * inconclusive, would be a blank tile with the answer sitting in
+   * localStorage.
+   */
+  const localPoster = Boolean(preview && !preview.playable);
+  const missing =
+    !localPoster && (health === "gone" || health === "unreachable" || health === "checking");
 
   return (
     <>
@@ -74,9 +87,16 @@ export function AssetTile({
                 </p>
               )}
             </div>
-          ) : video ? (
+          ) : !preview ? (
+            <span
+              className="grid h-full w-full place-items-center bg-canvas-2 text-ink-faint"
+              title="Staged on Replicate, which serves no preview"
+            >
+              <span className="text-lg opacity-60">🎞️</span>
+            </span>
+          ) : video && preview.playable ? (
             <video
-              src={mediaSrc(asset.url)}
+              src={preview.src}
               className="h-full w-full object-cover"
               muted
               loop
@@ -93,7 +113,7 @@ export function AssetTile({
           ) : (
             /* eslint-disable-next-line @next/next/no-img-element */
             <img
-              src={mediaSrc(asset.url)}
+              src={preview.src}
               alt={asset.label}
               loading="lazy"
               onError={() => reportAssetError(asset.url)}
@@ -210,11 +230,15 @@ export function AssetTile({
           aria-label={asset.label}
         >
           <div className="flex max-h-full w-full max-w-4xl flex-col items-center gap-4" onClick={(e) => e.stopPropagation()}>
-            {video ? (
-              <video src={mediaSrc(asset.url)} className="max-h-[76vh] w-auto rounded-2xl shadow-2xl" controls autoPlay loop playsInline />
+            {!preview ? (
+              <p className="rounded-2xl bg-white/10 px-6 py-10 text-sm text-white/70">
+                Replicate stages this file for the model and serves no preview of it.
+              </p>
+            ) : video && preview.playable ? (
+              <video src={preview.src} className="max-h-[76vh] w-auto rounded-2xl shadow-2xl" controls autoPlay loop playsInline />
             ) : (
               /* eslint-disable-next-line @next/next/no-img-element */
-              <img src={mediaSrc(asset.url)} alt={asset.label} className="max-h-[76vh] w-auto rounded-2xl shadow-2xl" />
+              <img src={preview.src} alt={asset.label} className="max-h-[76vh] w-auto rounded-2xl shadow-2xl" />
             )}
             <div className="flex flex-wrap items-center justify-center gap-2">
               <a

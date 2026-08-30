@@ -171,20 +171,39 @@ export function downloadUrl(url: string, filename: string) {
  * alone: routing fal's CDN through our origin would spend function time to
  * achieve nothing.
  */
-export function mediaSrc(url: string): string {
-  if (!url.startsWith("https://api.replicate.com/")) return url;
-  /*
-   * Nothing can display a Replicate file. Its URLs need the account token, the
-   * one it gives out returns metadata rather than bytes, and the endpoint that
-   * does return bytes wants an HMAC signed with a secret that is not the API
-   * token — so our own server cannot fetch them either, and proxying is not an
-   * option that exists.
-   *
-   * The thumbnail kept when the file was chosen is the only thing there is.
-   * Empty when there is none, which the tile already knows how to draw.
+export type AssetPreview = {
+  src: string;
+  /**
+   * True when `src` is the asset itself and a <video> can play it. False when
+   * it is a still standing in for one, which must go in an <img> whatever kind
+   * of asset it belongs to.
    */
-  return previewFor(url) ?? "";
+  playable: boolean;
+};
+
+/**
+ * What to render for an asset, and how.
+ *
+ * fal serves its uploads from a public CDN, so the URL is the asset and a video
+ * plays. Replicate serves nothing a browser can fetch: its file URLs need the
+ * account token, the one it hands out returns metadata rather than bytes, and
+ * the endpoint with the bytes wants an HMAC signed with a secret the caller
+ * does not have. All that exists for those is the frame captured when the file
+ * was chosen — a JPEG, even for a clip.
+ *
+ * Which is why this returns the shape rather than a string. A bare URL made
+ * every caller assume it could be played, so the poster went into a <video>
+ * and rendered nothing at all: the same blank tile as before, arrived at by a
+ * different route.
+ *
+ * Null means there is nothing to show, and the caller draws its placeholder.
+ */
+export function assetPreview(url: string): AssetPreview | null {
+  if (!url.startsWith("https://api.replicate.com/")) return { src: url, playable: true };
+  const poster = previewFor(url);
+  return poster ? { src: poster, playable: false } : null;
 }
+
 
 /* --------------------------- fal key state --------------------------- */
 

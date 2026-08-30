@@ -1,7 +1,7 @@
 "use client";
 
 import { reportAssetError, reportAssetOk, useAssetHealth } from "@/lib/asset-health";
-import { mediaSrc } from "@/lib/client-api";
+import { assetPreview } from "@/lib/client-api";
 import { cx } from "./ui";
 
 /**
@@ -26,13 +26,13 @@ export function AssetThumb({
 }) {
   const health = useAssetHealth(url);
   /*
-   * Empty means there is nothing that CAN be shown — a Replicate file with no
-   * thumbnail kept for it. Rendering an element with an empty src just makes
-   * the browser fetch the page again and report a decode failure, so the
-   * placeholder is drawn directly.
+   * Null means there is nothing that CAN be shown — a Replicate file with no
+   * thumbnail kept for it. Rendering an element with an empty src makes the
+   * browser fetch the page again and report a decode failure, so the
+   * placeholder is drawn instead.
    */
-  const src = mediaSrc(url);
-  if (!src) {
+  const preview = assetPreview(url);
+  if (!preview) {
     return (
       <span
         className={cx("grid shrink-0 place-items-center bg-canvas-2 text-ink-faint", className)}
@@ -43,7 +43,8 @@ export function AssetThumb({
     );
   }
 
-  if (health !== "ok") {
+  // A locally-held poster is shown whatever the remote says — see AssetTile.
+  if (health !== "ok" && preview.playable) {
     return (
       <span
         className={cx(
@@ -57,10 +58,11 @@ export function AssetThumb({
     );
   }
 
-  if (video) {
+  /* A poster is a still even when the asset is a clip, so it cannot go in a <video>. */
+  if (video && preview.playable) {
     return (
       <video
-        src={src}
+        src={preview.src}
         className={className}
         muted
         playsInline
@@ -74,7 +76,7 @@ export function AssetThumb({
   return (
     /* eslint-disable-next-line @next/next/no-img-element */
     <img
-      src={src}
+      src={preview.src}
       alt={alt}
       className={className}
       onError={() => reportAssetError(url)}
