@@ -1,6 +1,7 @@
 "use client";
 
 import { reportAssetError, reportAssetOk, useAssetHealth } from "@/lib/asset-health";
+import { mediaSrc } from "@/lib/client-api";
 import { cx } from "./ui";
 
 /**
@@ -42,7 +43,7 @@ export function AssetThumb({
   if (video) {
     return (
       <video
-        src={url}
+        src={mediaSrc(url)}
         className={className}
         muted
         playsInline
@@ -56,7 +57,7 @@ export function AssetThumb({
   return (
     /* eslint-disable-next-line @next/next/no-img-element */
     <img
-      src={url}
+      src={mediaSrc(url)}
       alt={alt}
       className={className}
       onError={() => reportAssetError(url)}

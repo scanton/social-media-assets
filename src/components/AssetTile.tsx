@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { mediaSrc } from "@/lib/client-api";
 import { downloadUrl } from "@/lib/client-api";
 import type { Asset } from "@/lib/studio-types";
 import { isVideo } from "@/lib/studio-types";
@@ -75,7 +76,7 @@ export function AssetTile({
             </div>
           ) : video ? (
             <video
-              src={asset.url}
+              src={mediaSrc(asset.url)}
               className="h-full w-full object-cover"
               muted
               loop
@@ -92,7 +93,7 @@ export function AssetTile({
           ) : (
             /* eslint-disable-next-line @next/next/no-img-element */
             <img
-              src={asset.url}
+              src={mediaSrc(asset.url)}
               alt={asset.label}
               loading="lazy"
               onError={() => reportAssetError(asset.url)}
@@ -210,10 +211,10 @@ export function AssetTile({
         >
           <div className="flex max-h-full w-full max-w-4xl flex-col items-center gap-4" onClick={(e) => e.stopPropagation()}>
             {video ? (
-              <video src={asset.url} className="max-h-[76vh] w-auto rounded-2xl shadow-2xl" controls autoPlay loop playsInline />
+              <video src={mediaSrc(asset.url)} className="max-h-[76vh] w-auto rounded-2xl shadow-2xl" controls autoPlay loop playsInline />
             ) : (
               /* eslint-disable-next-line @next/next/no-img-element */
-              <img src={asset.url} alt={asset.label} className="max-h-[76vh] w-auto rounded-2xl shadow-2xl" />
+              <img src={mediaSrc(asset.url)} alt={asset.label} className="max-h-[76vh] w-auto rounded-2xl shadow-2xl" />
             )}
             <div className="flex flex-wrap items-center justify-center gap-2">
               <a

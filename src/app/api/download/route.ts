@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readReplicateKey } from "@/lib/replicate-server";
 import { currentUser } from "@/auth";
 
 /**
@@ -33,6 +34,35 @@ function hostAllowed(host: string) {
  * Nothing is written to disk — we don't retain assets.
  */
 /** Shared parse + SSRF guard. Returns the URL, or the response to send instead. */
+/**
+ * Replicate's files are not public, and its `urls.get` is not the bytes.
+ *
+ * An upload answers with `https://api.replicate.com/v1/files/{id}`, which is
+ * the file RESOURCE — ask it for the file and you get JSON metadata. The
+ * content is at the same path plus `/download`, and both need the caller's
+ * bearer token. fal's CDN needs neither: its URLs are public and are the bytes.
+ *
+ * So a Replicate asset cannot be put in an <img> or a <video> the way a fal one
+ * can, which is what "can't load right now" was: the browser has no way to send
+ * an Authorization header, and no way to say that is why it failed.
+ *
+ * Everything therefore comes through here, where the key lives. This is also
+ * why it matters that the health sweep uses the same route — an unauthenticated
+ * probe would come back 401/403, and 403 is on that sweep's list of "the host
+ * has dropped this", which would have quietly emptied the roll.
+ */
+const REPLICATE_API = "api.replicate.com";
+
+async function prepare(target: URL): Promise<{ url: URL; headers: HeadersInit }> {
+  if (target.hostname !== REPLICATE_API) return { url: target, headers: {} };
+
+  const url = new URL(target);
+  if (/^\/v1\/files\/[^/]+$/.test(url.pathname)) url.pathname += "/download";
+
+  const key = await readReplicateKey();
+  return { url, headers: key ? { Authorization: `Bearer ${key}` } : {} };
+}
+
 function resolveTarget(raw: string | null): URL | NextResponse {
   if (!raw) return NextResponse.json({ error: "url is required." }, { status: 400 });
 
@@ -65,10 +95,11 @@ export async function HEAD(req: Request) {
   if (target instanceof NextResponse) return new NextResponse(null, { status: target.status });
 
   try {
-    let upstream = await fetch(target, { method: "HEAD", cache: "no-store" });
+    const { url, headers } = await prepare(target);
+    let upstream = await fetch(url, { method: "HEAD", headers, cache: "no-store" });
     // Not every CDN answers HEAD; a single byte is enough to prove existence.
     if (upstream.status === 405 || upstream.status === 501) {
-      upstream = await fetch(target, { headers: { Range: "bytes=0-0" }, cache: "no-store" });
+      upstream = await fetch(url, { headers: { ...headers, Range: "bytes=0-0" }, cache: "no-store" });
     }
     return new NextResponse(null, { status: upstream.ok ? 204 : upstream.status });
   } catch {
@@ -82,6 +113,15 @@ export async function GET(req: Request) {
 
   const params = new URL(req.url).searchParams;
   const filename = (params.get("filename") ?? "heartstamp-asset").replace(/[^\w.\-]/g, "_");
+  /*
+   * `inline` serves the bytes for display rather than as a download.
+   *
+   * The same proxy does both jobs now: a Replicate asset cannot go straight
+   * into an <img> or a <video>, so its preview comes through here too — and a
+   * preview answered with `Content-Disposition: attachment` starts a download
+   * instead of drawing a picture.
+   */
+  const inline = params.get("inline") === "1";
 
   const target = resolveTarget(params.get("url"));
   if (target instanceof NextResponse) return target;
@@ -90,7 +130,8 @@ export async function GET(req: Request) {
   // connection surfaced as a bare 500 page where a download was expected.
   let upstream: Response;
   try {
-    upstream = await fetch(target, { cache: "no-store" });
+    const { url, headers } = await prepare(target);
+    upstream = await fetch(url, { headers, cache: "no-store" });
   } catch {
     return NextResponse.json({ error: "Could not reach the asset host." }, { status: 504 });
   }
@@ -101,8 +142,17 @@ export async function GET(req: Request) {
   return new NextResponse(upstream.body, {
     headers: {
       "Content-Type": upstream.headers.get("content-type") ?? "application/octet-stream",
-      "Content-Disposition": `attachment; filename="${filename}"`,
-      "Cache-Control": "no-store",
+      "Content-Disposition": inline
+        ? `inline; filename="${filename}"`
+        : `attachment; filename="${filename}"`,
+      /*
+       * A preview is fetched on every render of a tile; a download is fetched
+       * once. Letting the browser keep the former for a few minutes is the
+       * difference between a roll that paints instantly and one that re-fetches
+       * every thumbnail on every scroll. Private, because these are the
+       * caller's own assets behind their own key.
+       */
+      "Cache-Control": inline ? "private, max-age=300" : "no-store",
     },
   });
 }

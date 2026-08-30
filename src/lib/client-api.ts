@@ -152,6 +152,23 @@ export function downloadUrl(url: string, filename: string) {
   return `/api/download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
 }
 
+/**
+ * The URL to actually put in an <img> or a <video>.
+ *
+ * fal serves generated media from a public CDN, so its URLs go straight in.
+ * Replicate's files sit behind its API and need a bearer token, which a media
+ * element has no way to send — the browser just fails, and it cannot say why.
+ * That is what a freshly uploaded clip showing "can't load right now" was.
+ *
+ * Those go through our own proxy, which holds the key. Everything else is left
+ * alone: routing fal's CDN through our origin would spend function time to
+ * achieve nothing.
+ */
+export function mediaSrc(url: string): string {
+  if (!url.startsWith("https://api.replicate.com/")) return url;
+  return `/api/download?inline=1&url=${encodeURIComponent(url)}`;
+}
+
 /* --------------------------- fal key state --------------------------- */
 
 export async function getKeyState(): Promise<{ connected: boolean; hint: string | null }> {
