@@ -797,6 +797,18 @@ These are read from the model's own published schema, not written by us, which i
 
 The exact prompt string the model receives: your words first, unchanged, then a clause for each choice you made on the right. Shown in full so nothing is added on your behalf without you seeing it.
 
+### Aspect ratio
+
+Only shown for models with no aspect setting of their own — this asks for it in words instead. All optional, and off unless you pick one. Whatever you choose is added to your prompt as a clause after your own words.
+
+  - **16:9** — Landscape video
+  - **9:16** — Reels, TikTok, Shorts
+  - **1:1** — 1:1 square aspect ratio
+  - **4:5** — The tallest a feed post gets
+  - **4:3** — 4:3 aspect ratio
+  - **3:4** — 3:4 portrait aspect ratio
+  - **21:9** — 21:9 cinematic ultrawide aspect ratio
+
 ### Shot size
 
 How much of the subject is in frame. All optional, and off unless you pick one. Whatever you choose is added to your prompt as a clause after your own words.
@@ -915,4 +927,4 @@ How fast anything moves. All optional, and off unless you pick one. Whatever you
 `llms-full.txt` is generated from `src/lib/help.ts` and `src/lib/options.ts` in the
 HeartStamp Asset Studio codebase. Do not edit by hand; run `pnpm llms`.
 
-version: 15c59fe42dbe
+version: 2747073db5c4

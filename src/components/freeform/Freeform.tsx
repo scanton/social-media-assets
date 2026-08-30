@@ -5,7 +5,7 @@ import Link from "next/link";
 import { awaitJob, submitJob, uploadToFal } from "@/lib/client-api";
 import { useProvider } from "@/lib/use-provider";
 import { PROVIDERS, PROVIDER_IDS } from "@/lib/providers";
-import { HINT_GROUPS, compilePrompt, DEFAULT_NEGATIVE } from "@/lib/freeform";
+import { activeHintGroups, compilePrompt, DEFAULT_NEGATIVE } from "@/lib/freeform";
 import { addAssetsToRoll, removeAssetFromRoll, usePersisted } from "@/lib/persisted-store";
 import type { CatalogModel, InputSchema } from "@/lib/model-catalog";
 import type { Asset } from "@/lib/studio-types";
@@ -83,9 +83,18 @@ interface Result {
   contentType?: string;
 }
 
-/** Finds the media in whatever shape a model returns. */
+/**
+ * Finds the media in whatever shape a model returns.
+ *
+ * Deduplicated by URL. This walks every `{ url }` in the response, which is
+ * what lets it work with a model nobody anticipated — and also means any shape
+ * that mentions one asset twice would put it in the roll twice. That is not
+ * hypothetical: it happened the first time a provider's output was translated
+ * into two keys pointing at the same file.
+ */
 function readResult(data: unknown): Result[] {
   const out: Result[] = [];
+  const seen = new Set<string>();
   const walk = (node: unknown) => {
     if (!node || typeof node !== "object") return;
     if (Array.isArray(node)) return node.forEach(walk);
@@ -93,7 +102,10 @@ function readResult(data: unknown): Result[] {
     if (typeof o.url === "string") {
       const t = typeof o.content_type === "string" ? o.content_type : "";
       const isVideo = t.startsWith("video/") || /\.(mp4|webm|mov)(\?|$)/i.test(o.url);
-      out.push({ url: o.url, kind: isVideo ? "video" : "image", contentType: t || undefined });
+      if (!seen.has(o.url)) {
+        seen.add(o.url);
+        out.push({ url: o.url, kind: isVideo ? "video" : "image", contentType: t || undefined });
+      }
       return;
     }
     Object.values(o).forEach(walk);
@@ -236,13 +248,13 @@ export function Freeform() {
   }, [model, schemaBy]);
 
   const finalPrompt = useMemo(
-    () => compilePrompt(prompt, picks, isVideo),
-    [prompt, picks, isVideo],
+    () => compilePrompt(prompt, picks, isVideo, schema),
+    [prompt, picks, isVideo, schema],
   );
 
   const groups = useMemo(
-    () => HINT_GROUPS.filter((g) => g.media === "both" || isVideo),
-    [isVideo],
+    () => activeHintGroups(isVideo, schema),
+    [isVideo, schema],
   );
 
   const run = useCallback(async () => {

@@ -37,9 +37,40 @@ export interface HintGroup {
   media: "both" | "video";
   blurb: string;
   options: Hint[];
+  /**
+   * Input names that make this group unnecessary.
+   *
+   * A model that takes an aspect ratio as a real parameter should be given one,
+   * not asked for it in words: a parameter is honoured exactly and a sentence
+   * is a suggestion. So the group appears only for models that have no such
+   * input, and asking twice never happens.
+   */
+  redundantWith?: string[];
 }
 
 export const HINT_GROUPS: HintGroup[] = [
+  {
+    id: "aspect",
+    label: "Aspect ratio",
+    media: "both",
+    blurb: "Only shown for models with no aspect setting of their own — this asks for it in words instead.",
+    /*
+     * Every name a model might use for the same idea. `image_size` is fal's,
+     * `aspect_ratio` is common to both, and `size` / `width` / `height` are how
+     * the seedream family spells it. A model exposing any of them gets the real
+     * control and not this.
+     */
+    redundantWith: ["aspect_ratio", "image_size", "size", "width", "height", "resolution"],
+    options: [
+      { id: "16:9", label: "16:9", prompt: "16:9 widescreen aspect ratio", hint: "Landscape video" },
+      { id: "9:16", label: "9:16", prompt: "9:16 vertical aspect ratio", hint: "Reels, TikTok, Shorts" },
+      { id: "1:1", label: "1:1", prompt: "1:1 square aspect ratio" },
+      { id: "4:5", label: "4:5", prompt: "4:5 portrait aspect ratio", hint: "The tallest a feed post gets" },
+      { id: "4:3", label: "4:3", prompt: "4:3 aspect ratio" },
+      { id: "3:4", label: "3:4", prompt: "3:4 portrait aspect ratio" },
+      { id: "21:9", label: "21:9", prompt: "21:9 cinematic ultrawide aspect ratio" },
+    ],
+  },
   {
     id: "shot",
     label: "Shot size",
@@ -190,10 +221,40 @@ export const HINT_GROUPS: HintGroup[] = [
  * are listed, which runs subject, framing, light, finish, then motion, roughly
  * the order a director would describe a shot in.
  */
-export function compilePrompt(prompt: string, picks: Record<string, string>, isVideo: boolean): string {
+/**
+ * The groups worth showing for this model.
+ *
+ * Used by the page to render the controls and by the compiler to decide what to
+ * append, so a group that is hidden cannot still be contributing a clause from
+ * a pick made while a different model was selected.
+ */
+export function activeHintGroups(
+  isVideo: boolean,
+  schema: { properties: Record<string, unknown> } | null,
+): HintGroup[] {
+  return HINT_GROUPS.filter((g) => {
+    if (g.media === "video" && !isVideo) return false;
+    if (!g.redundantWith) return true;
+    /*
+     * Hidden until the schema is known, rather than shown until proven
+     * unnecessary. Most models do have an aspect control, so the optimistic
+     * version showed the group and then took it away a moment later — and a
+     * control that appears is easier to notice than one that vanishes while you
+     * are reading it.
+     */
+    if (!schema) return false;
+    return !g.redundantWith.some((name) => Boolean(schema.properties?.[name]));
+  });
+}
+
+export function compilePrompt(
+  prompt: string,
+  picks: Record<string, string>,
+  isVideo: boolean,
+  schema: { properties: Record<string, unknown> } | null = null,
+): string {
   const clauses: string[] = [];
-  for (const group of HINT_GROUPS) {
-    if (group.media === "video" && !isVideo) continue;
+  for (const group of activeHintGroups(isVideo, schema)) {
     const chosen = group.options.find((o) => o.id === picks[group.id]);
     if (chosen) clauses.push(chosen.prompt);
   }

@@ -280,6 +280,7 @@ which choice to pick.
 - **Negative prompt** — What to keep out: extra fingers, watermarks, text, blur.
 - **Model settings** — These are read from the model's own published schema, not written by us, which is why they change completely when you switch models and why the wording is sometimes the vendor's rather than ours.
 - **What gets sent** — The exact prompt string the model receives: your words first, unchanged, then a clause for each choice you made on the right.
+- **Aspect ratio** — Only shown for models with no aspect setting of their own — this asks for it in words instead.
 - **Shot size** — How much of the subject is in frame.
 - **Camera angle** — Where the camera sits relative to the subject.
 - **Lighting** — The single biggest lever on how a shot feels.
@@ -295,4 +296,4 @@ which choice to pick.
 `llms.txt` is generated from `src/lib/help.ts` and `src/lib/options.ts` in the
 HeartStamp Asset Studio codebase. Do not edit by hand; run `pnpm llms`.
 
-version: b846da9f2838
+version: 27b4be74dc1a

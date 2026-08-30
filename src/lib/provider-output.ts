@@ -18,13 +18,35 @@ export function normaliseOutput(output: unknown): unknown {
   const urls = collectUrls(output);
   if (!urls.length) return output;
 
-  const video = urls.find((u) => /\.(mp4|mov|webm|m4v)(\?|$)/i.test(u));
-  return {
-    images: urls.map((url) => ({ url })),
-    video: { url: video ?? urls[0] },
-    /* Kept so a caller that knows better can read past the translation. */
-    output,
-  };
+  /*
+   * Each URL appears under exactly one key.
+   *
+   * The first version filled both — `images` for callers looking for stills and
+   * `video` for callers looking for clips — on the theory that the step reading
+   * it knows which it wanted. The freeform page does not read a key: it walks
+   * whatever it is given and collects every `{ url }` it finds, which is what
+   * makes it work with any model. So one render came back as two identical
+   * tiles in the roll.
+   *
+   * Splitting by what the URL actually is costs nothing and cannot double: an
+   * image step finds its images, a video step finds its video, and a walker
+   * finds each asset once. The raw output is not passed through either, for the
+   * same reason — it would be a third copy of the same URLs.
+   */
+  const isVideo = (u: string) => /\.(mp4|mov|webm|m4v)(\?|$)/i.test(u);
+  const videos = urls.filter(isVideo);
+  const images = urls.filter((u) => !isVideo(u));
+
+  const out: { images?: { url: string }[]; video?: { url: string } } = {};
+  if (images.length) out.images = images.map((url) => ({ url }));
+  if (videos.length) out.video = { url: videos[0] };
+  /*
+   * A single asset whose extension says nothing — a signed URL with no suffix,
+   * which Replicate does hand out — is offered as an image rather than dropped.
+   * `collectUrls` found it, so something is there.
+   */
+  if (!out.images && !out.video) out.images = urls.map((url) => ({ url }));
+  return out;
 }
 
 function collectUrls(value: unknown, depth = 0): string[] {
