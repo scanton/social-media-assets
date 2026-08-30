@@ -55,12 +55,24 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       {/*
-       * Only on our own page. Embedded, the host owns these elements and this
-       * tag is simply not shipped — which is why it is here and not in
-       * globals.css, where the scoper would rewrite `html` to our root and it
-       * would quietly stop meaning anything.
+       * The only rules in the app that are allowed to say `html` and `body`.
+       *
+       * Not in globals.css, where postcss-scope-studio would rewrite both to
+       * our root id and they would quietly stop meaning anything. And only ever
+       * on our own page: embedded, the host owns these two elements, this
+       * layout does not run, and nothing here reaches them.
+       *
+       * `precedence` and `href` are not decoration. React 19 will not render a
+       * bare <style> outside <head> because it cannot know where in the
+       * cascade to put it or whether it has already been inserted; given both,
+       * it hoists this into <head> and dedupes it by href. The href is an
+       * identifier rather than a URL and nothing fetches it — it only has to be
+       * unique among hoisted styles, and "document-reset" is what this is.
        */}
-      <style>{"html,body{height:100%}body{margin:0;background:#fff}"}</style>
+      <style
+        precedence="default"
+        href="heartstamp-document-reset"
+      >{"html,body{height:100%}body{margin:0;background:#fff}"}</style>
       <body>
         {/*
          * Two elements on purpose.
