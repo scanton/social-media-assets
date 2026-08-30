@@ -187,11 +187,11 @@ export function Freeform() {
     chosenBy[catKey] ??
     (models.some((m) => m.id === preferred) ? preferred : models[0]?.id) ??
     "";
-  const schema = schemaBy[model] ?? null;
+  const schema = schemaBy[`${provider}:${model}`] ?? null;
   const current = models.find((m) => m.id === model);
   // Memoised because it feeds a useCallback: a fresh {} each render would make
   // that callback new each render too.
-  const values = useMemo(() => valuesBy[model] ?? {}, [valuesBy, model]);
+  const values = useMemo(() => valuesBy[`${provider}:${model}`] ?? {}, [valuesBy, provider, model]);
   // Derived rather than a flag: "not fetched yet" is exactly "not in the map".
   const loadingModels = modelsBy[catKey] === undefined;
 
@@ -207,7 +207,17 @@ export function Freeform() {
   useEffect(() => {
     if (modelsBy[catKey]) return;
     let cancelled = false;
-    fetch(`/api/fal/models?category=${category}`)
+    /*
+     * `provider` is in the URL so the cache key is honest.
+     *
+     * The server reads it from the cookie and ignores this — but the response
+     * is cacheable, and without it fal and Replicate share one URL for two
+     * different answers. Model ids overlap between them (`openai/gpt-image-2`
+     * exists on both), so the browser would happily replay one provider's
+     * catalogue for the other, and nothing about that failure looks like a
+     * cache: it looks like the wrong models, or controls that will not draw.
+     */
+    fetch(`/api/fal/models?category=${category}&provider=${provider}`)
       .then((r) => (r.ok ? r.json() : { models: [] }))
       .then((body: { models?: CatalogModel[] }) => {
         if (!cancelled) setModelsBy((s) => ({ ...s, [catKey]: body.models ?? [] }));
@@ -218,17 +228,19 @@ export function Freeform() {
     return () => {
       cancelled = true;
     };
-  }, [category, catKey, modelsBy]);
+  }, [category, catKey, provider, modelsBy]);
 
   /* ---- the chosen model's own knobs, once per model ---- */
+  const schemaKey = `${provider}:${model}`;
   useEffect(() => {
-    if (!model || schemaBy[model]) return;
+    if (!model || schemaBy[schemaKey]) return;
     let cancelled = false;
-    fetch(`/api/fal/schema?model=${encodeURIComponent(model)}`)
+    // Same reason as the catalogue above: one URL must not mean two schemas.
+    fetch(`/api/fal/schema?model=${encodeURIComponent(model)}&provider=${provider}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((body: { schema?: InputSchema } | null) => {
         if (cancelled || !body?.schema) return;
-        setSchemaBy((s) => ({ ...s, [model]: body.schema as InputSchema }));
+        setSchemaBy((s) => ({ ...s, [schemaKey]: body.schema as InputSchema }));
         // Start from the model's own defaults rather than blank, so a render
         // works before anything has been touched — then apply ours over the
         // top for the few fields we disagree with. See HOUSE_DEFAULTS.
@@ -239,13 +251,13 @@ export function Freeform() {
         for (const [k, v] of Object.entries(HOUSE_DEFAULTS[model] ?? {})) {
           if (k in body.schema.properties) next[k] = v;
         }
-        setValuesBy((s) => (s[model] ? s : { ...s, [model]: next }));
+        setValuesBy((s) => (s[schemaKey] ? s : { ...s, [schemaKey]: next }));
       })
       .catch(() => undefined);
     return () => {
       cancelled = true;
     };
-  }, [model, schemaBy]);
+  }, [model, provider, schemaKey, schemaBy]);
 
   const finalPrompt = useMemo(
     () => compilePrompt(prompt, picks, isVideo, schema),
