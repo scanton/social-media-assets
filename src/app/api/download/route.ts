@@ -56,11 +56,21 @@ const REPLICATE_API = "api.replicate.com";
 async function prepare(target: URL): Promise<{ url: URL; headers: HeadersInit }> {
   if (target.hostname !== REPLICATE_API) return { url: target, headers: {} };
 
-  const url = new URL(target);
-  if (/^\/v1\/files\/[^/]+$/.test(url.pathname)) url.pathname += "/download";
-
+  /*
+   * Authenticated, but not rewritten to /download.
+   *
+   * That endpoint returns the bytes and needs `owner`, `expiry` and an HMAC
+   * signature made with the Files API signing secret — a different credential
+   * from the API token, and not one a caller holds. Appending it just produces
+   * "Missing query parameters".
+   *
+   * So this fetches the resource, which answers 200 with the file's metadata.
+   * That is useless for display and exactly right for the health sweep, which
+   * only needs to know whether the file still exists — and which would
+   * otherwise read every Replicate asset as an error.
+   */
   const key = await readReplicateKey();
-  return { url, headers: key ? { Authorization: `Bearer ${key}` } : {} };
+  return { url: target, headers: key ? { Authorization: `Bearer ${key}` } : {} };
 }
 
 function resolveTarget(raw: string | null): URL | NextResponse {

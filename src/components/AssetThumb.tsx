@@ -25,6 +25,23 @@ export function AssetThumb({
   video?: boolean;
 }) {
   const health = useAssetHealth(url);
+  /*
+   * Empty means there is nothing that CAN be shown — a Replicate file with no
+   * thumbnail kept for it. Rendering an element with an empty src just makes
+   * the browser fetch the page again and report a decode failure, so the
+   * placeholder is drawn directly.
+   */
+  const src = mediaSrc(url);
+  if (!src) {
+    return (
+      <span
+        className={cx("grid shrink-0 place-items-center bg-canvas-2 text-ink-faint", className)}
+        title="Staged on Replicate, which serves no preview"
+      >
+        <span className="text-xs opacity-60">🎞️</span>
+      </span>
+    );
+  }
 
   if (health !== "ok") {
     return (
@@ -43,7 +60,7 @@ export function AssetThumb({
   if (video) {
     return (
       <video
-        src={mediaSrc(url)}
+        src={src}
         className={className}
         muted
         playsInline
@@ -57,7 +74,7 @@ export function AssetThumb({
   return (
     /* eslint-disable-next-line @next/next/no-img-element */
     <img
-      src={mediaSrc(url)}
+      src={src}
       alt={alt}
       className={className}
       onError={() => reportAssetError(url)}

@@ -1,6 +1,7 @@
 "use client";
 
 import type { ProviderId } from "@/lib/providers";
+import { capturePreview, previewFor, rememberPreview } from "@/lib/local-preview";
 
 export class NoKeyError extends Error {
   constructor(message = "Add your fal.ai key to start generating.") {
@@ -79,6 +80,12 @@ export async function uploadToFal(file: File, onProgress?: (pct: number) => void
       xhr.send(body);
     });
     onProgress?.(100);
+    /*
+     * Captured after the upload rather than before: an upload that fails should
+     * not leave a thumbnail behind for a file that is not there.
+     */
+    const poster = await capturePreview(file);
+    if (poster) rememberPreview(url, poster);
     return url;
   }
 
@@ -166,7 +173,17 @@ export function downloadUrl(url: string, filename: string) {
  */
 export function mediaSrc(url: string): string {
   if (!url.startsWith("https://api.replicate.com/")) return url;
-  return `/api/download?inline=1&url=${encodeURIComponent(url)}`;
+  /*
+   * Nothing can display a Replicate file. Its URLs need the account token, the
+   * one it gives out returns metadata rather than bytes, and the endpoint that
+   * does return bytes wants an HMAC signed with a secret that is not the API
+   * token — so our own server cannot fetch them either, and proxying is not an
+   * option that exists.
+   *
+   * The thumbnail kept when the file was chosen is the only thing there is.
+   * Empty when there is none, which the tile already knows how to draw.
+   */
+  return previewFor(url) ?? "";
 }
 
 /* --------------------------- fal key state --------------------------- */
