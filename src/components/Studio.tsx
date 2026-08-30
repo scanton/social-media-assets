@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { getKeyState } from "@/lib/client-api";
+import { readKeys } from "@/lib/client-api";
 import { signOutAction } from "@/app/actions";
 import type { StudioUser } from "@/auth";
 import { BRAND } from "@/lib/brand";
@@ -11,6 +11,8 @@ import { SURFACES, type SurfaceKind } from "@/lib/options";
 import { sweepAssets, useExpiredUrls } from "@/lib/asset-health";
 import { StudioProvider, useStudio } from "./studio-store";
 import { KeyDialog } from "./KeyDialog";
+import { useProvider } from "@/lib/use-provider";
+import { PROVIDERS, PROVIDER_IDS, type ProviderId } from "@/lib/providers";
 import { AssetTile } from "./AssetTile";
 import { Step1Card } from "./steps/Step1Card";
 import { Step2Scene } from "./steps/Step2Scene";
@@ -68,16 +70,26 @@ function StudioShell({
 }) {
   const s = useStudio();
   const [rollOpen, setRollOpen] = useState(false);
+  const { provider, setProvider } = useProvider();
 
+  /*
+   * The header shows the ACTIVE provider's key, so this re-reads on a switch.
+   * Both keys live in their own cookies and neither is disturbed by the other —
+   * switching to Replicate and back finds the fal key still there.
+   *
+   * The dialog opens by itself only when the provider you are pointed at has no
+   * key, which is the moment it is actually needed.
+   */
   useEffect(() => {
-    void getKeyState().then((state) => {
-      s.setKeyConnected(state.connected);
-      s.setKeyHint(state.hint);
-      if (!state.connected) s.setKeyDialogOpen(true);
+    void readKeys().then((state) => {
+      const mine = state.providers?.[provider] ?? { connected: false, hint: null };
+      s.setKeyConnected(mine.connected);
+      s.setKeyHint(mine.hint);
+      if (!mine.connected) s.setKeyDialogOpen(true);
     });
-    // Runs once on mount; setters are stable.
+    // Setters are stable; the provider is the only real dependency.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [provider]);
 
   const steps = STEPS[s.surface];
   const done: Record<number, boolean> =
@@ -142,10 +154,45 @@ function StudioShell({
               )}
             </button>
 
+            {/*
+              * Which provider the studio is pointed at.
+              *
+              * Next to the key button because the two are one thought: the key
+              * shown belongs to the provider selected here, and switching
+              * changes which catalogue every picker offers.
+              */}
+            <div
+              role="group"
+              aria-label="Generation provider"
+              className="flex items-center rounded-full border border-hairline bg-canvas-2/60 p-0.5"
+            >
+              {PROVIDER_IDS.map((id) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => void setProvider(id as ProviderId)}
+                  aria-pressed={provider === id}
+                  title={`Run generations on ${PROVIDERS[id].label}`}
+                  className={cx(
+                    "focus-stamp rounded-full px-2.5 py-1.5 text-[11px] font-bold transition-all",
+                    provider === id
+                      ? "bg-white text-ink shadow-sm"
+                      : "text-ink-faint hover:text-ink",
+                  )}
+                >
+                  {PROVIDERS[id].label}
+                </button>
+              ))}
+            </div>
+
             <button
               type="button"
               onClick={s.openKeyDialog}
-              title={s.keyConnected ? `fal key ${s.keyHint ?? "connected"}` : "Add your fal.ai key"}
+              title={
+                s.keyConnected
+                  ? `${PROVIDERS[provider].label} key ${s.keyHint ?? "connected"}`
+                  : `Add your ${PROVIDERS[provider].label} key`
+              }
               className={cx(
                 "focus-stamp flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-xs font-bold transition-all hover:-translate-y-0.5",
                 s.keyConnected
@@ -159,8 +206,10 @@ function StudioShell({
                   s.keyConnected ? "bg-emerald-500" : "bg-white",
                 )}
               />
-              <span className="hidden sm:inline">{s.keyConnected ? "fal connected" : "Add fal key"}</span>
-              <span className="sm:hidden">fal</span>
+              <span className="hidden sm:inline">
+                {s.keyConnected ? "key connected" : `Add ${PROVIDERS[provider].label} key`}
+              </span>
+              <span className="sm:hidden">key</span>
             </button>
 
 {/* No account UI while AUTH_ENABLED is false — see src/auth.ts */}
@@ -373,6 +422,7 @@ function StudioShell({
       <KeyDialog
         open={s.keyDialogOpen}
         onClose={() => s.setKeyDialogOpen(false)}
+        provider={provider}
         connected={s.keyConnected}
         hint={s.keyHint}
         onSaved={(hint) => {

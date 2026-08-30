@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { clearKey, saveKey } from "@/lib/client-api";
+import { PROVIDERS, type ProviderId } from "@/lib/providers";
 import { Button, cx } from "./ui";
 
 type DialogProps = {
@@ -9,6 +10,8 @@ type DialogProps = {
   onSaved: (hint: string | null) => void;
   connected: boolean;
   hint: string | null;
+  /** Whose key is being set. The dialog is otherwise identical for both. */
+  provider: ProviderId;
 };
 
 /**
@@ -20,7 +23,8 @@ export function KeyDialog({ open, ...props }: DialogProps & { open: boolean }) {
   return <KeyDialogBody {...props} />;
 }
 
-function KeyDialogBody({ onClose, onSaved, connected, hint }: DialogProps) {
+function KeyDialogBody({ onClose, onSaved, connected, hint, provider }: DialogProps) {
+  const spec = PROVIDERS[provider];
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,7 +39,7 @@ function KeyDialogBody({ onClose, onSaved, connected, hint }: DialogProps) {
     setBusy(true);
     setError(null);
     try {
-      const res = await saveKey(value);
+      const res = await saveKey(value, provider);
       onSaved(res.hint);
       onClose();
     } catch (err) {
@@ -47,7 +51,7 @@ function KeyDialogBody({ onClose, onSaved, connected, hint }: DialogProps) {
 
   const disconnect = async () => {
     setBusy(true);
-    await clearKey();
+    await clearKey(provider);
     onSaved(null);
     setBusy(false);
     onClose();
@@ -59,7 +63,7 @@ function KeyDialogBody({ onClose, onSaved, connected, hint }: DialogProps) {
       onClick={onClose}
       role="dialog"
       aria-modal="true"
-      aria-label="fal.ai API key"
+      aria-label={`${spec.label} API key`}
     >
       <div
         className="card-surface w-full max-w-lg animate-pop-in p-7"
@@ -68,11 +72,11 @@ function KeyDialogBody({ onClose, onSaved, connected, hint }: DialogProps) {
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="font-display text-2xl font-extrabold tracking-tight text-ink">
-              Your fal.ai key 🔑
+              Your {spec.label} key 🔑
             </h2>
             <p className="mt-1.5 text-sm leading-relaxed text-ink-soft">
-              Generations run on your own fal account. The key is stored in a secure, http-only cookie on
-              this browser — it never touches our database.
+              Generations run on your own {spec.label} account. The key is stored in a secure,
+              http-only cookie on this browser — it never touches our database.
             </p>
           </div>
           <button
@@ -103,7 +107,7 @@ function KeyDialogBody({ onClose, onSaved, connected, hint }: DialogProps) {
             value={value}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && value.trim() && submit()}
-            placeholder="a1b2c3d4-…:9f8e7d6c5b4a…"
+            placeholder={spec.keyExample}
             className={cx(
               "focus-stamp mt-1.5 w-full rounded-2xl border bg-white px-4 py-3 font-mono text-sm transition-all",
               error ? "border-stamp-400" : "border-hairline focus:border-stamp-600",
@@ -113,12 +117,12 @@ function KeyDialogBody({ onClose, onSaved, connected, hint }: DialogProps) {
           <p className="mt-2.5 text-xs leading-relaxed text-ink-faint">
             Grab one at{" "}
             <a
-              href="https://fal.ai/dashboard/keys"
+              href={spec.keysUrl}
               target="_blank"
               rel="noreferrer noopener"
               className="font-semibold text-stamp-600 underline decoration-stamp-200 underline-offset-2 hover:decoration-stamp-600"
             >
-              fal.ai/dashboard/keys
+              {spec.keysUrl.replace("https://", "")}
             </a>
             .
           </p>

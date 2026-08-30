@@ -1,5 +1,7 @@
 "use client";
 
+import type { ProviderId } from "@/lib/providers";
+
 export class NoKeyError extends Error {
   constructor(message = "Add your fal.ai key to start generating.") {
     super(message);
@@ -19,8 +21,16 @@ async function readError(res: Response): Promise<never> {
 }
 
 /**
- * Uploads straight to fal's CDN. Our server only mints the signed URL, so file
- * size is bounded by fal (90 MB single-shot), not by our serverless limits.
+ * Puts a file where the active provider can read it, and returns its URL.
+ *
+ * Two routes, because the providers differ in a way that cannot be papered
+ * over. fal mints a signed URL and the bytes go straight from the browser to
+ * its CDN, so a 40 MB card animation never touches our origin. Replicate
+ * authenticates its upload with the token, which is httpOnly and therefore not
+ * something the browser can send — so those bytes go through our server.
+ *
+ * The server says which; this only has to do as it is told. Progress is
+ * reported for both, since the slow one is the case that needs it.
  */
 export async function uploadToFal(file: File, onProgress?: (pct: number) => void): Promise<string> {
   const init = await fetch("/api/fal/upload-url", {
@@ -32,7 +42,45 @@ export async function uploadToFal(file: File, onProgress?: (pct: number) => void
     }),
   });
   if (!init.ok) await readError(init);
-  const { uploadUrl, fileUrl } = (await init.json()) as { uploadUrl: string; fileUrl: string };
+  const { mode, uploadUrl, fileUrl } = (await init.json()) as {
+    mode?: "direct" | "proxy";
+    uploadUrl: string;
+    fileUrl: string | null;
+  };
+
+  if (mode === "proxy") {
+    const body = new FormData();
+    body.append("file", file, file.name || `upload-${Date.now()}`);
+    const url = await new Promise<string>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", uploadUrl);
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100));
+      };
+      xhr.onload = () => {
+        if (xhr.status < 200 || xhr.status >= 300) {
+          let msg = `Upload failed (${xhr.status}).`;
+          try {
+            const j = JSON.parse(xhr.responseText) as { error?: string; detail?: string };
+            msg = [j.error, j.detail].filter(Boolean).join(" — ") || msg;
+          } catch {
+            /* not JSON */
+          }
+          reject(new Error(msg));
+          return;
+        }
+        try {
+          resolve((JSON.parse(xhr.responseText) as { fileUrl: string }).fileUrl);
+        } catch {
+          reject(new Error("The upload succeeded but returned nothing usable."));
+        }
+      };
+      xhr.onerror = () => reject(new Error("Upload failed — check your connection."));
+      xhr.send(body);
+    });
+    onProgress?.(100);
+    return url;
+  }
 
   await new Promise<void>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -50,7 +98,7 @@ export async function uploadToFal(file: File, onProgress?: (pct: number) => void
   });
 
   onProgress?.(100);
-  return fileUrl;
+  return fileUrl as string;
 }
 
 /**
@@ -112,18 +160,29 @@ export async function getKeyState(): Promise<{ connected: boolean; hint: string 
   return res.json();
 }
 
-export async function saveKey(key: string) {
+export async function saveKey(key: string, provider: ProviderId = "fal") {
   const res = await fetch("/api/key", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ key }),
+    body: JSON.stringify({ key, provider }),
   });
   if (!res.ok) await readError(res);
   return res.json() as Promise<{ connected: boolean; hint: string }>;
 }
 
-export async function clearKey() {
-  await fetch("/api/key", { method: "DELETE" });
+export async function clearKey(provider: ProviderId = "fal") {
+  await fetch(`/api/key?provider=${provider}`, { method: "DELETE" });
+}
+
+/** The connection state of every provider, for the header and the key dialog. */
+export async function readKeys() {
+  const res = await fetch("/api/key", { cache: "no-store" });
+  if (!res.ok) await readError(res);
+  return res.json() as Promise<{
+    providers: Record<ProviderId, { connected: boolean; hint: string | null }>;
+    connected: boolean;
+    hint: string | null;
+  }>;
 }
 
 /* ----------------------------- utilities ----------------------------- */

@@ -3,9 +3,13 @@ import { cookies } from "next/headers";
 import { createFalClient } from "@fal-ai/client";
 import { FAL_COOKIE } from "@/lib/brand";
 
+/**
+ * Shared by both providers: the message differs only in whose key is missing,
+ * and the route layer turns either one into the same 428 the key dialog opens on.
+ */
 export class MissingKeyError extends Error {
-  constructor() {
-    super("No fal.ai API key on this browser. Add one in the studio header.");
+  constructor(provider = "fal.ai") {
+    super(`No ${provider} API key on this browser. Add one in the studio header.`);
     this.name = "MissingKeyError";
   }
 }

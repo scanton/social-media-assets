@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useSyncExternalStore } from "react";
+import { useProvider } from "@/lib/use-provider";
+import type { ProviderId } from "@/lib/providers";
 import {
   MODEL_COOKIE,
   MODEL_SLOTS,
@@ -8,6 +10,8 @@ import {
   resolveModel,
   type ModelChoices,
   type ModelSlotId,
+  choiceKey,
+  slotFallback,
 } from "@/lib/models";
 import type { ModelSupports } from "@/lib/model-input";
 
@@ -56,12 +60,13 @@ export function useModelChoices() {
     () => EMPTY,
   );
 
-  const setChoice = useCallback((slot: ModelSlotId, modelId: string | null) => {
+  const setChoice = useCallback((slot: ModelSlotId, modelId: string | null, forProvider: ProviderId) => {
     const next: ModelChoices = { ...snapshot };
+    const key = choiceKey(slot, forProvider);
     // Clearing writes nothing rather than pinning today's default, so a future
     // change to the shipped default reaches anyone who never chose.
-    if (!modelId || modelId === MODEL_SLOTS[slot].fallback) delete next[slot];
-    else next[slot] = modelId;
+    if (!modelId || modelId === slotFallback(MODEL_SLOTS[slot], forProvider)) delete next[key];
+    else next[key] = modelId;
 
     snapshot = next;
     document.cookie = `${MODEL_COOKIE}=${encodeURIComponent(
@@ -70,9 +75,16 @@ export function useModelChoices() {
     listeners.forEach((l) => l());
   }, []);
 
+  /*
+   * The default model differs per provider, so `modelFor` has to know which one
+   * is active — a stored choice still wins, but an unset slot resolves to that
+   * provider's own default rather than fal's.
+   */
+  const { provider } = useProvider();
+
   const modelFor = useCallback(
-    (slot: ModelSlotId) => resolveModel(choices, slot),
-    [choices],
+    (slot: ModelSlotId) => resolveModel(choices, slot, provider),
+    [choices, provider],
   );
 
   return { choices, setChoice, modelFor };

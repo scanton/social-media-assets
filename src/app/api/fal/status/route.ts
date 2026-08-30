@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { currentUser } from "@/auth";
-import { falForRequest } from "@/lib/fal-server";
+import { activeProvider } from "@/lib/active-provider";
+import { statusFromProvider } from "@/lib/generate";
 import { errorResponse } from "@/lib/api-errors";
 
 /**
@@ -32,18 +33,7 @@ export async function GET(req: Request) {
   }
 
   try {
-    const fal = await falForRequest();
-    const status = await fal.queue.status(model, { requestId, logs: true });
-
-    if (status.status !== "COMPLETED") {
-      return NextResponse.json({
-        status: status.status,
-        queuePosition: "queue_position" in status ? status.queue_position : undefined,
-      });
-    }
-
-    const result = await fal.queue.result(model, { requestId });
-    return NextResponse.json({ status: "COMPLETED", data: result.data });
+    return NextResponse.json(await statusFromProvider(await activeProvider(), model, requestId));
   } catch (err) {
     return errorResponse(err);
   }

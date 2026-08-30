@@ -107,6 +107,64 @@ header. Access is restricted to **@heartstamp.com**: the `hd` parameter only bia
 account chooser — the actual gate is the `signIn` callback, which verifies the Workspace domain
 (`hd` claim) or a verified `@heartstamp.com` address.
 
+## Two providers
+
+The studio runs against **fal.ai** or **Replicate**, switched from the toggle in
+the header. One is active at a time; the choice lives in a readable cookie that
+every request reads, so the server and the browser cannot disagree about it.
+
+Deliberately a toggle rather than automatic failover. A render that fails
+halfway is ambiguous, retrying it elsewhere can bill twice for one asset, and an
+asset roll that does not record which provider drew what is a roll nobody can
+reason about.
+
+**Each provider keeps its own key and its own model choices.** Switching to
+Replicate and back finds the fal key still connected and the fal model still
+selected, because the two catalogues share no model ids — a stored choice is
+keyed `provider:slot`, and a bare `slot` key is read as fal's so nothing set
+before this change was lost.
+
+### What differs, and where it is absorbed
+
+Most of it is naming, and `lib/model-input.ts` already fits the studio's one
+canonical payload to whatever schema it is handed. Both providers publish JSON
+Schema, so the adapter did not have to learn anything new.
+
+| | fal | Replicate |
+| --- | --- | --- |
+| auth | `Key <k>` | `Bearer <k>` |
+| submit | queue | `POST /v1/predictions`, or `/v1/models/{o}/{n}/predictions` for official models |
+| poll | `COMPLETED` | `succeeded`, plus `failed` / `canceled` / `aborted` |
+| input schema | one OpenAPI doc per endpoint | `latest_version.openapi_schema` |
+| discovery | categories | curated collections |
+| upload | signed URL, browser PUTs direct | multipart through our server |
+
+Four of those are worth knowing about:
+
+**Terminal failures.** Replicate can end a prediction three ways fal's client
+types have no name for, and the poll loop is unbounded and only stops on
+`COMPLETED`. Reported as just another status, a failed prediction would spin
+forever behind a progress bar. `lib/generate.ts` turns them into thrown errors.
+
+**Output shape.** fal answers `{ images: [{ url }] }` or `{ video: { url } }`
+and every `toAssets` handler is written against that; Replicate answers with the
+bare thing — a URL, an array of them, or an object with one inside.
+[`lib/provider-output.ts`](src/lib/provider-output.ts) translates, so one place
+knows the difference instead of every call site growing a branch.
+
+**Upload.** fal hands out a signed URL and a 40 MB card animation never touches
+our origin. Replicate authenticates its upload with the token, which is httpOnly
+precisely so the browser never holds it — so those bytes go through
+[`/api/upload`](src/app/api/upload/route.ts), bounded by the platform's request
+body limit and by Replicate's own 100 MB cap.
+
+**The models are not the same models.** Each slot names its own Replicate
+default in [`lib/models.ts`](src/lib/models.ts), chosen by reading published
+schemas rather than by matching names — `openai/gpt-image-2` on Replicate is
+text-to-image only and has no image input at all, and `bytedance/seedance-2.5`
+there has no reference arrays, so the two video steps land on different seedance
+versions on Replicate and the same one on fal.
+
 ## The fal.ai key
 
 Each user brings their own key, so generations bill to their fal account.

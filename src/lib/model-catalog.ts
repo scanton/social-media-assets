@@ -1,6 +1,11 @@
 import "server-only";
-import { MODEL_SLOTS, type ModelSlot, type ModelSlotId, inputAliases } from "@/lib/models";
+import { MODEL_SLOTS, slotFallback, type ModelSlot, type ModelSlotId, inputAliases } from "@/lib/models";
 import { readClipLimit, readSupports, type ModelSupports } from "@/lib/model-input";
+import { DEFAULT_PROVIDER, type ProviderId } from "@/lib/providers";
+import {
+  replicateCategoryModels, replicateCollectionFor, replicateModel, type ReplicateListed,
+} from "@/lib/replicate-catalog";
+import { readReplicateKey } from "@/lib/replicate-server";
 
 /**
  * Reads fal's model catalogue and works out which models a given step can
@@ -80,6 +85,41 @@ export type JsonSchemaProp = {
 
 /* ----------------------------- catalogue ----------------------------- */
 
+/**
+ * Replicate's collection, in the shape the rest of this file already reads.
+ *
+ * A `RawModel` is fal's row type; making Replicate produce one means every
+ * filter, sort and mapper below keeps working unchanged. The alternative was a
+ * second copy of `compatibleModels` for the second provider, which is how two
+ * catalogues drift apart.
+ *
+ * Sorting cannot be by publish date — Replicate does not give one on a
+ * collection — so `run_count` stands in. A collection is curated and short, and
+ * within it the most-run model is a better default than an arbitrary one.
+ */
+function asRaw(m: ReplicateListed): RawModel & { schema: InputSchema | null } {
+  return {
+    id: m.id,
+    title: m.title,
+    shortDescription: m.description,
+    thumbnailUrl: m.thumbnailUrl,
+    group: m.isOfficial ? { label: "Official" } : undefined,
+    date: undefined,
+    publishedAt: undefined,
+    schema: m.schema,
+  } as RawModel & { schema: InputSchema | null };
+}
+
+async function fetchCategoryFor(category: string, provider: ProviderId): Promise<RawModel[]> {
+  if (provider === "fal") return fetchCategory(category);
+  const key = await readReplicateKey();
+  if (!key || !replicateCollectionFor(category)) return [];
+  const models = await replicateCategoryModels(category, key);
+  return models
+    .sort((a, b) => b.runCount - a.runCount)
+    .map(asRaw);
+}
+
 async function fetchCategory(category: string): Promise<RawModel[]> {
   const out: RawModel[] = [];
   let pages = 1;
@@ -106,7 +146,19 @@ async function fetchCategory(category: string): Promise<RawModel[]> {
  * component whose name ends in "Input" — there is no stable key for it, and the
  * document also carries output and error schemas we don't want.
  */
-export async function fetchInputSchema(modelId: string): Promise<InputSchema | null> {
+export async function fetchInputSchema(
+  modelId: string,
+  provider: ProviderId = DEFAULT_PROVIDER,
+): Promise<InputSchema | null> {
+  if (provider === "replicate") {
+    const key = await readReplicateKey();
+    if (!key) return null;
+    return (await replicateModel(modelId, key))?.schema ?? null;
+  }
+  return falInputSchema(modelId);
+}
+
+async function falInputSchema(modelId: string): Promise<InputSchema | null> {
   const url = `${SCHEMA_URL}?endpoint_id=${encodeURIComponent(modelId)}`;
   let res: Response;
   try {
@@ -154,8 +206,12 @@ function newestFirst(a: RawModel, b: RawModel): number {
  * needs to send. Schema checks run concurrently but bounded — one burst of 200
  * outbound requests is a good way to get rate-limited.
  */
-export async function compatibleModels(slot: ModelSlot): Promise<CatalogModel[]> {
-  const raw = (await fetchCategory(slot.category)).filter(usable).sort(newestFirst);
+export async function compatibleModels(
+  slot: ModelSlot,
+  provider: ProviderId = DEFAULT_PROVIDER,
+): Promise<CatalogModel[]> {
+  const fallbackId = slotFallback(slot, provider);
+  const raw = (await fetchCategoryFor(slot.category, provider)).filter(usable).sort(newestFirst);
 
   const CONCURRENCY = 12;
   const compatible: CatalogModel[] = [];
@@ -167,7 +223,10 @@ export async function compatibleModels(slot: ModelSlot): Promise<CatalogModel[]>
       if (index >= raw.length) return;
       const model = raw[index];
 
-      const schema = await fetchInputSchema(model.id);
+      // A Replicate collection already carries the schema, so this is free there.
+      const schema =
+        ((model as { schema?: InputSchema | null }).schema ?? null) ||
+        (await fetchInputSchema(model.id as string, provider));
       if (!schema) continue;
       if (!slot.requires.every((prop) => inputAliases(prop).some((a) => a in schema.properties))) continue;
       // A required input we have no value for would fail at submit time.
@@ -179,7 +238,7 @@ export async function compatibleModels(slot: ModelSlot): Promise<CatalogModel[]>
         group: typeof model.group?.label === "string" ? model.group.label : undefined,
         description: typeof model.shortDescription === "string" ? model.shortDescription.trim() : undefined,
         thumbnailUrl: typeof model.thumbnailUrl === "string" ? model.thumbnailUrl : undefined,
-        isDefault: model.id === slot.fallback,
+        isDefault: model.id === fallbackId,
         supports: readSupports(schema),
         clipLimit: readClipLimit(schema),
       });
@@ -198,10 +257,10 @@ export async function compatibleModels(slot: ModelSlot): Promise<CatalogModel[]>
   // The default is offered even if the catalogue is down or has dropped it —
   // the picker must never present an empty list.
   if (!compatible.some((m) => m.isDefault)) {
-    const fallbackSchema = await fetchInputSchema(slot.fallback);
+    const fallbackSchema = await fetchInputSchema(fallbackId, provider);
     compatible.unshift({
-      id: slot.fallback,
-      title: slot.fallback,
+      id: fallbackId,
+      title: fallbackId,
       isDefault: true,
       supports: readSupports(fallbackSchema),
       clipLimit: readClipLimit(fallbackSchema),
@@ -233,18 +292,22 @@ const KNOWN_INPUTS = new Set([
 ]);
 
 /** True when `modelId` is a legitimate stand-in for `slot`. */
-export async function isModelAllowed(modelId: string, slot: ModelSlotId): Promise<boolean> {
+export async function isModelAllowed(
+  modelId: string,
+  slot: ModelSlotId,
+  provider: ProviderId = DEFAULT_PROVIDER,
+): Promise<boolean> {
   const definition = MODEL_SLOTS[slot];
-  if (modelId === definition.fallback) return true;
+  if (modelId === slotFallback(definition, provider)) return true;
 
-  const schema = await fetchInputSchema(modelId);
+  const schema = await fetchInputSchema(modelId, provider);
   if (!schema) return false;
   if (!definition.requires.every((prop) => inputAliases(prop).some((a) => a in schema.properties))) return false;
   if (schema.required.some((prop) => !KNOWN_INPUTS.has(prop))) return false;
 
   // Category membership is the guard that keeps this from being an open proxy
   // to all 1,400 fal endpoints — a matching schema alone is not enough.
-  const inCategory = (await fetchCategory(definition.category)).filter(usable);
+  const inCategory = (await fetchCategoryFor(definition.category, provider)).filter(usable);
   return inCategory.some((m) => m.id === modelId);
 }
 
@@ -282,8 +345,11 @@ export const isOpenCategory = (v: unknown): v is OpenCategory =>
  * models is 200 outbound requests, and the schema is only needed once someone
  * has picked one.
  */
-export async function categoryModels(category: OpenCategory): Promise<CatalogModel[]> {
-  const raw = (await fetchCategory(category)).filter(usable).sort(newestFirst);
+export async function categoryModels(
+  category: OpenCategory,
+  provider: ProviderId = DEFAULT_PROVIDER,
+): Promise<CatalogModel[]> {
+  const raw = (await fetchCategoryFor(category, provider)).filter(usable).sort(newestFirst);
   return raw.map((m) => ({
     id: m.id as string,
     title: typeof m.title === "string" && m.title ? m.title : (m.id as string),
@@ -299,9 +365,12 @@ export async function categoryModels(category: OpenCategory): Promise<CatalogMod
 }
 
 /** True when the model really is in one of the open categories. */
-export async function isModelInOpenCategory(modelId: string): Promise<boolean> {
+export async function isModelInOpenCategory(
+  modelId: string,
+  provider: ProviderId = DEFAULT_PROVIDER,
+): Promise<boolean> {
   for (const category of OPEN_CATEGORIES) {
-    const inIt = (await fetchCategory(category)).filter(usable);
+    const inIt = (await fetchCategoryFor(category, provider)).filter(usable);
     if (inIt.some((m) => m.id === modelId)) return true;
   }
   return false;

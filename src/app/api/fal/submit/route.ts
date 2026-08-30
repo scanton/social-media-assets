@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { currentUser } from "@/auth";
-import { falForRequest } from "@/lib/fal-server";
+import { activeProvider } from "@/lib/active-provider";
+import { submitToProvider } from "@/lib/generate";
 import { fetchInputSchema, isModelAllowed, isModelInOpenCategory } from "@/lib/model-catalog";
 import { adaptInput } from "@/lib/model-input";
 import { isModelSlotId, type ModelSlotId } from "@/lib/models";
@@ -49,9 +50,10 @@ export async function POST(req: Request) {
      * this step sends. Without that check an open deployment would proxy any of
      * fal's ~1,400 endpoints.
      */
+    const provider0 = await activeProvider();
     const allowed = freeform
-      ? await isModelInOpenCategory(model)
-      : await isModelAllowed(model, slot as ModelSlotId);
+      ? await isModelInOpenCategory(model, provider0)
+      : await isModelAllowed(model, slot as ModelSlotId, provider0);
     if (!allowed) {
       return NextResponse.json(
         {
@@ -63,14 +65,15 @@ export async function POST(req: Request) {
       );
     }
 
-    const schema = await fetchInputSchema(model);
+    const provider = provider0;
+    const schema = await fetchInputSchema(model, provider);
     const adapted = adaptInput(input as Record<string, unknown>, schema);
 
-    const fal = await falForRequest();
-    const queued = await fal.queue.submit(model, { input: adapted.input });
+    const requestId = await submitToProvider(provider, model, adapted.input);
 
     return NextResponse.json({
-      requestId: queued.request_id,
+      requestId,
+      provider,
       model,
       // Reported rather than silent: a dropped aspect ratio changes the asset.
       dropped: adapted.dropped,

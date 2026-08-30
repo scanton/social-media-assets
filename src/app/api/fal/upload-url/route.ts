@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { currentUser } from "@/auth";
 import { MissingKeyError, readFalKey } from "@/lib/fal-server";
+import { activeProvider } from "@/lib/active-provider";
 
 /**
  * Mints a direct-to-fal upload URL.
@@ -13,6 +14,19 @@ export async function POST(req: Request) {
   if (!(await currentUser())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
+    /*
+     * Replicate has no signed-URL equivalent: its upload is a multipart POST to
+     * /v1/files, authenticated with the token. The token is httpOnly by design,
+     * so the browser cannot make that call itself and the bytes have to come
+     * through here — see the `mode: "proxy"` branch the client takes instead.
+     *
+     * Answering with the mode rather than an error keeps the decision in one
+     * place; the client asks "where do I put this" and is told.
+     */
+    if ((await activeProvider()) === "replicate") {
+      return NextResponse.json({ mode: "proxy", uploadUrl: "/api/upload", fileUrl: null });
+    }
+
     const key = await readFalKey();
     if (!key) throw new MissingKeyError();
 
@@ -47,7 +61,7 @@ export async function POST(req: Request) {
     }
 
     const json = (await res.json()) as { upload_url: string; file_url: string };
-    return NextResponse.json({ uploadUrl: json.upload_url, fileUrl: json.file_url });
+    return NextResponse.json({ mode: "direct", uploadUrl: json.upload_url, fileUrl: json.file_url });
   } catch (err) {
     if (err instanceof MissingKeyError) {
       return NextResponse.json({ error: err.message, code: "NO_KEY" }, { status: 428 });

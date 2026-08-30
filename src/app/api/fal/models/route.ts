@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { currentUser } from "@/auth";
 import { categoryModels, compatibleModels, isOpenCategory } from "@/lib/model-catalog";
+import { activeProvider } from "@/lib/active-provider";
+import { slotFallback } from "@/lib/models";
 import { MODEL_SLOTS, isModelSlotId } from "@/lib/models";
 
 /**
@@ -24,6 +26,7 @@ export async function GET(req: Request) {
    * is, which is what the freeform page needs: it builds its controls from
    * whatever the chosen model declares rather than requiring a fixed shape.
    */
+  const provider = await activeProvider();
   const category = params.get("category");
   if (category) {
     if (!isOpenCategory(category)) {
@@ -31,11 +34,11 @@ export async function GET(req: Request) {
     }
     try {
       return NextResponse.json(
-        { category, models: await categoryModels(category), partial: false },
+        { category, provider, models: await categoryModels(category, provider), partial: false },
         { headers: { "Cache-Control": "private, max-age=300" } },
       );
     } catch {
-      return NextResponse.json({ category, models: [], partial: true });
+      return NextResponse.json({ category, provider, models: [], partial: true });
     }
   }
 
@@ -47,21 +50,23 @@ export async function GET(req: Request) {
   const definition = MODEL_SLOTS[slot];
 
   try {
-    const models = await compatibleModels(definition);
+    const models = await compatibleModels(definition, provider);
     return NextResponse.json(
-      { slot, fallback: definition.fallback, models, partial: false },
+      { slot, provider, fallback: slotFallback(definition, provider), models, partial: false },
       // Let the browser reuse this for a few minutes; the server cache behind it
       // is measured in hours.
       { headers: { "Cache-Control": "private, max-age=300" } },
     );
   } catch {
+    const fb = slotFallback(definition, provider);
     return NextResponse.json({
       slot,
-      fallback: definition.fallback,
+      provider,
+      fallback: fb,
       models: [
         {
-          id: definition.fallback,
-          title: definition.fallback,
+          id: fb,
+          title: fb,
           isDefault: true,
           supports: {
             resolution: true,

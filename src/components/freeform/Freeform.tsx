@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { awaitJob, submitJob, uploadToFal } from "@/lib/client-api";
+import { useProvider } from "@/lib/use-provider";
+import { PROVIDERS, PROVIDER_IDS } from "@/lib/providers";
 import { HINT_GROUPS, compilePrompt, DEFAULT_NEGATIVE } from "@/lib/freeform";
 import { addAssetsToRoll, removeAssetFromRoll, usePersisted } from "@/lib/persisted-store";
 import type { CatalogModel, InputSchema } from "@/lib/model-catalog";
@@ -34,10 +36,28 @@ const CATEGORIES = [
     // whatever shipped this week — sometimes a novelty like a try-on model.
     // A generalist opens better, and it's only the starting point.
     prefer: "openai/gpt-image-2",
+    /*
+     * The same intent on Replicate, written out rather than derived. Neither
+     * provider's ids are a transform of the other's — `bytedance/seedance-2.5`
+     * is one model on Replicate and four endpoints on fal — so a rule that
+     * tried to convert between them would be wrong more often than right.
+     * A preference that does not exist is simply not honoured; the list still
+     * opens on something.
+     */
+    preferReplicate: "openai/gpt-image-2",
   },
-  { id: "image-to-image", label: "Image from an image", video: false, prefer: "fal-ai/nano-banana-2/edit" },
-  { id: "text-to-video", label: "Video from a prompt", video: true, prefer: "bytedance/seedance-2.5/text-to-video" },
-  { id: "image-to-video", label: "Video from an image", video: true, prefer: "bytedance/seedance-2.5/image-to-video" },
+  {
+    id: "image-to-image", label: "Image from an image", video: false,
+    prefer: "fal-ai/nano-banana-2/edit", preferReplicate: "google/nano-banana-pro",
+  },
+  {
+    id: "text-to-video", label: "Video from a prompt", video: true,
+    prefer: "bytedance/seedance-2.5/text-to-video", preferReplicate: "bytedance/seedance-2.5",
+  },
+  {
+    id: "image-to-video", label: "Video from an image", video: true,
+    prefer: "bytedance/seedance-2.5/image-to-video", preferReplicate: "bytedance/seedance-2.5",
+  },
 ] as const;
 
 /**
@@ -83,6 +103,7 @@ function readResult(data: unknown): Result[] {
 }
 
 export function Freeform() {
+  const { provider, setProvider } = useProvider();
   const [category, setCategory] = useState<CategoryId>("text-to-image");
 
   /*
@@ -94,8 +115,16 @@ export function Freeform() {
    * category you were just in should find your model still chosen rather than
    * snapped back to the first in the list.
    */
-  const [modelsBy, setModelsBy] = useState<Partial<Record<CategoryId, CatalogModel[]>>>({});
-  const [chosenBy, setChosenBy] = useState<Partial<Record<CategoryId, string>>>({});
+  /*
+   * Keyed by `provider:category`, not category.
+   *
+   * The two catalogues share no model ids, so a list fetched for fal is not a
+   * stale answer for Replicate — it is a wrong one, and every entry in it would
+   * fail at submit. Widening the key keeps the "come back and find your choice"
+   * behaviour within each provider and keeps them from bleeding into each other.
+   */
+  const [modelsBy, setModelsBy] = useState<Record<string, CatalogModel[]>>({});
+  const [chosenBy, setChosenBy] = useState<Record<string, string>>({});
   const [schemaBy, setSchemaBy] = useState<Record<string, InputSchema>>({});
   const [valuesBy, setValuesBy] = useState<Record<string, Record<string, unknown>>>({});
 
@@ -130,16 +159,20 @@ export function Freeform() {
    * deliberate. `localeCompare` with numeric collation so Seedance 2.5 sorts
    * after Seedance 2.0 rather than between 2.0 and 2.1.
    */
+  /** Everything below is scoped to one provider's catalogue. */
+  const catKey = `${provider}:${category}`;
+
   const models = useMemo(
     () =>
-      [...(modelsBy[category] ?? [])].sort((a, b) =>
+      [...(modelsBy[catKey] ?? [])].sort((a, b) =>
         a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: "base" }),
       ),
-    [modelsBy, category],
+    [modelsBy, catKey],
   );
-  const preferred = CATEGORIES.find((c) => c.id === category)?.prefer;
+  const spec = CATEGORIES.find((c) => c.id === category);
+  const preferred = provider === "replicate" ? spec?.preferReplicate : spec?.prefer;
   const model =
-    chosenBy[category] ??
+    chosenBy[catKey] ??
     (models.some((m) => m.id === preferred) ? preferred : models[0]?.id) ??
     "";
   const schema = schemaBy[model] ?? null;
@@ -148,32 +181,32 @@ export function Freeform() {
   // that callback new each render too.
   const values = useMemo(() => valuesBy[model] ?? {}, [valuesBy, model]);
   // Derived rather than a flag: "not fetched yet" is exactly "not in the map".
-  const loadingModels = modelsBy[category] === undefined;
+  const loadingModels = modelsBy[catKey] === undefined;
 
-  const isVideo = CATEGORIES.find((c) => c.id === category)?.video ?? false;
+  const isVideo = spec?.video ?? false;
   const needsImage = category === "image-to-image" || category === "image-to-video";
 
   const setModel = useCallback(
-    (id: string) => setChosenBy((s) => ({ ...s, [category]: id })),
-    [category],
+    (id: string) => setChosenBy((s) => ({ ...s, [catKey]: id })),
+    [catKey],
   );
 
   /* ---- the catalogue, once per category ---- */
   useEffect(() => {
-    if (modelsBy[category]) return;
+    if (modelsBy[catKey]) return;
     let cancelled = false;
     fetch(`/api/fal/models?category=${category}`)
       .then((r) => (r.ok ? r.json() : { models: [] }))
       .then((body: { models?: CatalogModel[] }) => {
-        if (!cancelled) setModelsBy((s) => ({ ...s, [category]: body.models ?? [] }));
+        if (!cancelled) setModelsBy((s) => ({ ...s, [catKey]: body.models ?? [] }));
       })
       .catch(() => {
-        if (!cancelled) setModelsBy((s) => ({ ...s, [category]: [] }));
+        if (!cancelled) setModelsBy((s) => ({ ...s, [catKey]: [] }));
       });
     return () => {
       cancelled = true;
     };
-  }, [category, modelsBy]);
+  }, [category, catKey, modelsBy]);
 
   /* ---- the chosen model's own knobs, once per model ---- */
   useEffect(() => {
@@ -269,9 +302,36 @@ export function Freeform() {
           Make anything
         </h1>
         <p className="mt-2 max-w-2xl text-sm leading-relaxed text-ink-soft">
-          Any image or video model on fal, your own prompt. The controls come from whichever
-          model you pick, so they change when it does. Everything under the prompt is optional.
+          Any image or video model on {PROVIDERS[provider].label}, your own prompt. The controls
+          come from whichever model you pick, so they change when it does. Everything under the
+          prompt is optional.
         </p>
+
+        {/*
+          * The same switch as the studio header. The bench is where a provider
+          * change is most visible — the whole catalogue below is theirs — so it
+          * belongs on the page rather than only on the page you came from.
+          */}
+        <div
+          role="group"
+          aria-label="Generation provider"
+          className="mt-4 flex w-fit items-center rounded-full border border-hairline bg-canvas-2/60 p-0.5"
+        >
+          {PROVIDER_IDS.map((id) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => void setProvider(id)}
+              aria-pressed={provider === id}
+              className={cx(
+                "focus-stamp rounded-full px-3 py-1.5 text-[11px] font-bold transition-all",
+                provider === id ? "bg-white text-ink shadow-sm" : "text-ink-faint hover:text-ink",
+              )}
+            >
+              {PROVIDERS[id].label}
+            </button>
+          ))}
+        </div>
       </header>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">

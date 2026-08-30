@@ -1,17 +1,30 @@
 import { NextResponse } from "next/server";
 import { currentUser } from "@/auth";
 
-/** fal serves generated media from these hosts. Anything else is refused (SSRF guard). */
+/**
+ * Where generated media is allowed to come from. Anything else is refused,
+ * because this route will fetch whatever URL it is handed and hand the bytes
+ * back — an open one is an SSRF hole.
+ *
+ * Replicate serves outputs from `replicate.delivery` and its subdomains, and
+ * files uploaded through /v1/files from api.replicate.com. Both are added as
+ * exact suffixes rather than a substring test: "replicate.delivery.evil.com"
+ * ends with neither.
+ */
 const ALLOWED_HOSTS = [
   "fal.media",
   "v2.fal.media",
   "v3.fal.media",
   "v3b.fal.media",
   "storage.googleapis.com",
+  "replicate.delivery",
+  "api.replicate.com",
 ];
 
+const ALLOWED_SUFFIXES = [".fal.media", ".replicate.delivery"];
+
 function hostAllowed(host: string) {
-  return ALLOWED_HOSTS.includes(host) || host.endsWith(".fal.media");
+  return ALLOWED_HOSTS.includes(host) || ALLOWED_SUFFIXES.some((s) => host.endsWith(s));
 }
 
 /**

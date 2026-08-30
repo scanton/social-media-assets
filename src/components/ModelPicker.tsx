@@ -3,11 +3,12 @@
 import { useEffect, useState } from "react";
 import { MODEL_SLOTS, type ModelSlotId } from "@/lib/models";
 import { loadCatalog, useModelChoices, type CatalogEntry } from "@/lib/model-prefs";
+import { useProvider } from "@/lib/use-provider";
 import { Select, cx } from "./ui";
 import { HelpTip } from "./HelpTip";
 
 /**
- * Lets a step run on a different fal model.
+ * Lets a step run on a different model, on whichever provider is active.
  *
  * The list is fetched on first open rather than on mount: it costs a catalogue
  * sweep upstream, and most sessions never touch it. Until then the collapsed
@@ -24,9 +25,25 @@ export function ModelPicker({ slot }: { slot: ModelSlotId }) {
   const selected = modelFor(slot);
 
   const [open, setOpen] = useState(false);
-  const [models, setModels] = useState<CatalogEntry[] | null>(null);
-  const [partial, setPartial] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { provider } = useProvider();
+  /*
+   * The loaded list remembers which provider it came from.
+   *
+   * Derived rather than reset in an effect: the two catalogues share no model
+   * ids, so a list fetched for fal is simply not an answer to "what can run on
+   * Replicate", and treating a mismatch as "nothing loaded" states that once
+   * instead of racing a reset against the fetch that follows it.
+   */
+  const [loaded, setLoaded] = useState<{
+    provider: string;
+    models: CatalogEntry[];
+    partial: boolean;
+  } | null>(null);
+  const [failure, setFailure] = useState<{ provider: string; message: string } | null>(null);
+
+  const models = loaded && loaded.provider === provider ? loaded.models : null;
+  const partial = loaded?.provider === provider ? loaded.partial : false;
+  const error = failure?.provider === provider ? failure.message : null;
 
   // `error` gates the fetch too, so a failure doesn't immediately retry itself.
   // Clearing it is what Retry does, which is also what re-arms this effect.
@@ -36,14 +53,13 @@ export function ModelPicker({ slot }: { slot: ModelSlotId }) {
     loadCatalog(slot)
       .then((res) => {
         if (!live) return;
-        setModels(res.models);
-        setPartial(res.partial);
+        setLoaded({ provider, models: res.models, partial: res.partial });
       })
-      .catch((err: Error) => live && setError(err.message));
+      .catch((err: Error) => live && setFailure({ provider, message: err.message }));
     return () => {
       live = false;
     };
-  }, [open, models, error, slot]);
+  }, [open, models, error, slot, provider]);
 
   const current = models?.find((m) => m.id === selected);
   const isDefault = selected === definition.fallback;
@@ -131,8 +147,8 @@ export function ModelPicker({ slot }: { slot: ModelSlotId }) {
               <button
                 type="button"
                 onClick={() => {
-                  setError(null);
-                  setModels(null);
+                  setFailure(null);
+                  setLoaded(null);
                 }}
                 className="focus-stamp font-bold underline underline-offset-2"
               >
@@ -148,7 +164,7 @@ export function ModelPicker({ slot }: { slot: ModelSlotId }) {
             <>
               <Select
                 value={selected}
-                onChange={(id) => setChoice(slot, id)}
+                onChange={(id) => setChoice(slot, id, provider)}
                 options={models.map((m) => ({
                   id: m.id,
                   label: m.title,
@@ -196,7 +212,7 @@ export function ModelPicker({ slot }: { slot: ModelSlotId }) {
                   {!isDefault && (
                     <button
                       type="button"
-                      onClick={() => setChoice(slot, null)}
+                      onClick={() => setChoice(slot, null, provider)}
                       className="focus-stamp font-bold text-stamp-600 underline underline-offset-2"
                     >
                       Reset to default

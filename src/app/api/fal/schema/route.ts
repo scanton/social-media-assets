@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { currentUser } from "@/auth";
+import { activeProvider } from "@/lib/active-provider";
 import { fetchInputSchema, isModelInOpenCategory } from "@/lib/model-catalog";
 
 /**
@@ -20,11 +21,11 @@ export async function GET(req: Request) {
 
   // The same guard the submit route uses: a schema lookup is cheap, but an
   // open lookup over every fal endpoint is still an open proxy.
-  if (!(await isModelInOpenCategory(model))) {
+  if (!(await isModelInOpenCategory(model, await activeProvider()))) {
     return NextResponse.json({ error: `${model} is not an image or video model` }, { status: 400 });
   }
 
-  const schema = await fetchInputSchema(model);
+  const schema = await fetchInputSchema(model, await activeProvider());
   if (!schema) return NextResponse.json({ error: "That model has no readable schema" }, { status: 502 });
 
   return NextResponse.json(

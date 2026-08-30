@@ -13,6 +13,8 @@
  * rest. Schemas are read from fal at runtime, never guessed from this file.
  */
 
+import type { ProviderId } from "@/lib/providers";
+
 export type ModelSlotId = "baseImage" | "compositeImage" | "animate" | "screenReplace";
 
 export type ModelSlot = {
@@ -31,6 +33,25 @@ export type ModelSlot = {
   requires: string[];
   /** Ships as the default, and catches any selection we can no longer verify. */
   fallback: string;
+  /**
+   * The same step, on Replicate.
+   *
+   * Not derived from the fal id: the providers publish different models under
+   * similar names, and the differences are the kind that fail at submit rather
+   * than at compile. Each of these was chosen by reading the model's own
+   * published schema —
+   *
+   *   `openai/gpt-image-2` on Replicate is text-to-image ONLY. It has no image
+   *   input at all, so it cannot stand in for the composite step the way its
+   *   fal namesake's `/edit` endpoint does.
+   *
+   *   `bytedance/seedance-2.5` on Replicate takes a single `image` and has no
+   *   reference arrays, so it animates a still but cannot play a clip on a
+   *   screen. `seedance-2.0` is the one carrying `reference_images` and
+   *   `reference_videos`, which is why the two video steps land on different
+   *   versions here and on the same one on fal.
+   */
+  replicateFallback: string;
 };
 
 /**
@@ -48,8 +69,18 @@ export type ModelSlot = {
  * an array onto a string field would submit something the model cannot read.
  */
 export const INPUT_ALIASES: Record<string, string[]> = {
-  image_urls: ["image_urls", "reference_image_urls"],
-  video_urls: ["video_urls", "reference_video_urls"],
+  /*
+   * Replicate's names sit alongside fal's. Every one of these was read off a
+   * real published schema rather than guessed: `image_input` is what
+   * nano-banana and seedream call an array of reference images, and
+   * `reference_images` / `reference_videos` are seedance-2.0's names for the
+   * arrays fal spells `image_urls` / `video_urls`.
+   */
+  image_urls: ["image_urls", "reference_image_urls", "image_input", "reference_images"],
+  video_urls: ["video_urls", "reference_video_urls", "reference_videos"],
+  /* Singular to singular, which is the only cross-shape rename that is safe. */
+  image_url: ["image_url", "image"],
+  num_images: ["num_images", "number_of_images", "max_images"],
 };
 
 /** Every name a model might use for this input, canonical first. */
@@ -65,6 +96,7 @@ export const MODEL_SLOTS: Record<ModelSlotId, ModelSlot> = {
     category: "text-to-image",
     requires: ["prompt"],
     fallback: "openai/gpt-image-2",
+    replicateFallback: "openai/gpt-image-2",
   },
   compositeImage: {
     id: "compositeImage",
@@ -75,6 +107,7 @@ export const MODEL_SLOTS: Record<ModelSlotId, ModelSlot> = {
     // references, so a single-image endpoint cannot carry the payload.
     requires: ["prompt", "image_urls"],
     fallback: "openai/gpt-image-2/edit",
+    replicateFallback: "google/nano-banana-pro",
   },
   animate: {
     id: "animate",
@@ -83,6 +116,7 @@ export const MODEL_SLOTS: Record<ModelSlotId, ModelSlot> = {
     category: "image-to-video",
     requires: ["prompt", "image_url"],
     fallback: "bytedance/seedance-2.5/image-to-video",
+    replicateFallback: "bytedance/seedance-2.5",
   },
   screenReplace: {
     id: "screenReplace",
@@ -92,8 +126,14 @@ export const MODEL_SLOTS: Record<ModelSlotId, ModelSlot> = {
     category: "image-to-video",
     requires: ["prompt", "image_urls", "video_urls"],
     fallback: "bytedance/seedance-2.5/reference-to-video",
+    replicateFallback: "bytedance/seedance-2.0",
   },
 };
+
+/** The shipped default for a step on a given provider. */
+export function slotFallback(slot: ModelSlot, provider: ProviderId): string {
+  return provider === "replicate" ? slot.replicateFallback : slot.fallback;
+}
 
 export const MODEL_SLOT_IDS = Object.keys(MODEL_SLOTS) as ModelSlotId[];
 
@@ -109,13 +149,32 @@ export const MODELS = {
 } as const;
 
 /** The user's picks, as stored in the preference cookie. */
-export type ModelChoices = Partial<Record<ModelSlotId, string>>;
+export type ModelChoices = Record<string, string>;
 
 export const MODEL_COOKIE = "heartstamp-models";
 
 /** Falls back per slot, so one unknown id can't strand the whole selection. */
-export function resolveModel(choices: ModelChoices, slot: ModelSlotId): string {
-  return choices[slot] || MODEL_SLOTS[slot].fallback;
+/**
+ * A stored choice is per provider, because a model id is.
+ *
+ * The two catalogues share no ids: picking `google/nano-banana-pro` for the
+ * scene step and then switching to fal would submit a model fal has never
+ * heard of, and the failure would arrive at render time looking like a bug in
+ * the step rather than a stale preference.
+ *
+ * Keys are `provider:slot`. A bare `slot` key is the pre-provider format and is
+ * read as fal's, so nobody's existing choices are lost by this change.
+ */
+export const choiceKey = (slot: ModelSlotId, provider: ProviderId) => `${provider}:${slot}`;
+
+export function resolveModel(
+  choices: ModelChoices,
+  slot: ModelSlotId,
+  provider: ProviderId = "fal",
+): string {
+  const chosen =
+    choices[choiceKey(slot, provider)] ?? (provider === "fal" ? choices[slot] : undefined);
+  return chosen || slotFallback(MODEL_SLOTS[slot], provider);
 }
 
 export function parseModelChoices(raw: string | undefined | null): ModelChoices {
@@ -123,9 +182,12 @@ export function parseModelChoices(raw: string | undefined | null): ModelChoices 
   try {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     const out: ModelChoices = {};
-    for (const slot of MODEL_SLOT_IDS) {
-      const v = parsed[slot];
-      if (typeof v === "string" && v) out[slot] = v;
+    /* Both key shapes: bare `slot` (pre-provider, meaning fal) and `provider:slot`. */
+    for (const [k, v] of Object.entries(parsed)) {
+      if (typeof v !== "string" || !v) continue;
+      const bare = MODEL_SLOT_IDS.includes(k as ModelSlotId);
+      const namespaced = k.includes(":") && MODEL_SLOT_IDS.includes(k.split(":")[1] as ModelSlotId);
+      if (bare || namespaced) out[k] = v;
     }
     return out;
   } catch {
