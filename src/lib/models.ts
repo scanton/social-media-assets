@@ -41,9 +41,11 @@ export type ModelSlot = {
    * than at compile. Each of these was chosen by reading the model's own
    * published schema —
    *
-   *   `openai/gpt-image-2` on Replicate is text-to-image ONLY. It has no image
-   *   input at all, so it cannot stand in for the composite step the way its
-   *   fal namesake's `/edit` endpoint does.
+   *   `openai/gpt-image-2` serves both image steps. It takes `input_images`,
+   *   so it edits as well as generates — one model where fal splits the two
+   *   across an endpoint and its `/edit` variant. Replicate lists it only under
+   *   text-to-image, which is editorial rather than structural and is why the
+   *   composite step could not see it until that search was widened.
    *
    *   Both video steps run on `bytedance/seedance-2.5`, read from the API's
    *   own schema rather than off its docs page — which shows a subset, and
@@ -79,7 +81,11 @@ export const INPUT_ALIASES: Record<string, string[]> = {
    * `reference_images` / `reference_videos` are seedance-2.0's names for the
    * arrays fal spells `image_urls` / `video_urls`.
    */
-  image_urls: ["image_urls", "reference_image_urls", "image_input", "reference_images"],
+  image_urls: [
+    "image_urls", "reference_image_urls", "image_input", "reference_images",
+    // GPT Image 2's name for the same array on Replicate.
+    "input_images",
+  ],
   video_urls: ["video_urls", "reference_video_urls", "reference_videos"],
   /* Singular to singular, which is the only cross-shape rename that is safe. */
   image_url: ["image_url", "image"],
@@ -110,7 +116,7 @@ export const MODEL_SLOTS: Record<ModelSlotId, ModelSlot> = {
     // references, so a single-image endpoint cannot carry the payload.
     requires: ["prompt", "image_urls"],
     fallback: "openai/gpt-image-2/edit",
-    replicateFallback: "google/nano-banana-pro",
+    replicateFallback: "openai/gpt-image-2",
   },
   animate: {
     id: "animate",

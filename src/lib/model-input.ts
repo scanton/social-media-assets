@@ -166,6 +166,21 @@ const meansAuto = (v: unknown) => typeof v === "string" && DECIDE.has(v.trim().t
 function coerce(value: unknown, prop: JsonSchemaProp): unknown | undefined {
   if (value === undefined || value === null) return undefined;
 
+  /*
+   * An object goes to the object branch even when the property also lists an
+   * enum, because a union of "an {width,height}" and "a preset name" can take
+   * either and only one of them is what we have.
+   *
+   * This was the other way round, and fal declares `image_size` exactly that
+   * way — `anyOf: [ImageSize, ["square_hd", "portrait_16_9", …]]`. So every
+   * size the studio computed was matched against a list of preset strings,
+   * matched nothing, and was dropped: step 2's orientation chips have been
+   * doing nothing on the scene step, and every render came back at the model's
+   * default shape. Silent, because a landscape still is a plausible still.
+   */
+  const objectValue = value !== null && typeof value === "object" && !Array.isArray(value);
+  if (objectValue && acceptsObject(prop)) return value;
+
   const options = enumValues(prop);
   if (options) {
     /*
@@ -318,7 +333,68 @@ export function adaptInput(
     out[name] = next;
   }
 
+  /*
+   * Orientation, when the model spells it as a ratio rather than a size.
+   *
+   * Step 2 says what it wants in pixels — `image_size: { width, height }` — 
+   * because that is what fal's image models take, and it is how the studio
+   * gets a 9:16 still for Reels and a 4:5 for a feed. GPT Image 2 on Replicate
+   * has no such input; it has `aspect_ratio`, whose enum carries both ratios
+   * and a set of exact sizes.
+   *
+   * Dropped rather than translated, every printed-card scene came back square
+   * whatever the orientation chips said — a silent loss, since a square render
+   * is a plausible render.
+   *
+   * Only fills a gap: an aspect ratio already in the payload wins, because that
+   * was asked for directly rather than inferred.
+   */
+  const size = input.image_size as { width?: unknown; height?: unknown } | undefined;
+  const ratioProp = schema.properties.aspect_ratio;
+  if (
+    size &&
+    typeof size.width === "number" &&
+    typeof size.height === "number" &&
+    ratioProp &&
+    out.aspect_ratio === undefined &&
+    !("image_size" in out)
+  ) {
+    const chosen = ratioFor(size.width, size.height, enumValues(ratioProp));
+    if (chosen !== undefined) {
+      out.aspect_ratio = chosen;
+      coerced.push(`image_size ${size.width}x${size.height} sent as aspect_ratio ${String(chosen)}`);
+    }
+  }
+
   return { input: out, dropped, coerced };
+}
+
+/**
+ * The enum member closest to a pixel size.
+ *
+ * An exact `1024x1536` is preferred where the model lists one — it is the same
+ * request, said their way. Otherwise the nearest `w:h`, compared as a number so
+ * 9:16 and 3:4 are told apart by shape rather than by string.
+ */
+function ratioFor(width: number, height: number, options: unknown[] | null): unknown | undefined {
+  if (!options?.length || !width || !height) return undefined;
+
+  const exact = options.find((o) => String(o).toLowerCase() === `${width}x${height}`);
+  if (exact !== undefined) return exact;
+
+  const target = width / height;
+  let best: unknown;
+  let bestGap = Infinity;
+  for (const option of options) {
+    const m = /^(\d+):(\d+)$/.exec(String(option));
+    if (!m) continue;
+    const gap = Math.abs(Number(m[1]) / Number(m[2]) - target);
+    if (gap < bestGap) {
+      bestGap = gap;
+      best = option;
+    }
+  }
+  return best;
 }
 
 /**

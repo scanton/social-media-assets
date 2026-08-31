@@ -25,8 +25,33 @@ const COLLECTION_FOR: Record<string, string> = {
   "image-to-video": "image-to-video",
 };
 
+/**
+ * Collections worth searching as well, where a schema check follows.
+ *
+ * Replicate files a model in one place and that place is editorial, not
+ * structural. `openai/gpt-image-2` takes `input_images` and edits perfectly
+ * well, and is listed only under text-to-image — so the composite step, which
+ * asks for the image-editing collection, never offered it.
+ *
+ * Widening only helps where something else can say no. `compatibleModels` and
+ * the submit guard both test the model's own schema for the inputs the step
+ * sends, so a text-to-image model with no image input falls out on its own. The
+ * open bench does no such test — it shows a category whole — so it keeps the
+ * curated list, or "Image from an image" would offer eighty-eight models that
+ * mostly cannot take one.
+ */
+const ALSO_SEARCH: Record<string, string[]> = {
+  "image-to-image": ["text-to-image"],
+};
+
 export const replicateCollectionFor = (category: string): string | null =>
   COLLECTION_FOR[category] ?? null;
+
+export const replicateCollectionsFor = (category: string, widen: boolean): string[] => {
+  const primary = COLLECTION_FOR[category];
+  if (!primary) return [];
+  return widen ? [primary, ...(ALSO_SEARCH[category] ?? [])] : [primary];
+};
 
 /** What Replicate returns for a model, of which we use a little. */
 type ReplicateModel = {
@@ -151,14 +176,28 @@ const listed = (m: ReplicateModel): ReplicateListed | null => {
 export async function replicateCategoryModels(
   category: string,
   key: string,
+  widen = false,
 ): Promise<ReplicateListed[]> {
-  const slug = replicateCollectionFor(category);
-  if (!slug) return [];
-  const body = (await replicateFetch(key, `/collections/${slug}`).catch(() => null)) as {
-    models?: ReplicateModel[];
-  } | null;
-  const models = Array.isArray(body?.models) ? body.models : [];
-  return models.map(listed).filter((m): m is ReplicateListed => m !== null);
+  const slugs = replicateCollectionsFor(category, widen);
+  if (!slugs.length) return [];
+
+  const seen = new Set<string>();
+  const out: ReplicateListed[] = [];
+  for (const slug of slugs) {
+    const body = (await replicateFetch(key, `/collections/${slug}`).catch(() => null)) as {
+      models?: ReplicateModel[];
+    } | null;
+    for (const raw of Array.isArray(body?.models) ? body.models : []) {
+      const m = listed(raw);
+      // A model in two collections is one model; the first listing wins, which
+      // is the curated one.
+      if (m && !seen.has(m.id)) {
+        seen.add(m.id);
+        out.push(m);
+      }
+    }
+  }
+  return out;
 }
 
 /**

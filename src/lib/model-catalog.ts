@@ -113,11 +113,21 @@ function asRaw(m: ReplicateListed): RawModel & { schema: InputSchema | null } {
   } as RawModel & { schema: InputSchema | null };
 }
 
-async function fetchCategoryFor(category: string, provider: ProviderId): Promise<RawModel[]> {
+/**
+ * `widen` searches neighbouring collections as well — see ALSO_SEARCH.
+ *
+ * Only passed where a schema check follows, because that check is what keeps a
+ * wider net honest. The open bench does not check, so it never widens.
+ */
+async function fetchCategoryFor(
+  category: string,
+  provider: ProviderId,
+  widen = false,
+): Promise<RawModel[]> {
   if (provider === "fal") return fetchCategory(category);
   const key = await readReplicateKey();
   if (!key || !replicateCollectionFor(category)) return [];
-  const models = await replicateCategoryModels(category, key);
+  const models = await replicateCategoryModels(category, key, widen);
   return models
     .sort((a, b) => b.runCount - a.runCount)
     .map(asRaw);
@@ -214,7 +224,7 @@ export async function compatibleModels(
   provider: ProviderId = DEFAULT_PROVIDER,
 ): Promise<CatalogModel[]> {
   const fallbackId = slotFallback(slot, provider);
-  const raw = (await fetchCategoryFor(slot.category, provider)).filter(usable).sort(newestFirst);
+  const raw = (await fetchCategoryFor(slot.category, provider, true)).filter(usable).sort(newestFirst);
 
   const CONCURRENCY = 12;
   const compatible: CatalogModel[] = [];
@@ -310,7 +320,7 @@ export async function isModelAllowed(
 
   // Category membership is the guard that keeps this from being an open proxy
   // to all 1,400 fal endpoints — a matching schema alone is not enough.
-  const inCategory = (await fetchCategoryFor(definition.category, provider)).filter(usable);
+  const inCategory = (await fetchCategoryFor(definition.category, provider, true)).filter(usable);
   return inCategory.some((m) => m.id === modelId);
 }
 
