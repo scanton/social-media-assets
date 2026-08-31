@@ -1,6 +1,7 @@
 "use client";
 
-import { downloadUrl, uploadToFal } from "@/lib/client-api";
+import { providerHostsMedia } from "@/lib/providers";
+import { currentProvider, downloadUrl, uploadToFal } from "@/lib/client-api";
 import {
   heartStampLogo,
   paintLogo,
@@ -250,12 +251,29 @@ export async function renderStampedVideo(
   }
 }
 
-/** Stamps the clip and uploads the result, returning the new URL. */
+/**
+ * Stamps the clip and returns a URL for the result.
+ *
+ * Uploaded on fal, kept here on Replicate, and the difference is not a
+ * preference. This clip is the deliverable — no model consumes it, the user
+ * watches it and saves it. fal's CDN is public and holds it for a week, so
+ * uploading buys a durable, shareable URL. Replicate's file store buys nothing:
+ * it is an input staging area, so the finished render arrived somewhere it
+ * could not be played, could not be downloaded, and would expire in a day. The
+ * tile showed a 240px poster of it and offered no download, which is exactly
+ * how that looked from the outside.
+ *
+ * An object URL is honest about what it is: good for this session, and gone on
+ * reload — which is why the studio has always said to download what you want to
+ * keep, and why the Download button beside it now points straight at the bytes.
+ */
 export async function stampVideoLogo(
   videoUrl: string,
   onProgress?: (p: StampProgress) => void,
 ): Promise<string> {
   const blob = await renderStampedVideo(videoUrl, onProgress);
+  if (!providerHostsMedia(currentProvider())) return URL.createObjectURL(blob);
+
   onProgress?.({ stage: "Uploading" });
   const ext = blob.type.includes("webm") ? "webm" : "mp4";
   return uploadToFal(new File([blob], `stamped-${Date.now()}.${ext}`, { type: blob.type }));

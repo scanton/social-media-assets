@@ -85,3 +85,19 @@ export const PROVIDER_COOKIE = "hs_provider";
 
 /** fal is where the studio started and where its prompts were tuned. */
 export const DEFAULT_PROVIDER: ProviderId = "fal";
+
+/**
+ * Can this provider serve media back to a browser?
+ *
+ * fal's uploads land on a public CDN: the URL is the file, anyone can fetch it,
+ * and it lives about a week. Replicate's `/v1/files` is an input staging area —
+ * auth-gated, expiring in 24 hours, and handing back a resource URL whose bytes
+ * need an HMAC we cannot make.
+ *
+ * The distinction matters for anything the studio FINISHES rather than sends.
+ * A composed scene is a model input and has to be somewhere a model can read
+ * it. A logo-stamped clip is the deliverable: nothing else consumes it, and
+ * putting it somewhere the user can neither watch nor download is worse than
+ * not uploading it at all.
+ */
+export const providerHostsMedia = (provider: ProviderId): boolean => provider !== "replicate";

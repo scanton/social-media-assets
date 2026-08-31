@@ -1,6 +1,8 @@
 "use client";
 
-import type { ProviderId } from "@/lib/providers";
+import {
+  DEFAULT_PROVIDER, PROVIDER_COOKIE, isProviderId, type ProviderId,
+} from "@/lib/providers";
 import { capturePreview, previewFor, rememberPreview } from "@/lib/local-preview";
 
 export class NoKeyError extends Error {
@@ -155,7 +157,24 @@ export async function awaitJob<T>(
   }
 }
 
+/** The provider this browser is pointed at, for code outside a React hook. */
+export function currentProvider(): ProviderId {
+  if (typeof document === "undefined") return DEFAULT_PROVIDER;
+  const raw = document.cookie
+    .split("; ")
+    .find((c) => c.startsWith(`${PROVIDER_COOKIE}=`))
+    ?.slice(PROVIDER_COOKIE.length + 1);
+  return isProviderId(raw) ? raw : DEFAULT_PROVIDER;
+}
+
 export function downloadUrl(url: string, filename: string) {
+  /*
+   * A blob or data URL is already the bytes and is already local. Sending it to
+   * the proxy would ask our server to fetch a URL only this tab can resolve,
+   * which fails as a refused host — the finished clip would offer a Download
+   * that 400s.
+   */
+  if (url.startsWith("blob:") || url.startsWith("data:")) return url;
   return `/api/download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
 }
 
@@ -211,6 +230,7 @@ export type AssetPreview = {
  * is public.
  */
 export function isDownloadable(url: string): boolean {
+  if (url.startsWith("blob:") || url.startsWith("data:")) return true;
   return !url.startsWith("https://api.replicate.com/");
 }
 

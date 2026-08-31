@@ -188,6 +188,7 @@ export function AssetTile({
             {!missing && isDownloadable(asset.url) && (
               <a
                 href={downloadUrl(asset.url, filenameFor(asset))}
+                download={filenameFor(asset)}
                 className="pointer-events-auto rounded-full bg-stamp-600 px-2.5 py-1 text-[11px] font-bold text-white shadow-sm transition-transform hover:scale-105"
               >
                 Download
@@ -244,6 +245,7 @@ export function AssetTile({
               {isDownloadable(asset.url) && (
               <a
                 href={downloadUrl(asset.url, filenameFor(asset))}
+                download={filenameFor(asset)}
                 className="rounded-full bg-stamp-600 px-5 py-2.5 text-sm font-semibold text-white transition-transform hover:scale-105"
               >
                 Download
