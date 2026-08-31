@@ -79,6 +79,7 @@ export type JsonSchemaProp = {
   maximum?: number;
   minimum?: number;
   maxItems?: number;
+  maxLength?: number;
   anyOf?: JsonSchemaProp[];
   /** Cog wraps a referenced enum in one of these. See `deref` in replicate-catalog. */
   allOf?: JsonSchemaProp[];

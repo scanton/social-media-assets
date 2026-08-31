@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { assetPreview } from "@/lib/client-api";
+import { assetPreview, isDownloadable } from "@/lib/client-api";
 import { downloadUrl } from "@/lib/client-api";
 import type { Asset } from "@/lib/studio-types";
 import { isVideo } from "@/lib/studio-types";
@@ -185,7 +185,7 @@ export function AssetTile({
                 Align
               </button>
             )}
-            {!missing && (
+            {!missing && isDownloadable(asset.url) && (
               <a
                 href={downloadUrl(asset.url, filenameFor(asset))}
                 className="pointer-events-auto rounded-full bg-stamp-600 px-2.5 py-1 text-[11px] font-bold text-white shadow-sm transition-transform hover:scale-105"
@@ -241,12 +241,14 @@ export function AssetTile({
               <img src={preview.src} alt={asset.label} className="max-h-[76vh] w-auto rounded-2xl shadow-2xl" />
             )}
             <div className="flex flex-wrap items-center justify-center gap-2">
+              {isDownloadable(asset.url) && (
               <a
                 href={downloadUrl(asset.url, filenameFor(asset))}
                 className="rounded-full bg-stamp-600 px-5 py-2.5 text-sm font-semibold text-white transition-transform hover:scale-105"
               >
                 Download
               </a>
+              )}
               <button
                 type="button"
                 onClick={() => setZoom(false)}

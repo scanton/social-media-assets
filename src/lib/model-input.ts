@@ -80,8 +80,29 @@ function numericOnly(prop: JsonSchemaProp): boolean {
   return declared.length > 0 && declared.every((t) => t === "integer" || t === "number");
 }
 
+/**
+ * Trims to whole clauses, keeping the front.
+ *
+ * Only ". " counts as a boundary — that is how joinPrompts glues clauses
+ * together. A comma is not one: cutting there leaves "No finger, thumb or
+ * stylus ever enters", which is not a shortened instruction but a different
+ * one, and it still reads as something to obey.
+ *
+ * If no clause boundary sits in the last 40% the text is not clause-shaped, so
+ * it falls back to a word boundary. Ragged, but never a fragment posing as a
+ * rule.
+ */
+function fitText(value: string, max: number): string {
+  if (value.length <= max) return value;
+  const head = value.slice(0, max);
+  const clause = head.lastIndexOf(". ");
+  if (clause > max * 0.6) return head.slice(0, clause + 1);
+  const word = head.lastIndexOf(" ");
+  return (word > 0 ? head.slice(0, word) : head).trimEnd();
+}
+
 /** A bound, wherever in the union it was declared. */
-function bound(prop: JsonSchemaProp, key: "minimum" | "maximum"): number | undefined {
+function bound(prop: JsonSchemaProp, key: "minimum" | "maximum" | "maxLength"): number | undefined {
   for (const b of branches(prop)) {
     if (typeof b[key] === "number") return b[key];
   }
@@ -169,6 +190,30 @@ function coerce(value: unknown, prop: JsonSchemaProp): unknown | undefined {
     return fit(value, prop);
   }
 
+  /*
+   * A string longer than the model will take.
+   *
+   * fal's seedance declares no limit on `prompt`; Replicate's caps it at 4000,
+   * and the studio's scene prompts run close to that once styling, presence and
+   * a motion are all in play. Unhandled, the whole render is refused with
+   * "String length must be less than or equal to 4000" — after the click, and
+   * with nothing said about which field or by how much.
+   *
+   * Cut at a sentence boundary rather than at the character. These prompts are
+   * a list of clauses joined with ". ", and several of the last ones are the
+   * rules that exist because renders broke without them — the screen being a
+   * hard clipping boundary, nobody touching the glass. Half of one of those is
+   * worse than none of it: a fragment still reads as an instruction.
+   *
+   * What was dropped is reported rather than swallowed. `coerced` is already
+   * shown, so the answer to "why does this look different on Replicate" is on
+   * screen instead of in a schema nobody reads.
+   */
+  if (typeof value === "string") {
+    const max = bound(prop, "maxLength");
+    if (typeof max === "number" && value.length > max) return fitText(value, max);
+  }
+
   if (typeof value === "boolean") {
     return branches(prop).some((b) => b.type === "boolean" || !b.type) ? value : undefined;
   }
@@ -218,7 +263,19 @@ export function adaptInput(
       continue;
     }
     if (next !== value && typeof next !== "object") {
-      coerced.push(`${key} ${String(value)} → ${String(next)}`);
+      /*
+       * A shortened prompt is reported by how much, not by quoting both copies
+       * of it. "prompt a photorealistic live-action clip of… → a photorealistic
+       * live-action clip of…" is four thousand characters that say nothing.
+       */
+      const shortened =
+        typeof value === "string" && typeof next === "string" && next.length < value.length;
+      coerced.push(
+        shortened
+          ? `${key} shortened by ${(value as string).length - (next as string).length} characters ` +
+            `to fit this model's limit`
+          : `${key} ${String(value)} → ${String(next)}`,
+      );
     }
     if (name !== key) coerced.push(`${key} sent as ${name}`);
     out[name] = next;

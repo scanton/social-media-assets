@@ -198,6 +198,22 @@ export type AssetPreview = {
  *
  * Null means there is nothing to show, and the caller draws its placeholder.
  */
+/**
+ * Can this asset be saved to disk?
+ *
+ * Replicate's file store hands back a resource URL, and the bytes behind it
+ * need an HMAC signed with a secret we do not hold — so a Download button
+ * pointed at one saves a few hundred bytes of JSON metadata named `.mp4`. Not
+ * an error, which is worse than one: a file that opens in nothing, with no
+ * indication of why.
+ *
+ * Rendered output is unaffected — that comes back on replicate.delivery, which
+ * is public.
+ */
+export function isDownloadable(url: string): boolean {
+  return !url.startsWith("https://api.replicate.com/");
+}
+
 export function assetPreview(url: string): AssetPreview | null {
   if (!url.startsWith("https://api.replicate.com/")) return { src: url, playable: true };
   const poster = previewFor(url);
