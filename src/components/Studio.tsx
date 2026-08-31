@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRenders } from "@/lib/use-renders";
 import Link from "next/link";
 import { readKeys } from "@/lib/client-api";
 import { signOutAction } from "@/app/actions";
@@ -71,6 +72,7 @@ function StudioShell({
   const s = useStudio();
   const [rollOpen, setRollOpen] = useState(false);
   const { provider, setProvider } = useProvider();
+  useRenders();
 
   /*
    * The header shows the ACTIVE provider's key, so this re-reads on a switch.

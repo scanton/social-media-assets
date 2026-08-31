@@ -109,9 +109,14 @@ account chooser — the actual gate is the `signIn` callback, which verifies the
 
 ## Two providers
 
-The studio runs against **fal.ai** or **Replicate**, switched from the toggle in
-the header. One is active at a time; the choice lives in a readable cookie that
-every request reads, so the server and the browser cannot disagree about it.
+The studio runs against **Replicate** by default, or **fal.ai**, switched from
+the toggle in the header. One is active at a time; the choice lives in a
+readable cookie that every request reads, so the server and the browser cannot
+disagree about it.
+
+Both video steps run **Seedance 2.5** on either provider, at 720p — which is the
+ceiling on Replicate's 2.5 and plenty for social. Its 2.0 goes to 4k if you ever
+need it, at the cost of a 15-second limit and a 4000-character prompt cap.
 
 Deliberately a toggle rather than automatic failover. A render that fails
 halfway is ambiguous, retrying it elsewhere can bill twice for one asset, and an
@@ -157,6 +162,24 @@ our origin. Replicate authenticates its upload with the token, which is httpOnly
 precisely so the browser never holds it — so those bytes go through
 [`/api/upload`](src/app/api/upload/route.ts), bounded by the platform's request
 body limit and by Replicate's own 100 MB cap.
+
+**Finished renders are kept on the machine.** A clip the studio finishes is the
+deliverable — nothing else consumes it. fal has a CDN to put it on; Replicate
+has nowhere (its file store is an input staging area, auth-gated and expiring in
+a day), so those go to IndexedDB and the roll holds `idb:<id>` in place of a
+URL. Not localStorage: a 10 MB clip base64s to ~13 MB of characters stored as
+UTF-16, so ~26 MB against a quota usually of 5. IndexedDB stores the Blob at its
+own size — measured here at 7 ms to write and ~10.9 GB of quota available.
+Oldest-first eviction past 600 MB. See [`lib/render-store.ts`](src/lib/render-store.ts).
+
+**The prompts speak fal's dialect and are translated.** Both providers host
+Seedance and neither agrees on how a prompt names its references — fal reads
+`@Video1`, Replicate reads `[Video1]`, and each says so in its own schema. Same
+for "you decide": `auto` on fal, `adaptive` and `-1` on Replicate, whose
+descriptions add that the modes which play a reference through rather than take
+a still from it *require* those values. See
+[`lib/prompt-dialect.ts`](src/lib/prompt-dialect.ts) and the `auto` handling in
+[`lib/model-input.ts`](src/lib/model-input.ts).
 
 **The models are not the same models.** Each slot names its own Replicate
 default in [`lib/models.ts`](src/lib/models.ts), chosen by reading published

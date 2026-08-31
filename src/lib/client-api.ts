@@ -4,6 +4,7 @@ import {
   DEFAULT_PROVIDER, PROVIDER_COOKIE, isProviderId, type ProviderId,
 } from "@/lib/providers";
 import { capturePreview, previewFor, rememberPreview } from "@/lib/local-preview";
+import { isLocalRender, localRenderSrc } from "@/lib/render-store";
 
 export class NoKeyError extends Error {
   constructor(message = "Add your fal.ai key to start generating.") {
@@ -175,6 +176,8 @@ export function downloadUrl(url: string, filename: string) {
    * that 400s.
    */
   if (url.startsWith("blob:") || url.startsWith("data:")) return url;
+  // A stored render is already on this machine; the proxy could not fetch it.
+  if (isLocalRender(url)) return localRenderSrc(url) ?? url;
   return `/api/download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
 }
 
@@ -231,10 +234,19 @@ export type AssetPreview = {
  */
 export function isDownloadable(url: string): boolean {
   if (url.startsWith("blob:") || url.startsWith("data:")) return true;
+  if (isLocalRender(url)) return Boolean(localRenderSrc(url));
   return !url.startsWith("https://api.replicate.com/");
 }
 
 export function assetPreview(url: string): AssetPreview | null {
+  /*
+   * A render we kept. Null until hydration has created its object URL, which
+   * the roll reads through `useRenders()` so it re-renders when that lands.
+   */
+  if (isLocalRender(url)) {
+    const src = localRenderSrc(url);
+    return src ? { src, playable: true } : null;
+  }
   if (!url.startsWith("https://api.replicate.com/")) return { src: url, playable: true };
   const poster = previewFor(url);
   return poster ? { src: poster, playable: false } : null;

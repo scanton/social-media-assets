@@ -1,6 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { deleteRender } from "@/lib/render-store";
 import {
   ANGLES,
   ASPECTS,
@@ -401,10 +402,17 @@ export function addAssetsToRoll(next: Asset[]) {
  * pipelines never selected — which is exactly why it is safe to share rather
  * than to write a second, simpler version for the bench that would drift.
  */
+/*
+ * Dropping an asset drops its bytes too. A stored render is the only copy, so
+ * leaving it behind would fill the budget with files nothing points at, and the
+ * oldest-first eviction would then start on renders the user still has.
+ */
 export function removeAssetFromRoll(id: string) {
   const current = getPersisted();
   const removed = current.assets.find((a) => a.id === id);
   const assets = current.assets.filter((a) => a.id !== id);
+  // Free the bytes as well as the reference; see the note above.
+  if (removed) void deleteRender(removed.url);
 
   // Screen-replace needs a clip; without one it would just fail at render time.
   const lostLastClip =

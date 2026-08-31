@@ -83,8 +83,16 @@ export const isProviderId = (v: unknown): v is ProviderId =>
  */
 export const PROVIDER_COOKIE = "hs_provider";
 
-/** fal is where the studio started and where its prompts were tuned. */
-export const DEFAULT_PROVIDER: ProviderId = "fal";
+/**
+ * Replicate, as of the move.
+ *
+ * fal is where the studio started and where its prompts were tuned, and the
+ * prompts still read in fal's dialect — `@Video1` — with the translation to
+ * Replicate's `[Video1]` happening on the way out. That is worth knowing when
+ * reading them, but it is not a reason to open on the provider we are no
+ * longer using by default.
+ */
+export const DEFAULT_PROVIDER: ProviderId = "replicate";
 
 /**
  * Can this provider serve media back to a browser?

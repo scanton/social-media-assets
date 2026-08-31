@@ -1,6 +1,7 @@
 "use client";
 
 import { providerHostsMedia } from "@/lib/providers";
+import { saveRender } from "@/lib/render-store";
 import { currentProvider, downloadUrl, uploadToFal } from "@/lib/client-api";
 import {
   heartStampLogo,
@@ -263,16 +264,20 @@ export async function renderStampedVideo(
  * tile showed a 240px poster of it and offered no download, which is exactly
  * how that looked from the outside.
  *
- * An object URL is honest about what it is: good for this session, and gone on
- * reload — which is why the studio has always said to download what you want to
- * keep, and why the Download button beside it now points straight at the bytes.
+ * Kept in IndexedDB rather than an object URL, which died on reload, and
+ * rather than localStorage, which could not hold it: a 10 MB clip base64s to
+ * ~13 MB of characters and is stored as UTF-16, so ~26 MB against a quota
+ * usually of 5. See lib/render-store.ts.
  */
 export async function stampVideoLogo(
   videoUrl: string,
   onProgress?: (p: StampProgress) => void,
 ): Promise<string> {
   const blob = await renderStampedVideo(videoUrl, onProgress);
-  if (!providerHostsMedia(currentProvider())) return URL.createObjectURL(blob);
+  if (!providerHostsMedia(currentProvider())) {
+    const ext = blob.type.includes("webm") ? "webm" : "mp4";
+    return saveRender(blob, `stamped-${Date.now()}.${ext}`);
+  }
 
   onProgress?.({ stage: "Uploading" });
   const ext = blob.type.includes("webm") ? "webm" : "mp4";

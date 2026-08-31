@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRenders } from "@/lib/use-renders";
 import Link from "next/link";
 import { awaitJob, submitJob, uploadToFal } from "@/lib/client-api";
 import { useProvider } from "@/lib/use-provider";
@@ -116,6 +117,7 @@ function readResult(data: unknown): Result[] {
 
 export function Freeform() {
   const { provider, setProvider } = useProvider();
+  useRenders();
   const [category, setCategory] = useState<CategoryId>("text-to-image");
 
   /*
