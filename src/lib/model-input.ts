@@ -142,13 +142,40 @@ function nearestEnum(value: unknown, options: unknown[]): unknown | undefined {
   return best;
 }
 
+/**
+ * Words that mean "you decide", across providers.
+ *
+ * The studio says `auto`, which is fal's spelling. Replicate's seedance says
+ * `adaptive` for a ratio and `-1` for a duration, and its own descriptions are
+ * explicit about it: "Set to -1 for intelligent duration (the model picks the
+ * best length)", "Set to 'adaptive' to let the model choose the best ratio
+ * based on inputs".
+ *
+ * These were being dropped rather than translated, because `auto` has no
+ * magnitude and nothing matched it. Dropping looks harmless — the model applies
+ * its default — and is not: seedance's default duration is 5 seconds, so a
+ * thirteen-second card animation was being asked to play inside a five-second
+ * render. The same descriptions add that the modes which play a reference
+ * through, rather than take a still from it, REQUIRE those values. Saying
+ * nothing is not the same as saying "you decide".
+ */
+const DECIDE = new Set(["auto", "adaptive", "any", "match_input", "match input"]);
+
+const meansAuto = (v: unknown) => typeof v === "string" && DECIDE.has(v.trim().toLowerCase());
+
 function coerce(value: unknown, prop: JsonSchemaProp): unknown | undefined {
   if (value === undefined || value === null) return undefined;
 
   const options = enumValues(prop);
   if (options) {
-    // `"auto"` has no magnitude, so a model without it simply loses the
-    // property and applies its own default — which is what auto meant anyway.
+    /*
+     * "you decide", in this model's own word for it. `auto` on fal, `adaptive`
+     * on Replicate; whichever it lists is what it is sent.
+     */
+    if (meansAuto(value)) {
+      const theirs = options.find((o) => meansAuto(o));
+      return theirs ?? undefined;
+    }
     return nearestEnum(value, options);
   }
 
@@ -182,6 +209,16 @@ function coerce(value: unknown, prop: JsonSchemaProp): unknown | undefined {
    * asking for. That is the rule this file already claimed to follow.
    */
   if (typeof value === "string" && numericOnly(prop)) {
+    /*
+     * A negative floor on a quantity that cannot be negative is a sentinel, not
+     * a bound — seedance declares `minimum: -1` on a duration in seconds and
+     * documents -1 as "the model picks the best length". So "auto" becomes that
+     * value rather than being dropped to a default that means something else.
+     */
+    if (meansAuto(value)) {
+      const min = bound(prop, "minimum");
+      return typeof min === "number" && min < 0 ? min : undefined;
+    }
     const n = magnitude(value);
     return n === null ? undefined : fit(n, prop);
   }
