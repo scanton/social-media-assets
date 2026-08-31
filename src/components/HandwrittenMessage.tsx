@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { toPromptDialect } from "@/lib/prompt-dialect";
+import { useProvider } from "@/lib/use-provider";
 import {
   buildInsideMessagePrompt,
   HANDWRITING_STYLES,
@@ -26,6 +28,7 @@ import { Panel } from "./steps/shared";
  */
 export function HandwrittenMessage() {
   const s = useStudio();
+  const { provider } = useProvider();
   const [showPrompt, setShowPrompt] = useState(false);
 
   const [spec, setSpec] = useState<InsideMessageSpec>({
@@ -167,7 +170,7 @@ export function HandwrittenMessage() {
 
         {showPrompt && (
           <p className="max-h-52 animate-rise overflow-y-auto rounded-2xl bg-canvas-2 p-3.5 font-mono text-[11px] leading-relaxed text-ink-soft">
-            {prompt}
+            {toPromptDialect(prompt, provider)}
           </p>
         )}
 

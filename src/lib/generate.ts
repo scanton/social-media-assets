@@ -3,6 +3,7 @@ import { falForRequest } from "@/lib/fal-server";
 import { replicateFetch, requireReplicateKey } from "@/lib/replicate-server";
 import { replicateModel } from "@/lib/replicate-catalog";
 import type { ProviderId } from "@/lib/providers";
+import { inputInDialect } from "@/lib/prompt-dialect";
 import { normaliseOutput } from "@/lib/provider-output";
 
 /**
@@ -25,6 +26,9 @@ export async function submitToProvider(
     const queued = await fal.queue.submit(model, { input });
     return queued.request_id;
   }
+
+  // `@Video1` is fal's spelling; Replicate reads `[Video1]`. See prompt-dialect.
+  input = inputInDialect(input, provider);
 
   const key = await requireReplicateKey();
   const target = await replicateModel(model, key);

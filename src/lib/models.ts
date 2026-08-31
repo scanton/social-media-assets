@@ -45,11 +45,14 @@ export type ModelSlot = {
    *   input at all, so it cannot stand in for the composite step the way its
    *   fal namesake's `/edit` endpoint does.
    *
-   *   `bytedance/seedance-2.5` on Replicate takes a single `image` and has no
-   *   reference arrays, so it animates a still but cannot play a clip on a
-   *   screen. `seedance-2.0` is the one carrying `reference_images` and
-   *   `reference_videos`, which is why the two video steps land on different
-   *   versions here and on the same one on fal.
+   *   Both video steps run on `bytedance/seedance-2.5`, read from the API's
+   *   own schema rather than off its docs page — which shows a subset, and
+   *   which is why an earlier version of this comment claimed 2.5 had no
+   *   reference arrays and sent the screen-replace step to 2.0. It has all
+   *   three, takes up to 30 seconds where 2.0 stops at 15, and declares no
+   *   maximum on `prompt` where 2.0 caps it at 4000 — that cap is what was
+   *   cutting the last few hundred characters off a scene prompt, and those
+   *   are the clauses keeping content inside the screen.
    */
   replicateFallback: string;
 };
@@ -126,7 +129,7 @@ export const MODEL_SLOTS: Record<ModelSlotId, ModelSlot> = {
     category: "image-to-video",
     requires: ["prompt", "image_urls", "video_urls"],
     fallback: "bytedance/seedance-2.5/reference-to-video",
-    replicateFallback: "bytedance/seedance-2.0",
+    replicateFallback: "bytedance/seedance-2.5",
   },
 };
 

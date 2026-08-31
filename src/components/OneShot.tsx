@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { toPromptDialect } from "@/lib/prompt-dialect";
+import { useProvider } from "@/lib/use-provider";
 import {
   ANGLES,
   AUDIENCES,
@@ -36,6 +38,7 @@ import { Panel, ResultsGrid, SectionHead } from "./steps/shared";
  */
 export function OneShot() {
   const s = useStudio();
+  const { provider } = useProvider();
   const { base, video } = s;
   const [showPrompt, setShowPrompt] = useState(false);
   // Re-encoding needs MediaRecorder + canvas capture; every current browser has
@@ -427,7 +430,7 @@ export function OneShot() {
               </button>
               {showPrompt && (
                 <p className="mt-2 max-h-52 animate-rise overflow-y-auto rounded-2xl bg-canvas-2 p-3.5 font-mono text-[11px] leading-relaxed text-ink-soft">
-                  {prompt}
+                  {toPromptDialect(prompt, provider)}
                 </p>
               )}
             </div>

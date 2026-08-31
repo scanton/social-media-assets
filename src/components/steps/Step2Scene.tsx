@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { toPromptDialect } from "@/lib/prompt-dialect";
+import { useProvider } from "@/lib/use-provider";
 import { uploadToFal } from "@/lib/client-api";
 import type { Asset } from "@/lib/studio-types";
 import {
@@ -30,6 +32,7 @@ import { Panel, ResultsGrid, SectionHead } from "./shared";
 
 export function Step2Scene() {
   const s = useStudio();
+  const { provider } = useProvider();
   const toast = useToast();
   const { base } = s;
   const [showPrompt, setShowPrompt] = useState(false);
@@ -512,7 +515,7 @@ export function Step2Scene() {
               </button>
               {showPrompt && (
                 <p className="mt-2 max-h-52 animate-rise overflow-y-auto rounded-2xl bg-canvas-2 p-3.5 font-mono text-[11px] leading-relaxed text-ink-soft">
-                  {previewPrompt}
+                  {toPromptDialect(previewPrompt, provider)}
                 </p>
               )}
             </div>

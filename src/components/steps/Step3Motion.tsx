@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { toPromptDialect } from "@/lib/prompt-dialect";
+import { useProvider } from "@/lib/use-provider";
 import {
   buildAnimatePrompt,
   buildCardOpenPrompt,
@@ -19,6 +21,7 @@ import { Panel, ResultsGrid, SectionHead } from "./shared";
 
 export function Step3Motion() {
   const s = useStudio();
+  const { provider } = useProvider();
   const [showPrompt, setShowPrompt] = useState(false);
   // Re-encoding needs MediaRecorder + canvas capture; fail visibly rather than
   // silently dropping the logo.
@@ -278,7 +281,7 @@ export function Step3Motion() {
               </button>
               {showPrompt && (
                 <p className="mt-2 max-h-52 animate-rise overflow-y-auto rounded-2xl bg-canvas-2 p-3.5 font-mono text-[11px] leading-relaxed text-ink-soft">
-                  {prompt}
+                  {toPromptDialect(prompt, provider)}
                 </p>
               )}
             </div>
