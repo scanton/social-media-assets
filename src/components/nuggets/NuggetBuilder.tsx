@@ -242,6 +242,17 @@ function newArrowBeat(): Beat {
  * the video (A3), on the schema from A1. The timeline, protected regions, sound
  * rules and zip export land on top of this.
  */
+/**
+ * Whether the deck can be exported as a zip for the Claude skill.
+ *
+ * Off: nobody was using it, and a second button beside "Render video" mostly
+ * raised the question of which one you wanted. The machinery is deliberately
+ * left in place — the builder, the schema validation, and the checks that
+ * refuse a deck the skill could not draw — because none of it costs anything
+ * while this is false, and turning it back on is this line.
+ */
+const SHOW_EXPORT_ZIP = false;
+
 export function NuggetBuilder() {
   const [canvas, setCanvas] = useState<CanvasId>("reels");
 
@@ -1005,6 +1016,7 @@ export function NuggetBuilder() {
                     : "Render video"}
                 </button>
 
+                {SHOW_EXPORT_ZIP && (
                 <button
                   type="button"
                   disabled={
@@ -1043,18 +1055,32 @@ export function NuggetBuilder() {
                 >
                   Export zip
                 </button>
+                )}
                 <span className="text-xs text-ink-faint">
                   {blocking.length
                     ? `${blocking.length} issue${blocking.length > 1 ? "s" : ""} to resolve first.`
                     : rendering
-                      ? "Runs in real time, so about as long as the deck."
-                      : bg?.kind === "image"
-                        ? "Render video only — the zip is for the Claude skill, which has no idea what a still background is."
-                        : twoMedallionBeat !== null
-                          ? `Render video only — beat ${twoMedallionBeat} has two medallions, which the skill's render route cannot draw.`
-                        : webOnlyWell !== null
-                          ? `Render video only — beat ${webOnlyWell.beat} ${webOnlyWell.what}, which the deck format has no way to say.`
-                        : `${exportBasename(bg?.name ?? null)}.zip — the video and ${exportBasename(bg?.name ?? null)}.deck.json`}
+                      ? /*
+                         * The frame rate, once it is known and only when it is
+                         * bad. This export records in real time, so the file is
+                         * as long as the frames it was given — a machine
+                         * painting at half speed produces half a deck, and
+                         * saying nothing there makes a truncated export look
+                         * like a broken deck rather than a machine that could
+                         * not keep up.
+                         */
+                        rendering.fps !== undefined && rendering.fps < 24
+                        ? `Rendering at ${rendering.fps} fps — this machine is behind, so the clip will come out short and choppy. Close other tabs, or try a smaller canvas.`
+                        : "Runs in real time, so about as long as the deck."
+                      : !SHOW_EXPORT_ZIP
+                        ? ""
+                        : bg?.kind === "image"
+                          ? "Render video only — the zip is for the Claude skill, which has no idea what a still background is."
+                          : twoMedallionBeat !== null
+                            ? `Render video only — beat ${twoMedallionBeat} has two medallions, which the skill's render route cannot draw.`
+                          : webOnlyWell !== null
+                            ? `Render video only — beat ${webOnlyWell.beat} ${webOnlyWell.what}, which the deck format has no way to say.`
+                          : `${exportBasename(bg?.name ?? null)}.zip — the video and ${exportBasename(bg?.name ?? null)}.deck.json`}
                 </span>
               </div>
 
