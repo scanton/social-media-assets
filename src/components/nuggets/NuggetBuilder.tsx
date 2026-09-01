@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import { useMusicBed } from "@/lib/popkit/use-music-bed";
 import Link from "next/link";
 import {
   ARROWS, BORDERS, CANVASES, CAPTIONS, COLORWAY_NAMES,
@@ -256,6 +257,14 @@ export function NuggetBuilder() {
    * render rather than of the composition. Export zip is unaffected.
    */
   const [stampLogo, setStampLogo] = useState(false);
+  /*
+   * The music bed. Component state rather than a deck field, like the logo and
+   * for the same reason: the deck schema is the skill's contract and has
+   * nowhere to put an audio file, and a bed is a property of this render rather
+   * than of the composition. Export zip is unaffected.
+   */
+  const [music, setMusic] = useState<File | null>(null);
+  const [musicGain, setMusicGain] = useState(0.35);
   const [beats, setBeats] = useState<Beat[]>(() => [newBeat("reels")]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [regions, setRegions] = useState<ProtectedRegion[]>([]);
@@ -500,6 +509,9 @@ export function NuggetBuilder() {
     [stillSeconds],
   );
   const playhead = clock.playhead;
+
+  // Heard while editing, so the level can be judged against the pops.
+  useMusicBed({ file: music, gain: musicGain, playhead, playing: clock.playing });
 
   /**
    * Arrow tips in canvas pixels, per beat.
@@ -971,6 +983,8 @@ export function NuggetBuilder() {
                         beats,
                         canvas,
                         logo: stampLogo,
+                        music,
+                        musicGain,
                         onProgress: setRendering,
                       });
                       const a = document.createElement("a");
@@ -1065,6 +1079,45 @@ export function NuggetBuilder() {
 
           <div className="flex flex-wrap items-center gap-3">
             <Switch checked={showSafeZone} onChange={setShowSafeZone} label="Show safe zone" help="pop.safeZone" />
+            {/*
+              * A bed under the whole deck. Any length: a long track is stopped
+              * at the deck's end and a short one loops, so nobody has to trim
+              * anything before dropping it in.
+              */}
+            <Field label="Music bed" help="pop.music" hint={music ? music.name : "Optional — mixed under the cues."}>
+              <div className="flex items-center gap-2">
+                <label className="focus-stamp cursor-pointer rounded-full border border-hairline bg-white px-3 py-1.5 text-xs font-bold text-ink transition-all hover:border-stamp-300">
+                  {music ? "Replace" : "Add a track"}
+                  <input
+                    type="file"
+                    accept="audio/*"
+                    className="hidden"
+                    onChange={(e) => setMusic(e.target.files?.[0] ?? null)}
+                  />
+                </label>
+                {music && (
+                  <>
+                    <input
+                      type="range" min={0} max={1} step={0.05}
+                      value={musicGain}
+                      onChange={(e) => setMusicGain(Number(e.target.value))}
+                      className="focus-stamp w-28 accent-stamp-600"
+                      aria-label="Music level"
+                    />
+                    <span className="font-mono text-[11px] text-ink-faint">
+                      {Math.round(musicGain * 100)}%
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setMusic(null)}
+                      className="focus-stamp text-xs font-bold text-ink-faint underline underline-offset-2 hover:text-ink"
+                    >
+                      Remove
+                    </button>
+                  </>
+                )}
+              </div>
+            </Field>
             <Switch
               checked={stampLogo}
               onChange={setStampLogo}

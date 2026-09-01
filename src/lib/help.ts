@@ -529,6 +529,11 @@ export const HELP: Record<string, HelpEntry> = {
     body:
       "Burns the wordmark into the bottom-right corner of the rendered clip, in the same place and at the same size the card pipelines put it — 28% of the short edge, 4% in. It is drawn over the nuggets rather than under them, so check nothing important is sitting in that corner. Off by default: a nugget deck is as often a working cut or an explainer as it is a finished HeartStamp asset. Note that the 4% margin puts it below the safe zone on every preset — on reels it lands where TikTok draws its action rail, so the mark may be partly covered on that platform. It comes in two colourways — white lettering for a dark corner, black for a light one — and which you get is read from the pixels the mark will cover, on the last frame of the background. The end is what a paused or looping player lingers on. The preview reads the same pixels, so what you see on the stage is the colourway you will get.",
   },
+  "pop.music": {
+    title: "Music bed",
+    body:
+      "A track to play under the whole deck. Any length: a long one is stopped at the end of the deck, a short one loops, and the last second fades — so nothing needs trimming before you drop it in. It does not fight the sound cues; the two are mixed, which is why the level matters. The default sits well under them, because a bed at full volume buries a 140-millisecond pop completely. What you hear while the deck plays here is what gets rendered, so set the level by listening rather than by guessing.",
+  },
   "pop.safeZone": {
     title: "The safe zone",
     body:

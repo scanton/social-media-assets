@@ -317,6 +317,8 @@ export async function renderNuggets({
   beats,
   canvas,
   logo = false,
+  music,
+  musicGain = 0.35,
   onProgress,
   signal,
 }: {
@@ -329,6 +331,10 @@ export async function renderNuggets({
   canvas: CanvasId;
   /** Stamp the HeartStamp wordmark into the bottom-right corner. */
   logo?: boolean;
+  /** A bed to play under the whole deck. Any length; trimmed to fit. */
+  music?: File | null;
+  /** 0..1. Well under the cues, which are the thing being listened for. */
+  musicGain?: number;
   onProgress?: (p: RenderProgress) => void;
   signal?: AbortSignal;
 }): Promise<NuggetRenderResult> {
@@ -479,6 +485,45 @@ export async function renderNuggets({
       actx.createMediaElementSource(video).connect(dest);
     } catch {
       // Already tapped, or no audio track. The render is silent rather than dead.
+    }
+  }
+
+  /*
+   * The music bed.
+   *
+   * Nothing special is needed to keep it out of the cues' way — a Web Audio
+   * graph sums whatever is connected to the destination, so the bed and the
+   * pops mix by construction and neither is aware of the other. What does need
+   * saying is the level: a track at full gain buries a 140ms pop completely,
+   * so the default sits well under and is adjustable.
+   *
+   * Trimmed by stopping it, not by editing it: `stop(when)` at the deck's own
+   * length costs nothing and works for a track of any length. A short one
+   * loops rather than leaving silence, since a bed that stops halfway sounds
+   * like a fault.
+   *
+   * The last second is faded out. A bed cut dead on the final frame reads as a
+   * truncated file — which, on this export, is a thing that actually happens,
+   * so it is worth not imitating.
+   */
+  let musicSource: AudioBufferSourceNode | null = null;
+  if (music) {
+    try {
+      const decoded = await actx.decodeAudioData(await music.arrayBuffer());
+      const src = actx.createBufferSource();
+      src.buffer = decoded;
+      src.loop = decoded.duration < duration;
+      const gain = actx.createGain();
+      gain.gain.value = Math.max(0, Math.min(1, musicGain));
+      const fadeFrom = Math.max(0, duration - 1);
+      gain.gain.setValueAtTime(gain.gain.value, actx.currentTime + fadeFrom);
+      gain.gain.linearRampToValueAtTime(0.0001, actx.currentTime + duration);
+      src.connect(gain);
+      gain.connect(dest);
+      musicSource = src;
+    } catch {
+      // An undecodable file loses the bed, not the render.
+      musicSource = null;
     }
   }
 
@@ -728,6 +773,8 @@ export async function renderNuggets({
 
   try {
     recorder.start();
+    // Started with the recorder so the bed and the frames share an origin.
+    musicSource?.start(0, 0, duration);
     for (const { media: m } of wells.values()) if (m instanceof HTMLVideoElement) void m.play().catch(() => {});
     startedAt = performance.now();
     if (video) await video.play();
@@ -764,6 +811,11 @@ export async function renderNuggets({
   for (const { media: m } of wells.values()) if (m instanceof HTMLVideoElement) m.pause();
   URL.revokeObjectURL(url);
   silence.stop();
+  try {
+    musicSource?.stop();
+  } catch {
+    // Already stopped by its own duration argument.
+  }
   void actx.close();
 
   onProgress?.({ stage: "Rendering", pct: 100 });
