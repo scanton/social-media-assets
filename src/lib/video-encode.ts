@@ -35,7 +35,19 @@ export function canRecordVideo(): boolean {
   );
 }
 
-export type RenderProgress = { stage: string; pct?: number };
+export type RenderProgress = {
+  stage: string;
+  pct?: number;
+  /**
+   * Frames per second actually achieved.
+   *
+   * Worth surfacing because this export records in real time: the finished file
+   * is as long as the frames it was given, so a machine painting at half speed
+   * produces half a deck. Silence there means a truncated render looks like a
+   * bug in the deck rather than a machine that could not keep up.
+   */
+  fps?: number;
+};
 
 /**
  * A ~60 Hz tick that survives the tab being hidden.

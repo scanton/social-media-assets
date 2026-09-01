@@ -30,6 +30,29 @@ import { glossStops } from "./screen-gloss";
 /** Rasterised above final size, because the entrance overshoots past 100%. */
 const WARP_STEPS_PER_FRAME = 10;
 
+/**
+ * How coarse the per-frame warp may get before quality stops mattering.
+ *
+ * The export records in real time, so the file is as long as the frames it was
+ * given: paint at half the rate and the deck comes out half the length. That is
+ * written up on WellClip below, where a 32-step warp once turned five seconds
+ * into half a second.
+ *
+ * Pre-warping fixed it for stills. A clip in a pinned screen cannot be
+ * pre-warped — every frame is a different picture — so it pays a hundred-odd
+ * clipped draws thirty times a second, and on a machine that cannot afford
+ * them the whole render shortens. A customer's 13-second deck came back as 6.5
+ * seconds of choppy video, which is exactly the arithmetic of painting at half
+ * speed.
+ *
+ * So the mesh coarsens when frames run late. Fewer cells is a slightly softer
+ * warp on a moving picture, which nobody will see; half the deck missing is not
+ * something anybody can miss.
+ */
+const WARP_STEPS_FLOOR = 4;
+/** 30fps is the target; a frame that takes longer than this is late. */
+const FRAME_BUDGET_MS = 1000 / 30;
+
 const RASTER = 1.35;
 
 /**
@@ -367,6 +390,32 @@ export async function renderNuggets({
   /** Cover, so the frame is filled and the overflow is cropped. */
   const stillFit = image ? coverFit(image.naturalWidth, image.naturalHeight, w, h) : null;
 
+  /*
+   * The still background, fitted once.
+   *
+   * It never changes, and it was being re-scaled from the source on every
+   * frame: a phone photograph is often 3000px on its long edge, so each frame
+   * paid a full resample down to the canvas before anything else was drawn. Done
+   * once into a canvas of exactly the output size, the per-frame cost becomes a
+   * 1:1 blit.
+   *
+   * The same reasoning as pre-warping a pinned still, and the same reason it
+   * matters: this export records in real time, so per-frame cost is not a
+   * question of patience — it is how long the finished file turns out to be.
+   */
+  const stillPlate = (() => {
+    if (!image || !stillFit) return null;
+    const cv = document.createElement("canvas");
+    cv.width = w;
+    cv.height = h;
+    const c = cv.getContext("2d", { alpha: false });
+    if (!c) return null;
+    c.imageSmoothingEnabled = true;
+    c.imageSmoothingQuality = "high";
+    c.drawImage(image, stillFit.dx, stillFit.dy, stillFit.dw, stillFit.dh);
+    return cv;
+  })();
+
   /** The clock. The element's when there is one, counted from the start when not. */
   let startedAt = 0;
   const now = () =>
@@ -504,10 +553,23 @@ export async function renderNuggets({
     if (video) await seekTo(video, 0);
   }
 
+  /*
+   * What the last few frames cost, and what that buys.
+   *
+   * Measured rather than assumed: the same deck is comfortable on one machine
+   * and hopeless on another, and the export has no way to know which it is on
+   * until it tries. A rolling mean over a handful of frames rides out one slow
+   * paint without chasing noise.
+   */
+  let warpSteps = WARP_STEPS_PER_FRAME;
+  let meanPaintMs = 0;
+
   let lastT = -0.001;
   const paint = () => {
+    const startedPaint = performance.now();
     const t = now();
     if (video) ctx2d.drawImage(video, 0, 0, w, h);
+    else if (stillPlate) ctx2d.drawImage(stillPlate, 0, 0);
     else if (image && stillFit) ctx2d.drawImage(image, stillFit.dx, stillFit.dy, stillFit.dw, stillFit.dh);
 
     for (const b of beats) {
@@ -577,9 +639,9 @@ export async function renderNuggets({
            * runs every frame of the render, and a moving picture hides the
            * fraction of a pixel it costs.
            */
-          steps: WARP_STEPS_PER_FRAME,
+          steps: warpSteps,
         });
-        if (b.well.gloss) paintGloss(ctx2d, q, b.well.gloss, WARP_STEPS_PER_FRAME);
+        if (b.well.gloss) paintGloss(ctx2d, q, b.well.gloss, warpSteps);
         ctx2d.restore();
         continue;
       }
@@ -652,6 +714,16 @@ export async function renderNuggets({
     }
     lastT = t;
     track.requestFrame();
+
+    /*
+     * Coarsen while frames are late, and recover when they are not. Stepping
+     * one level at a time keeps it from oscillating between extremes on a
+     * machine that is merely borderline.
+     */
+    const cost = performance.now() - startedPaint;
+    meanPaintMs = meanPaintMs === 0 ? cost : meanPaintMs * 0.8 + cost * 0.2;
+    if (meanPaintMs > FRAME_BUDGET_MS && warpSteps > WARP_STEPS_FLOOR) warpSteps--;
+    else if (meanPaintMs < FRAME_BUDGET_MS * 0.5 && warpSteps < WARP_STEPS_PER_FRAME) warpSteps++;
   };
 
   try {
@@ -676,6 +748,7 @@ export async function renderNuggets({
         onProgress?.({
           stage: "Rendering",
           pct: Math.min(99, Math.round((now() / duration) * 100)),
+          fps: meanPaintMs > 0 ? Math.round(1000 / meanPaintMs) : undefined,
         });
       });
     });
