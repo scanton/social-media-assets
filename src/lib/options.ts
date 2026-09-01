@@ -44,6 +44,21 @@ export const DEVICES: (Option & {
   defaultAspect?: string;
   /** This framing genuinely includes an envelope, so the prompt may mention one. */
   involvesEnvelope?: boolean;
+  /**
+   * Somebody's hand is on it. Turns on the hand-count rules — see handsClause.
+   * A TV or a billboard cannot grow a third hand; a held phone can.
+   */
+  heldInHand?: boolean;
+  /**
+   * Small enough that the camera has to come to it.
+   *
+   * A phone screen is about 6 inches tall, so a shot framed at any sane
+   * distance from a person makes it a postage stamp. Models default to
+   * "portrait of somebody holding a phone" and the artwork — the entire point
+   * of the picture — ends up unreadable at scrolling size. Marked devices get
+   * much tighter framing targets; see framingClause.
+   */
+  pocketSized?: boolean;
 })[] = [
   {
     id: "iphone-portrait",
@@ -51,6 +66,8 @@ export const DEVICES: (Option & {
     label: "iPhone 16 Pro Max — portrait",
     emoji: "📱",
     defaultAspect: "9:16",
+    heldInHand: true,
+    pocketSized: true,
     prompt:
       "an iPhone 16 Pro Max held in portrait orientation, titanium frame, Dynamic Island visible at the top of the display, thin uniform bezels",
   },
@@ -60,8 +77,17 @@ export const DEVICES: (Option & {
     label: "iPhone 16 Pro Max — landscape",
     emoji: "📱",
     defaultAspect: "16:9",
+    heldInHand: true,
+    pocketSized: true,
+    /*
+     * It used to say "with two hands", which is where a good part of the
+     * third-hand problem came from: both hands are committed to the device, so
+     * the moment a motion calls for a gesture the model grows another one. The
+     * hold is one-handed now, stated by handsClause rather than here, so the
+     * rule lives in one place across every device.
+     */
     prompt:
-      "an iPhone 16 Pro Max held sideways in landscape orientation with two hands, titanium frame, Dynamic Island on the left edge of the display, thin uniform bezels",
+      "an iPhone 16 Pro Max held sideways in landscape orientation, titanium frame, Dynamic Island on the left edge of the display, thin uniform bezels",
   },
   {
     id: "galaxy",
@@ -69,6 +95,8 @@ export const DEVICES: (Option & {
     label: "Samsung Galaxy S26 Ultra",
     emoji: "📱",
     defaultAspect: "9:16",
+    heldInHand: true,
+    pocketSized: true,
     prompt:
       "a Samsung Galaxy S26 Ultra in portrait orientation, flat matte aluminium rails, centred hole-punch selfie camera, very thin symmetrical bezels",
   },
@@ -105,6 +133,7 @@ export const DEVICES: (Option & {
     label: "iPad Pro",
     emoji: "📓",
     defaultAspect: "4:5",
+    heldInHand: true,
     prompt:
       "an iPad Pro tablet, flat-edge aluminium body, even bezels on all four sides, held or propped up",
   },
@@ -146,6 +175,7 @@ export const DEVICES: (Option & {
     // No size in here on purpose — the physical dimensions are stated once, by
     // cardScaleClause, from the card size the user actually picked. This used
     // to say "A6", which is 4.1 × 5.8in and contradicted a 5 × 7in card.
+    heldInHand: true,
     prompt:
       "a printed folded greeting card held upright in one hand, front panel facing the camera square-on, crisp paper edges, slight natural hand shadow",
   },
@@ -175,6 +205,7 @@ export const DEVICES: (Option & {
     label: "Card at the mailbox",
     emoji: "📮",
     defaultAspect: "9:16",
+    heldInHand: true,
     prompt:
       "a printed greeting card being pulled from a residential mailbox in its envelope, card front partially revealed",
   },
@@ -610,7 +641,7 @@ export const ANGLES: Option[] = [
     label: "First-person POV",
     emoji: "👀",
     prompt:
-      "shot from a first-person point of view looking down at the device held in the subject's own hands, arms entering frame from the bottom",
+      "shot from a first-person point of view looking down at the device held in one of the subject's own hands, that forearm entering frame from the bottom",
   },
   {
     id: "over-shoulder",
@@ -707,12 +738,46 @@ export const FRAMINGS: Option[] = [
   },
 ];
 
-/** Concrete area targets read better than adjectives like "close" or "tight". */
-function framingClause(framingId: string, surface: SurfaceKind): string {
+/**
+ * Concrete area targets read better than adjectives like "close" or "tight".
+ *
+ * `deviceId` is here for one reason: a phone is small. Six inches of screen
+ * photographed at any distance that flatters a person is a postage stamp, and
+ * the model's default reading of these scenes — a portrait of somebody holding
+ * a phone — puts the artwork well below the size it has to be to survive a
+ * scroll. Even "hero" came back too wide in practice. So a pocket-sized device
+ * gets its own, much tighter, set of targets and is told outright that the
+ * phone is the subject and the person is not.
+ */
+function framingClause(framingId: string, surface: SurfaceKind, deviceId?: string): string {
   const subject = surface === "print" ? "greeting card" : "device";
   const face = surface === "print" ? "printed front panel" : "screen";
+  const tight = Boolean(deviceId && byId(DEVICES, deviceId)?.pocketSized);
 
-  const spec: Record<string, { area: string; tail: string }> = {
+  const spec: Record<string, { area: string; tail: string }> = tight
+    ? {
+        extreme: {
+          area: "80-92%",
+          tail:
+            "This is a macro shot of the phone. Almost nothing else is in frame — the holding hand and a sliver of blurred surroundings at the very edges, nothing more",
+        },
+        hero: {
+          area: "62-78%",
+          tail:
+            "Push right in on the phone. The camera is close enough that the phone and the hand holding it are essentially the whole picture, with the setting reduced to soft blurred colour behind them",
+        },
+        balanced: {
+          area: "40-55%",
+          tail:
+            "The setting is readable around the phone but the phone still dominates the frame outright",
+        },
+        context: {
+          area: "22-32%",
+          tail:
+            "The environment does the storytelling, but the phone is still large enough that the artwork on it is sharp and readable at a glance",
+        },
+      }
+    : {
     extreme: {
       area: "65-80%",
       tail:
@@ -736,6 +801,12 @@ function framingClause(framingId: string, surface: SurfaceKind): string {
 
   return [
     `FRAMING — this matters as much as anything else: get in close on the ${subject}. It is unmistakably the hero of the shot, positioned near the centre of frame`,
+    ...(tight
+      ? [
+          "This is a photograph OF THE PHONE, not a portrait of a person who happens to be holding one — the camera is pushed right in on the device and the person is present only as the hand holding it and whatever the crop happens to include",
+          "a phone screen is only about six inches tall, so the camera has to come to it: shoot it the way a product photographer would, close and deliberate, not from conversational distance",
+        ]
+      : []),
     `its ${face} alone must occupy roughly ${area} of the total image area`,
     `the artwork on that ${face} has to be large, sharp and completely legible at a glance while someone is scrolling — that artwork is the entire point of the photograph`,
     tail,
@@ -1628,6 +1699,43 @@ const PLAUSIBLE_PLACEMENT_CLAUSE =
  * one-shot printed flow at all — but bodies, hands and shoulders sell the scene
  * just fine, and cropping them out is cheaper than losing the people.
  */
+/* --------------------------- HANDS -------------------------------- */
+
+/**
+ * How many hands the people in this shot are allowed to have.
+ *
+ * The failure it exists to stop: a subject holds the card or the phone in two
+ * hands, then the motion asks them to react, and the reaction needs a hand — so
+ * the model grows a third one rather than letting go. It turns up most often on
+ * the "React to it" motions, because those are the ones that call for a gesture
+ * while something is already being held, but it is not limited to them.
+ *
+ * Two rules, and the first is the load-bearing one. The anatomy is stated
+ * outright, because a model will happily draw an extra arm without ever having
+ * been told it cannot. Then the hold is pinned to ONE hand, which is what
+ * leaves a hand free for the gesture and removes the model's reason to invent
+ * one. Motions that genuinely need both hands — opening a folded card, working
+ * an envelope — say so and get the second wording instead, because ordering a
+ * one-handed hold there would contradict the action and the contradiction is
+ * resolved with, again, an extra arm.
+ *
+ * Scoped to the person holding rather than to the frame at large: several
+ * scenes legitimately have other people's hands at the edges — the brunch table
+ * has "friends' hands and cutlery moving at the edges of frame" — and banning
+ * hands outright would fight those.
+ */
+function handsClause(noun: string, mode: "one" | "both" = "one"): string {
+  return [
+    "HANDS AND ARMS — every person in this shot has exactly two hands and two arms and never more",
+    `the person holding the ${noun} never grows a third: no extra arm, no spare hand steadying it while both of theirs are busy elsewhere, no second pair of hands, and no unattached hand reaching in to take the weight`,
+    mode === "both"
+      ? `both of that person's hands may work the ${noun} while it is being opened or handled, but they are those same two hands throughout — when one comes away to gesture, the other keeps hold of it and the ${noun} stays supported`
+      : `they hold the ${noun} in ONE hand and keep it in that same hand for the whole shot; their other hand is the only free one, and every gesture — a hand to the mouth, covering a laugh, waving, reaching, touching their chest, pushing back their hair — is made with that one free hand and with no other`,
+    `the ${noun} is never held by a hand that belongs to nobody, and never floats unsupported`,
+    "count the hands before you finish: if the number of hands in frame is more than two per person, the shot is wrong",
+  ].join(". ");
+}
+
 const NO_FACES_CLAUSE = [
   "CRITICAL: no human face is visible anywhere in this frame",
   "people may appear, but only as hands, arms, shoulders, a lap, the back of a head, or a figure turned away or cropped above the chin",
@@ -1808,7 +1916,15 @@ export function buildScenePrompt(sel: SceneSelection): string {
           details: sel.details,
         }),
     bg ? undefined : angle?.prompt,
-    bg ? undefined : framingClause(sel.framingId, sel.surface),
+    bg ? undefined : framingClause(sel.framingId, sel.surface, sel.deviceId),
+    /*
+     * Only when somebody is actually holding it. A card standing on a table or
+     * a billboard by a road has no hands to miscount, and the rule would be
+     * noise there.
+     */
+    device?.heldInHand && sel.presenceId !== "none"
+      ? handsClause(sel.surface === "print" ? "greeting card" : "device")
+      : undefined,
     bg ? undefined : light?.prompt,
     bg ? undefined : look?.prompt,
     bg || !audience
@@ -1862,6 +1978,16 @@ export const MOTIONS: (Option & {
   requiresInside?: boolean;
   /** This motion genuinely handles an envelope, so the prompt may mention one. */
   involvesEnvelope?: boolean;
+  /**
+   * How many hands this motion legitimately needs on the object.
+   *
+   * Left unset it is ONE, which is the default because it is the hold that
+   * leaves a hand free to gesture with. Opening a folded card or an envelope
+   * genuinely takes both, so those say so — otherwise the one-handed rule and
+   * the motion contradict each other and the model resolves it by growing an
+   * extra arm, which is the exact bug this is here to stop.
+   */
+  hands?: "none" | "both";
 })[] = [
   /* ------------------------------ camera ----------------------------- */
   {
@@ -1917,7 +2043,7 @@ export const MOTIONS: (Option & {
     label: "React to it",
     emoji: "🥹",
     prompt:
-      "the subject looks down at the card and reacts in real time — eyebrows lift, a grin spreads, a hand comes up to their mouth, they let out a small laugh and shake their head. Shoulders and chest move with the breath and the laugh. Genuine, unforced, caught-in-the-moment energy",
+      "the subject looks down at the card and reacts in real time — eyebrows lift, a grin spreads, their free hand comes up to their mouth while the holding hand stays exactly where it is, they let out a small laugh and shake their head. Shoulders and chest move with the breath and the laugh. Genuine, unforced, caught-in-the-moment energy",
   },
   {
     id: "show-a-friend",
@@ -2014,6 +2140,7 @@ export const MOTIONS: (Option & {
   /* ------------------ print · card stays closed ---------------------- */
   {
     id: "card-zoom",
+    hands: "none",
     kind: "camera",
     surface: "print",
     label: "Stationary card zoom",
@@ -2023,6 +2150,7 @@ export const MOTIONS: (Option & {
   },
   {
     id: "card-turn",
+    hands: "both",
     kind: "action",
     surface: "print",
     label: "Tilt & catch the light",
@@ -2032,6 +2160,7 @@ export const MOTIONS: (Option & {
   },
   {
     id: "stand-it-up",
+    hands: "both",
     kind: "action",
     surface: "print",
     label: "Stand it up",
@@ -2041,6 +2170,7 @@ export const MOTIONS: (Option & {
   },
   {
     id: "envelope-reveal",
+    hands: "both",
     kind: "action",
     surface: "print",
     involvesEnvelope: true,
@@ -2053,6 +2183,7 @@ export const MOTIONS: (Option & {
   /* -------- print · card opens (needs the inside spread) ------------- */
   {
     id: "card-open",
+    hands: "both",
     kind: "action",
     surface: "print",
     requiresInside: true,
@@ -2063,6 +2194,7 @@ export const MOTIONS: (Option & {
   },
   {
     id: "open-slow-reveal",
+    hands: "both",
     kind: "camera",
     surface: "print",
     requiresInside: true,
@@ -2073,6 +2205,7 @@ export const MOTIONS: (Option & {
   },
   {
     id: "open-and-linger",
+    hands: "both",
     kind: "action",
     surface: "print",
     requiresInside: true,
@@ -2083,16 +2216,18 @@ export const MOTIONS: (Option & {
   },
   {
     id: "open-and-react-print",
+    hands: "both",
     kind: "action",
     surface: "print",
     requiresInside: true,
     label: "Open & react",
     emoji: "🥹",
     prompt:
-      "the recipient opens the card out to its inside spread, reads it, and reacts in real time — eyebrows lift, a grin spreads, a hand comes to their mouth. The open card stays square to camera and readable throughout",
+      "the recipient opens the card out to its inside spread, reads it, and reacts in real time — eyebrows lift, a grin spreads, one hand comes to their mouth while the other keeps hold of the open card. The open card stays square to camera and readable throughout",
   },
   {
     id: "envelope-open-read",
+    hands: "both",
     kind: "action",
     surface: "print",
     requiresInside: true,
@@ -2104,6 +2239,7 @@ export const MOTIONS: (Option & {
   },
   {
     id: "open-show-friend",
+    hands: "both",
     kind: "action",
     surface: "print",
     requiresInside: true,
@@ -2114,6 +2250,7 @@ export const MOTIONS: (Option & {
   },
   {
     id: "open-on-table",
+    hands: "both",
     kind: "action",
     surface: "print",
     requiresInside: true,
@@ -2124,6 +2261,7 @@ export const MOTIONS: (Option & {
   },
   {
     id: "open-and-stand",
+    hands: "both",
     kind: "action",
     surface: "print",
     requiresInside: true,
@@ -2134,6 +2272,7 @@ export const MOTIONS: (Option & {
   },
   {
     id: "open-hand-over",
+    hands: "both",
     kind: "action",
     surface: "print",
     requiresInside: true,
@@ -2144,6 +2283,7 @@ export const MOTIONS: (Option & {
   },
   {
     id: "open-busy-world",
+    hands: "both",
     kind: "action",
     surface: "print",
     requiresInside: true,
@@ -2154,6 +2294,7 @@ export const MOTIONS: (Option & {
   },
   {
     id: "open-celebrate",
+    hands: "both",
     kind: "action",
     surface: "print",
     requiresInside: true,
@@ -2297,6 +2438,18 @@ const NO_ENVELOPE_CLAUSE = [
   "no envelope, sleeve, wrapper, insert or backing card of any kind is present, and nothing is tucked into the card, laid across it or propped behind it — not even if the printed artwork happens to depict such a thing",
 ].join(". ");
 
+/**
+ * The hands rule for a video, given what the chosen motion actually does.
+ *
+ * `hands: "none"` means the motion has already said no hands enter frame, and
+ * repeating an anatomy rule about people who are not there would only give the
+ * model somebody to draw.
+ */
+function handsFor(surface: SurfaceKind, hands: "none" | "both" | undefined): string | undefined {
+  if (hands === "none") return undefined;
+  return handsClause(surface === "print" ? "greeting card" : "device", hands === "both" ? "both" : "one");
+}
+
 export function buildAnimatePrompt(opts: {
   motionId: string;
   surface: SurfaceKind;
@@ -2310,6 +2463,11 @@ export function buildAnimatePrompt(opts: {
   return joinPrompts([
     "Bring this photograph to life as a short, natural-looking live-action clip",
     motion?.prompt,
+    /*
+     * Straight after the motion, because the motion is what triggers it: the
+     * gesture a reaction calls for is where the extra arm gets invented.
+     */
+    handsFor(opts.surface, motion?.hands),
     scene ? `Keep the environment consistent: ${scene.prompt}` : undefined,
     `Whatever artwork is already on ${surfaceNoun} must stay perfectly locked to that surface with correct perspective for the whole clip — it must never slide, flicker, warp or change`,
     opts.surface === "print" ? PRINT_CONTAINMENT_CLAUSE : SCREEN_CONTAINMENT_CLAUSE,
@@ -2341,6 +2499,7 @@ export function buildScreenReplacePrompt(opts: {
     opts.surface === "print" ? FLAT_CARD_CLAUSE : undefined,
     opts.surface === "print" ? undefined : NO_TOUCH_CLAUSE,
     motion?.prompt,
+    handsFor(opts.surface, motion?.hands),
     "Preserve the exact subject, wardrobe, environment, framing and lighting of @Image1",
     "Realistic physics and motion blur. No text overlays, no captions, no watermarks, no logos, no scene cuts",
     opts.extraNotes?.trim(),
@@ -2402,7 +2561,7 @@ export function buildOneShotPrompt(sel: {
       details: sel.details,
     }),
     angle?.prompt,
-    framingClause(sel.framingId, sel.surface),
+    framingClause(sel.framingId, sel.surface, sel.deviceId),
     light?.prompt,
     look?.prompt,
     audience ? `the styling, wardrobe and props should read as authentically ${audience.prompt}` : undefined,
@@ -2435,6 +2594,7 @@ export function buildOneShotPrompt(sel: {
       `Now the shot: ${device?.prompt ?? "the card held upright, front facing the camera"}`,
       ...setting,
       motion?.prompt,
+      handsFor("print", motion?.hands),
       opensCard ? CARD_OPEN_PACING_CLAUSE : undefined,
       "The printed artwork follows any curl or flex in the paper and takes the scene's own light, so it reads as genuinely printed on stock",
       "Realistic physics and paper motion, with believable card weight and stiffness. No text overlays, no captions, no watermarks, no logos, no scene cuts",
@@ -2462,6 +2622,7 @@ export function buildOneShotPrompt(sel: {
     SCREEN_CONTAINMENT_CLAUSE,
     NO_TOUCH_CLAUSE,
     motion?.prompt,
+    handsFor("screen", motion?.hands),
     "Realistic physics and motion blur. No text overlays, no captions, no watermarks, no logos, no scene cuts",
     sel.extraNotes?.trim(),
   ]);
@@ -2495,6 +2656,9 @@ export function buildCardOpenPrompt(opts: {
      */
     FLAT_CARD_CLAUSE,
     motion?.prompt,
+    // Every motion that reaches this builder opens the card, which is a genuine
+    // two-handed job — so the rule here is the count, not a one-handed hold.
+    handsFor("print", motion?.hands ?? "both"),
     CARD_OPEN_PACING_CLAUSE,
     "As the card opens, the inside must show exactly the artwork from @Image2: same composition, same colours, same typography, same layout across both panels. Reproduce it faithfully — do not redesign it, re-letter it, recolour it or invent any inside content of your own",
     "Map it to the open card with correct perspective, following the centre fold and any curl in the paper, and let the scene's own light fall across it. It must read as genuinely printed on that stock",

@@ -270,7 +270,7 @@ export const HELP: Record<string, HelpEntry> = {
   "scene.framing": {
     title: "How close",
     body:
-      "How much of the frame the card takes up. Separate from camera angle: that says where the camera is, this says how close it gets.",
+      "How much of the frame the card takes up. Separate from camera angle: that says where the camera is, this says how close it gets. Every setting pushes in harder when the device is a phone — a phone screen is only about six inches tall, so a shot framed at a comfortable distance from a person leaves the artwork too small to read while somebody is scrolling.",
     terms: gloss(FRAMINGS, {
       hero: "The card is the whole point and fills most of the frame.",
       extreme: "Closer still — card edge to edge, almost no room for anything else.",
