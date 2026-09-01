@@ -849,7 +849,7 @@ export const HELP: Record<string, HelpEntry> = {
   "pop.stillLength": {
     title: "Timeline length",
     body:
-      "How long the deck runs when the background is a still. A clip brings its own length; a photograph has none, so this is it. Capped at a minute because the export records in real time — a minute of deck is a minute of watching it render.",
+      "How long the deck runs when the background is a still. A clip brings its own length; a photograph has none, so this is it. Capped at a minute because a long deck is a long wait at the export — the render is frame by frame, and a slow machine spends longer on it rather than cutting it short.",
   },
   "pop.transport": {
     title: "Playing the deck",

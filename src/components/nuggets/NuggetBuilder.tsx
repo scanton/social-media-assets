@@ -34,6 +34,7 @@ import { playCue } from "@/lib/popkit/cue-player";
 import { renderNuggets } from "@/lib/popkit/render-video";
 import { isSvg, normaliseImage, toDataUri } from "@/lib/popkit/assets";
 import { canRecordVideo, type RenderProgress } from "@/lib/video-encode";
+import { canEncodeOffline } from "@/lib/video-encode-offline";
 import { CUE_MS, DEFAULT_ARROW_CUE, DEFAULT_CUE } from "@/lib/popkit/cues";
 import { buildDeck, exportBasename, validateDeckAgainstSchema } from "@/lib/popkit/export";
 import { Accordion, Disclosure } from "./Disclosure";
@@ -981,7 +982,12 @@ export function NuggetBuilder() {
               <div className="flex flex-wrap items-center gap-3">
                 <button
                   type="button"
-                  disabled={!bg || blocking.length > 0 || !!rendering || !canRecordVideo()}
+                  disabled={
+                    !bg || blocking.length > 0 || !!rendering
+                    // Either route out is enough. WebCodecs is the one that
+                    // gets used; MediaRecorder is the fallback behind it.
+                    || !(canEncodeOffline() || canRecordVideo())
+                  }
                   onClick={async () => {
                     if (!bg) return;
                     setRenderError(null);
@@ -1061,15 +1067,23 @@ export function NuggetBuilder() {
                     ? `${blocking.length} issue${blocking.length > 1 ? "s" : ""} to resolve first.`
                     : rendering
                       ? /*
-                         * The frame rate, once it is known and only when it is
-                         * bad. This export records in real time, so the file is
-                         * as long as the frames it was given — a machine
-                         * painting at half speed produces half a deck, and
-                         * saying nothing there makes a truncated export look
-                         * like a broken deck rather than a machine that could
-                         * not keep up.
+                         * What this line says depends entirely on which route
+                         * the render took, because the failure modes are
+                         * opposites.
+                         *
+                         * Off the clock, every frame carries its own timestamp,
+                         * so a slow machine costs patience and the file is the
+                         * right length regardless — worth saying, since the
+                         * progress bar crawling on an old PC otherwise looks
+                         * like the same trouble as before.
+                         *
+                         * On the clock, the file is as long as the frames the
+                         * machine managed to paint, so a bad frame rate is a
+                         * truncated export and has to be called out.
                          */
-                        rendering.fps !== undefined && rendering.fps < 24
+                        rendering.realtime === false
+                        ? "Encoding frame by frame — a slower machine takes longer, not shorter."
+                        : rendering.fps !== undefined && rendering.fps < 24
                         ? `Rendering at ${rendering.fps} fps — this machine is behind, so the clip will come out short and choppy. Close other tabs, or try a smaller canvas.`
                         : "Runs in real time, so about as long as the deck."
                       : !SHOW_EXPORT_ZIP

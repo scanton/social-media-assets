@@ -13,6 +13,14 @@ import {
   coverCrop, drawImageInQuad, quadSize, roundedQuadPath, sourceHeight, sourceWidth, type Quad,
 } from "@/lib/perspective";
 import { glossStops } from "./screen-gloss";
+import {
+  OFFLINE_FPS,
+  canEncodeOffline,
+  encodeDeterministic,
+  openFrameSource,
+  scheduleSourceAudio,
+  type FrameSource,
+} from "@/lib/video-encode-offline";
 
 /**
  * Burns the nuggets into a clip, in the browser.
@@ -25,18 +33,25 @@ import { glossStops } from "./screen-gloss";
  * Nothing here re-derives anything. The artwork is compose()'s own SVG, the
  * scale is motion.js's own spring, and the muted cues are feedback.js's own
  * rule, so the file this produces is the file scripts/render-deck.js would.
+ *
+ * There are two ways out. The first choice is video-encode-offline.ts, which
+ * encodes frame by frame with explicit timestamps and so takes the machine's
+ * speed out of the result entirely. A browser without a WebCodecs encoder
+ * falls back to captureStream into MediaRecorder, which is the older route and
+ * the one that turns a slow machine into a short film. Both drive the same
+ * `paint`, so what lands on the canvas is identical either way.
  */
 
 /** Rasterised above final size, because the entrance overshoots past 100%. */
 const WARP_STEPS_PER_FRAME = 10;
 
 /**
- * How coarse the per-frame warp may get before quality stops mattering.
+ * How coarse the per-frame warp may get, on the path where that still matters.
  *
- * The export records in real time, so the file is as long as the frames it was
- * given: paint at half the rate and the deck comes out half the length. That is
- * written up on WellClip below, where a 32-step warp once turned five seconds
- * into half a second.
+ * The MediaRecorder fallback records in real time, so its file is as long as
+ * the frames it was given: paint at half the rate and the deck comes out half
+ * the length. That is written up on WellClip below, where a 32-step warp once
+ * turned five seconds into half a second.
  *
  * Pre-warping fixed it for stills. A clip in a pinned screen cannot be
  * pre-warped — every frame is a different picture — so it pays a hundred-odd
@@ -45,9 +60,15 @@ const WARP_STEPS_PER_FRAME = 10;
  * seconds of choppy video, which is exactly the arithmetic of painting at half
  * speed.
  *
- * So the mesh coarsens when frames run late. Fewer cells is a slightly softer
- * warp on a moving picture, which nobody will see; half the deck missing is not
- * something anybody can miss.
+ * Coarsening the mesh under load was the first answer, and it was the wrong
+ * shape of answer: it moves the threshold rather than removing it, so a slow
+ * enough machine still loses the end of the deck and now does so at lower
+ * quality too. The same customer came back with the same truncated export.
+ *
+ * The real fix is video-encode-offline.ts, which stamps every frame with its
+ * own timestamp and lets a slow machine simply take longer. This constant now
+ * only governs browsers that have no WebCodecs encoder to hand, where a
+ * slightly softer warp is still better than half a deck.
  */
 const WARP_STEPS_FLOOR = 4;
 /** 30fps is the target; a frame that takes longer than this is late. */
@@ -157,6 +178,12 @@ interface WellClip {
    * such luck and pays per frame, at a coarser mesh.
    */
   warped?: HTMLCanvasElement;
+  /**
+   * The exact frame this clip should be showing, parked by the deterministic
+   * path before each paint. Absent on the real-time path, where `media` is a
+   * playing element and already showing the right thing.
+   */
+  current?: CanvasImageSource;
   /** The media rectangle inside the well, in the well's own coordinates. */
   L: { mediaX: number; mediaY: number; mediaW: number; mediaH: number; radius: number; outerW: number };
 }
@@ -338,8 +365,16 @@ export async function renderNuggets({
   onProgress?: (p: RenderProgress) => void;
   signal?: AbortSignal;
 }): Promise<NuggetRenderResult> {
+  /*
+   * The fallback's container, worked out up front so a browser that can do
+   * neither is turned away before any decoding happens. A missing one is only
+   * fatal when WebCodecs is also absent — the deterministic path below brings
+   * its own muxer and never touches MediaRecorder.
+   */
   const mime = pickRecorderMime();
-  if (!mime) throw new Error("This browser cannot record video, so the clip can't be rendered here.");
+  if (!mime && !canEncodeOffline()) {
+    throw new Error("This browser cannot record video, so the clip can't be rendered here.");
+  }
 
   onProgress?.({ stage: "Preparing", pct: 0 });
   const art = await rasterise(beats, canvas);
@@ -388,8 +423,17 @@ export async function renderNuggets({
     });
   }
 
-  const w = video ? video.videoWidth || preset.w : preset.w;
-  const h = video ? video.videoHeight || preset.h : preset.h;
+  /*
+   * Rounded down to even numbers.
+   *
+   * H.264 stores chroma at half resolution in each direction, so an odd width
+   * or height is not representable and the encoder simply refuses the config.
+   * A source that is 1079 tall is not common but it exists, and losing a row
+   * of pixels is invisible where losing the whole render is not.
+   */
+  const even = (n: number) => Math.max(2, Math.floor(n / 2) * 2);
+  const w = even(video ? video.videoWidth || preset.w : preset.w);
+  const h = even(video ? video.videoHeight || preset.h : preset.h);
   const duration = video ? video.duration : Math.max(0.1, deckSeconds ?? 0);
   if (!duration) throw new Error("The deck has no length, so there is nothing to render.");
 
@@ -434,6 +478,370 @@ export async function renderNuggets({
   if (!ctx2d) throw new Error("Canvas is unavailable in this browser.");
   ctx2d.imageSmoothingEnabled = true;
   ctx2d.imageSmoothingQuality = "high";
+  /* ---- the soundtrack, in whichever context is doing the mixing ---- */
+
+  /**
+   * The cue samples, decoded into the context that will play them.
+   *
+   * Takes a context rather than closing over one because the two render paths
+   * mix in different places: the real-time path sums a live graph into a
+   * MediaStreamDestination as the frames go by, and the deterministic path
+   * renders the whole soundtrack offline before a frame is encoded. An
+   * AudioBuffer belongs to whichever context decoded it, so this runs twice
+   * rather than being shared.
+   */
+  const decodeCues = async (ac: BaseAudioContext) => {
+    const decoded = new Map<string, AudioBuffer>();
+    for (const b of beats) {
+      const cue = b.cue;
+      if (!cue || cue === "silent" || silenced.has(b.id) || decoded.has(cue)) continue;
+      const spec = CUE_TABLE[cue];
+      if (!spec?.file) continue;
+      try {
+        const res = await fetch("/sfx/" + spec.file);
+        decoded.set(cue, await ac.decodeAudioData(await res.arrayBuffer()));
+      } catch {
+        // A missing cue file silences that beat, never the whole render.
+      }
+    }
+    return decoded;
+  };
+
+  /* ---- the logo, chosen once ---- */
+
+  /*
+   * The wordmark, and which of its two colourways the corner needs.
+   *
+   * Measured on the LAST frame rather than the first, for the reason the card
+   * pipeline measures it there: the end is what a paused or looping player
+   * lingers on, and a deck that opens dark and ends bright would otherwise
+   * choose white lettering against the opening and lose it exactly when
+   * somebody is looking. Chosen once and held — sampling every frame lets the
+   * mark flip colour mid-clip the moment something bright crosses the corner.
+   *
+   * Seeking is free here: this <video> belongs to the render, not to the
+   * editor, so the playhead the user is watching never moves.
+   *
+   * The background is what gets measured, not the finished composite. A nugget
+   * that happens to be over the corner at the end is transient; the footage
+   * under it is what the mark actually has to survive.
+   */
+  let logos: LogoSet | null = null;
+  let logoVariant: LogoVariant | undefined;
+  if (logo) {
+    logos = await heartStampLogo();
+    if (video && Number.isFinite(video.duration) && video.duration > 0) {
+      // A hair before the end: seeking to exactly `duration` can land past the
+      // last decodable frame and yield a blank or stale one.
+      await seekTo(video, Math.max(0, video.duration - 0.08));
+    }
+
+    /*
+     * Measured on a scratch canvas, NOT on the one being recorded.
+     *
+     * The render canvas is already wired to a capture track by this point, and
+     * anything drawn on it before the paint loop starts can be flushed out as a
+     * frame — which put one frame of un-composed background at the head of
+     * every stamped render.
+     */
+    const source = video ?? image;
+    if (source) logoVariant = variantForBackground(logos, source, w, h, stillFit);
+
+    if (video) await seekTo(video, 0);
+  }
+
+  /* ---- what gets drawn, on either clock ---- */
+
+  /**
+   * The background frame, when it does not come from a playing element.
+   *
+   * The real-time path leaves this null and draws the `<video>` itself, which
+   * is showing whatever it is showing. The deterministic path pulls an exact
+   * frame out of a decoder and parks it here first, because "the frame at
+   * 7.4333s" is a thing you can ask a decoder for and not a thing you can ask
+   * a playing element for.
+   */
+  let bgFrame: CanvasImageSource | null = null;
+
+  /**
+   * How fine the per-frame mesh warp is.
+   *
+   * Only the real-time path moves this. There, a frame that takes too long
+   * costs deck length, so the mesh coarsens under load and the render stays
+   * the right length at slightly softer quality. The deterministic path has no
+   * such trade to make — a slow machine there costs patience and nothing else
+   * — so it holds full quality throughout.
+   */
+  let warpSteps = WARP_STEPS_PER_FRAME;
+
+  const paint = (t: number) => {
+    const background = bgFrame ?? video;
+    if (background) ctx2d.drawImage(background, 0, 0, w, h);
+    else if (stillPlate) ctx2d.drawImage(stillPlate, 0, 0);
+    else if (image && stillFit) ctx2d.drawImage(image, stillFit.dx, stillFit.dy, stillFit.dw, stillFit.dh);
+
+    for (const b of beats) {
+      if (t < b.t || t > b.out) continue;
+      const a = art.get(b.id);
+      if (!a) continue;
+      const s = beatScaleFor(b, t);
+      if (s <= 0) continue;
+
+      // Canvas px, not preset px: a 720p source carries the same normalised
+      // anchor as a 1080p one and must land in the same place on the frame.
+      const sx = w / preset.w;
+      const sy = h / preset.h;
+      const dw = a.w * sx * s;
+      const dh = a.h * sy * s;
+      const align = b.align ?? "center";
+      const cx = b.anchor.x * w + (align === "left" ? a.w * sx / 2 : align === "right" ? -a.w * sx / 2 : 0);
+      const cy = b.anchor.y * h;
+
+      ctx2d.save();
+      ctx2d.translate(cx, cy);
+      if (b.rotate) ctx2d.rotate((b.rotate * Math.PI) / 180);
+
+      const well = wells.get(b.id);
+      /*
+       * `current` is a decoded frame parked by the deterministic path, and it
+       * takes precedence over the element it was decoded from. When it is
+       * absent the element is drawn, which is the real-time path and also the
+       * graceful end of a clip the decoder could not open: a still first frame
+       * rather than a hole.
+       */
+      const frame = well?.current ?? well?.media;
+      const ready =
+        Boolean(frame) &&
+        (well?.current
+          ? true
+          : well!.media instanceof HTMLVideoElement
+            ? well!.media.readyState >= 2
+            : well!.media.complete);
+
+      /*
+       * A pinned screen is warped onto its quad instead of being drawn into a
+       * rectangle, by the same homography the editor puts in a CSS matrix3d.
+       * It also sits outside the beat's own transform: the quad is in canvas
+       * coordinates already, so the translate/rotate/scale set up above would
+       * apply it twice.
+       */
+      if (well && frame && ready && b.well?.quad) {
+        ctx2d.restore();
+        if (well.warped) {
+          // A still, warped once when the deck was opened.
+          ctx2d.drawImage(well.warped, 0, 0, w, h);
+          continue;
+        }
+        const q = b.well.quad.map((p) => ({ x: p.x * w, y: p.y * h })) as Quad;
+        ctx2d.save();
+        if (b.well.radius) {
+          // Rounded corners in the surface's own space, foreshortened with it.
+          const r = (b.well.radius * w) / preset.w;
+          const path = roundedQuadPath(q, r);
+          ctx2d.beginPath();
+          path.forEach((p, i) => (i ? ctx2d.lineTo(p.x, p.y) : ctx2d.moveTo(p.x, p.y)));
+          ctx2d.closePath();
+          ctx2d.clip();
+        }
+        drawImageInQuad(ctx2d, frame, q, {
+          /*
+           * Omitting srcRect maps the whole frame onto the quad, which is
+           * exactly what stretching means here — nothing is left outside to be
+           * cropped, and the aspect gives instead.
+           */
+          srcRect: b.well.stretch
+            ? undefined
+            : coverCrop({ width: sourceWidth(frame), height: sourceHeight(frame) }, q),
+          /*
+           * Coarser than the 32 the card compositor uses. That density exists
+           * to land print artwork pixel-accurately in a one-off composite; this
+           * runs every frame of the render, and a moving picture hides the
+           * fraction of a pixel it costs.
+           */
+          steps: warpSteps,
+        });
+        if (b.well.gloss) paintGloss(ctx2d, q, b.well.gloss, warpSteps);
+        ctx2d.restore();
+        continue;
+      }
+
+      if (well && frame && ready) {
+        /*
+         * The clip goes UNDER the frame, through the hole wellSvg leaves for it.
+         * Coordinates come from wellLayout, the same numbers the SVG was drawn
+         * from, so the video lands exactly in the aperture rather than near it.
+         */
+        const k = dw / well.L.outerW;
+        ctx2d.save();
+        ctx2d.translate(-dw / 2, -dh / 2);
+        ctx2d.scale(k, k);
+        ctx2d.beginPath();
+        ctx2d.roundRect(well.L.mediaX, well.L.mediaY, well.L.mediaW, well.L.mediaH, well.L.radius);
+        ctx2d.clip();
+        /*
+         * Cover unless the well asks to stretch, and never contain:
+         * letterboxing inside the aperture would show the frame's own fill
+         * through the gaps.
+         *
+         * Stretching is the degenerate case of the same drawImage — the media
+         * is laid straight into the aperture and the aspect gives — so both
+         * paths end at the same call rather than diverging.
+         */
+        const vw = sourceWidth(frame);
+        const vh = sourceHeight(frame);
+        const cover = b.well?.stretch ? 0 : Math.max(well.L.mediaW / vw, well.L.mediaH / vh);
+        const dw2 = cover ? vw * cover : well.L.mediaW;
+        const dh2 = cover ? vh * cover : well.L.mediaH;
+        ctx2d.drawImage(
+          frame,
+          well.L.mediaX + (well.L.mediaW - dw2) / 2,
+          well.L.mediaY + (well.L.mediaH - dh2) / 2,
+          dw2, dh2,
+        );
+        ctx2d.restore();
+      }
+
+      ctx2d.drawImage(a.img, -dw / 2, -dh / 2, dw, dh);
+      ctx2d.restore();
+    }
+
+    /*
+     * Last, so it sits over the nuggets rather than under them.
+     *
+     * The mark is the one thing on the frame that is not part of the
+     * composition — a nugget landing on top of it would read as a mistake in
+     * a way a nugget landing on the footage does not.
+     */
+    if (logos) paintLogo(ctx2d, logos, w, h, logoVariant);
+  };
+
+  /* ---- off the clock: every frame stamped, however long it takes ---- */
+
+  /**
+   * This is the path that fixes the short render.
+   *
+   * The real-time path below hands frames to a MediaRecorder as they happen,
+   * so the file is as long as the frames the machine managed to paint — a PC
+   * running at half speed produces half a deck, and no amount of thinning the
+   * work per frame changes that, it only moves the threshold. Here each frame
+   * carries its own timestamp into the encoder, so frame 389 is stamped at
+   * 12.966s whether the paint before it took four milliseconds or four hundred.
+   * A slow machine waits longer and gets the same file.
+   */
+  if (canEncodeOffline()) {
+    const fps = OFFLINE_FPS;
+    const frames = Math.max(1, Math.round(duration * fps));
+
+    /*
+     * Clips are read, not played. A playing element is a clock, which is the
+     * thing this path exists to get rid of; a decoder answers "the frame at
+     * this timestamp" and takes as long as it takes.
+     */
+    onProgress?.({ stage: "Preparing", pct: 0, realtime: false });
+    const bgSource = video ? await openFrameSource(file, { loop: false }) : null;
+    const wellSources = new Map<string, FrameSource>();
+    for (const b of beats) {
+      if (b.well?.kind !== "video" || !b.well.src || !wells.has(b.id)) continue;
+      try {
+        const blob = await fetch(b.well.src).then((r) => r.blob());
+        const source = await openFrameSource(blob, { loop: true });
+        if (source) wellSources.set(b.id, source);
+      } catch {
+        // Falls through to the element, which shows its first frame. A frozen
+        // screen is a poor result; a missing one is a broken render.
+      }
+    }
+
+    /*
+     * The whole soundtrack, mixed before a frame is encoded.
+     *
+     * Same graph as the live one and for the same reasons — a Web Audio
+     * context sums whatever is connected, so the bed, the cues and the clip's
+     * own audio mix by construction — but rendered offline, where "when" is a
+     * number rather than a moment. The silent-keepalive node the live path
+     * needs has no counterpart here: an offline render is exactly as long as
+     * it was asked to be, so there is no shortest track to be cut to.
+     */
+    const rate = 48_000;
+    const octx = new OfflineAudioContext(2, Math.max(1, Math.ceil(duration * rate)), rate);
+    let anySound = false;
+
+    if (video) {
+      anySound = (await scheduleSourceAudio(file, octx, octx.destination, duration)) || anySound;
+    }
+
+    if (music) {
+      try {
+        const decoded = await octx.decodeAudioData(await music.arrayBuffer());
+        const src = octx.createBufferSource();
+        src.buffer = decoded;
+        src.loop = decoded.duration < duration;
+        const gain = octx.createGain();
+        gain.gain.value = Math.max(0, Math.min(1, musicGain));
+        const fadeFrom = Math.max(0, duration - 1);
+        gain.gain.setValueAtTime(gain.gain.value, fadeFrom);
+        gain.gain.linearRampToValueAtTime(0.0001, duration);
+        src.connect(gain);
+        gain.connect(octx.destination);
+        src.start(0, 0, duration);
+        anySound = true;
+      } catch {
+        // An undecodable file loses the bed, not the render.
+      }
+    }
+
+    const offlineCues = await decodeCues(octx);
+    for (const b of beats) {
+      const cue = b.cue;
+      if (!cue || cue === "silent" || silenced.has(b.id)) continue;
+      const buf = offlineCues.get(cue);
+      if (!buf || b.t < 0 || b.t >= duration) continue;
+      const src = octx.createBufferSource();
+      const g = octx.createGain();
+      g.gain.value = CUE_TABLE[cue]?.gain ?? 0.6;
+      src.buffer = buf;
+      src.connect(g);
+      g.connect(octx.destination);
+      src.start(b.t);
+      anySound = true;
+    }
+
+    const soundtrack = anySound ? await octx.startRendering() : null;
+
+    if (logos && video) await seekTo(video, 0);
+
+    try {
+      const result = await encodeDeterministic({
+        canvas: cv,
+        fps,
+        frames,
+        paint: async (_i, t) => {
+          if (bgSource) bgFrame = await bgSource.at(t);
+          for (const [id, source] of wellSources) {
+            const clip = wells.get(id);
+            if (clip) clip.current = (await source.at(t)) ?? undefined;
+          }
+          paint(t);
+        },
+        audio: soundtrack,
+        onProgress: (done, total) =>
+          onProgress?.({
+            stage: "Rendering",
+            pct: Math.min(99, Math.round((done / total) * 100)),
+            realtime: false,
+          }),
+        signal,
+      });
+      onProgress?.({ stage: "Rendering", pct: 100, realtime: false });
+      return result;
+    } finally {
+      await bgSource?.close();
+      for (const source of wellSources.values()) await source.close();
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  /* ---- on the clock: the fallback, for a browser without WebCodecs ---- */
 
   /* ---- audio: the clip's own, plus the cues, on one track ---- */
   const AC: typeof AudioContext =
@@ -527,19 +935,7 @@ export async function renderNuggets({
     }
   }
 
-  const buffers = new Map<string, AudioBuffer>();
-  for (const b of beats) {
-    const cue = b.cue;
-    if (!cue || cue === "silent" || silenced.has(b.id) || buffers.has(cue)) continue;
-    const spec = CUE_TABLE[cue];
-    if (!spec?.file) continue;
-    try {
-      const res = await fetch("/sfx/" + spec.file);
-      buffers.set(cue, await actx.decodeAudioData(await res.arrayBuffer()));
-    } catch {
-      // A missing cue file silences that beat, never the whole render.
-    }
-  }
+  const buffers = await decodeCues(actx);
 
   /* ---- the frame loop ---- */
   const stream = cv.captureStream(0);
@@ -548,7 +944,7 @@ export async function renderNuggets({
   dest.stream.getAudioTracks().forEach((t) => out.addTrack(t));
 
   const bitrate = Math.max(6_000_000, Math.min(20_000_000, w * h * 4));
-  const recorder = new MediaRecorder(out, { mimeType: mime, videoBitsPerSecond: bitrate });
+  const recorder = new MediaRecorder(out, { mimeType: mime!, videoBitsPerSecond: bitrate });
   const chunks: BlobPart[] = [];
   recorder.ondataavailable = (e) => {
     if (e.data.size) chunks.push(e.data);
@@ -558,188 +954,23 @@ export async function renderNuggets({
   });
 
   /*
-   * The wordmark, and which of its two colourways the corner needs.
-   *
-   * Measured on the LAST frame rather than the first, for the reason the card
-   * pipeline measures it there: the end is what a paused or looping player
-   * lingers on, and a deck that opens dark and ends bright would otherwise
-   * choose white lettering against the opening and lose it exactly when
-   * somebody is looking. Chosen once and held — sampling every frame lets the
-   * mark flip colour mid-clip the moment something bright crosses the corner.
-   *
-   * Seeking is free here: this <video> belongs to the render, not to the
-   * editor, so the playhead the user is watching never moves.
-   *
-   * The background is what gets measured, not the finished composite. A nugget
-   * that happens to be over the corner at the end is transient; the footage
-   * under it is what the mark actually has to survive.
-   */
-  let logos: LogoSet | null = null;
-  let logoVariant: LogoVariant | undefined;
-  if (logo) {
-    logos = await heartStampLogo();
-    if (video && Number.isFinite(video.duration) && video.duration > 0) {
-      // A hair before the end: seeking to exactly `duration` can land past the
-      // last decodable frame and yield a blank or stale one.
-      await seekTo(video, Math.max(0, video.duration - 0.08));
-    }
-
-    /*
-     * Measured on a scratch canvas, NOT on the one being recorded.
-     *
-     * The render canvas is already wired to a capture track by this point, and
-     * anything drawn on it before the paint loop starts can be flushed out as a
-     * frame — which put one frame of un-composed background at the head of
-     * every stamped render.
-     */
-    const source = video ?? image;
-    if (source) logoVariant = variantForBackground(logos, source, w, h, stillFit);
-
-    if (video) await seekTo(video, 0);
-  }
-
-  /*
    * What the last few frames cost, and what that buys.
    *
    * Measured rather than assumed: the same deck is comfortable on one machine
-   * and hopeless on another, and the export has no way to know which it is on
+   * and hopeless on another, and this path has no way to know which it is on
    * until it tries. A rolling mean over a handful of frames rides out one slow
    * paint without chasing noise.
+   *
+   * Only the fallback needs any of this. It is the clock that makes frame cost
+   * turn into deck length, and the path above does not have one.
    */
-  let warpSteps = WARP_STEPS_PER_FRAME;
   let meanPaintMs = 0;
 
   let lastT = -0.001;
-  const paint = () => {
+  const paintAndCue = () => {
     const startedPaint = performance.now();
     const t = now();
-    if (video) ctx2d.drawImage(video, 0, 0, w, h);
-    else if (stillPlate) ctx2d.drawImage(stillPlate, 0, 0);
-    else if (image && stillFit) ctx2d.drawImage(image, stillFit.dx, stillFit.dy, stillFit.dw, stillFit.dh);
-
-    for (const b of beats) {
-      if (t < b.t || t > b.out) continue;
-      const a = art.get(b.id);
-      if (!a) continue;
-      const s = beatScaleFor(b, t);
-      if (s <= 0) continue;
-
-      // Canvas px, not preset px: a 720p source carries the same normalised
-      // anchor as a 1080p one and must land in the same place on the frame.
-      const sx = w / preset.w;
-      const sy = h / preset.h;
-      const dw = a.w * sx * s;
-      const dh = a.h * sy * s;
-      const align = b.align ?? "center";
-      const cx = b.anchor.x * w + (align === "left" ? a.w * sx / 2 : align === "right" ? -a.w * sx / 2 : 0);
-      const cy = b.anchor.y * h;
-
-      ctx2d.save();
-      ctx2d.translate(cx, cy);
-      if (b.rotate) ctx2d.rotate((b.rotate * Math.PI) / 180);
-
-      const well = wells.get(b.id);
-      const ready =
-        well &&
-        (well.media instanceof HTMLVideoElement ? well.media.readyState >= 2 : well.media.complete);
-
-      /*
-       * A pinned screen is warped onto its quad instead of being drawn into a
-       * rectangle, by the same homography the editor puts in a CSS matrix3d.
-       * It also sits outside the beat's own transform: the quad is in canvas
-       * coordinates already, so the translate/rotate/scale set up above would
-       * apply it twice.
-       */
-      if (well && ready && b.well?.quad) {
-        ctx2d.restore();
-        if (well.warped) {
-          // A still, warped once when the deck was opened.
-          ctx2d.drawImage(well.warped, 0, 0, w, h);
-          continue;
-        }
-        const q = b.well.quad.map((p) => ({ x: p.x * w, y: p.y * h })) as Quad;
-        const m = well.media;
-        ctx2d.save();
-        if (b.well.radius) {
-          // Rounded corners in the surface's own space, foreshortened with it.
-          const r = (b.well.radius * w) / preset.w;
-          const path = roundedQuadPath(q, r);
-          ctx2d.beginPath();
-          path.forEach((p, i) => (i ? ctx2d.lineTo(p.x, p.y) : ctx2d.moveTo(p.x, p.y)));
-          ctx2d.closePath();
-          ctx2d.clip();
-        }
-        drawImageInQuad(ctx2d, m, q, {
-          /*
-           * Omitting srcRect maps the whole frame onto the quad, which is
-           * exactly what stretching means here — nothing is left outside to be
-           * cropped, and the aspect gives instead.
-           */
-          srcRect: b.well.stretch
-            ? undefined
-            : coverCrop({ width: sourceWidth(m), height: sourceHeight(m) }, q),
-          /*
-           * Coarser than the 32 the card compositor uses. That density exists
-           * to land print artwork pixel-accurately in a one-off composite; this
-           * runs every frame of the render, and a moving picture hides the
-           * fraction of a pixel it costs.
-           */
-          steps: warpSteps,
-        });
-        if (b.well.gloss) paintGloss(ctx2d, q, b.well.gloss, warpSteps);
-        ctx2d.restore();
-        continue;
-      }
-
-      if (well && ready) {
-        /*
-         * The clip goes UNDER the frame, through the hole wellSvg leaves for it.
-         * Coordinates come from wellLayout, the same numbers the SVG was drawn
-         * from, so the video lands exactly in the aperture rather than near it.
-         */
-        const k = dw / well.L.outerW;
-        ctx2d.save();
-        ctx2d.translate(-dw / 2, -dh / 2);
-        ctx2d.scale(k, k);
-        ctx2d.beginPath();
-        ctx2d.roundRect(well.L.mediaX, well.L.mediaY, well.L.mediaW, well.L.mediaH, well.L.radius);
-        ctx2d.clip();
-        /*
-         * Cover unless the well asks to stretch, and never contain:
-         * letterboxing inside the aperture would show the frame's own fill
-         * through the gaps.
-         *
-         * Stretching is the degenerate case of the same drawImage — the media
-         * is laid straight into the aperture and the aspect gives — so both
-         * paths end at the same call rather than diverging.
-         */
-        const m = well.media;
-        const vw = (m instanceof HTMLVideoElement ? m.videoWidth : m.naturalWidth) || 1;
-        const vh = (m instanceof HTMLVideoElement ? m.videoHeight : m.naturalHeight) || 1;
-        const cover = b.well?.stretch ? 0 : Math.max(well.L.mediaW / vw, well.L.mediaH / vh);
-        const dw2 = cover ? vw * cover : well.L.mediaW;
-        const dh2 = cover ? vh * cover : well.L.mediaH;
-        ctx2d.drawImage(
-          m,
-          well.L.mediaX + (well.L.mediaW - dw2) / 2,
-          well.L.mediaY + (well.L.mediaH - dh2) / 2,
-          dw2, dh2,
-        );
-        ctx2d.restore();
-      }
-
-      ctx2d.drawImage(a.img, -dw / 2, -dh / 2, dw, dh);
-      ctx2d.restore();
-    }
-
-    /*
-     * Last, so it sits over the nuggets rather than under them.
-     *
-     * The mark is the one thing on the frame that is not part of the
-     * composition — a nugget landing on top of it would read as a mistake in
-     * a way a nugget landing on the footage does not.
-     */
-    if (logos) paintLogo(ctx2d, logos, w, h, logoVariant);
+    paint(t);
 
     // Entrance only, once per crossing, on the video's clock rather than the
     // audio clock so a long render cannot drift out of sync with itself.
@@ -791,11 +1022,12 @@ export async function renderNuggets({
           resolve();
           return;
         }
-        paint();
+        paintAndCue();
         onProgress?.({
           stage: "Rendering",
           pct: Math.min(99, Math.round((now() / duration) * 100)),
           fps: meanPaintMs > 0 ? Math.round(1000 / meanPaintMs) : undefined,
+          realtime: true,
         });
       });
     });
@@ -803,7 +1035,7 @@ export async function renderNuggets({
     ticker.stop();
   }
 
-  paint(); // make sure the last frame lands
+  paintAndCue(); // make sure the last frame lands
   recorder.stop();
   await stopped;
 
@@ -818,9 +1050,9 @@ export async function renderNuggets({
   }
   void actx.close();
 
-  onProgress?.({ stage: "Rendering", pct: 100 });
+  onProgress?.({ stage: "Rendering", pct: 100, realtime: true });
   return {
-    blob: new Blob(chunks, { type: mime }),
-    ext: mime.startsWith("video/mp4") ? "mp4" : "webm",
+    blob: new Blob(chunks, { type: mime! }),
+    ext: mime!.startsWith("video/mp4") ? "mp4" : "webm",
   };
 }

@@ -8,8 +8,8 @@ import { DEFAULT_PROVIDER, PROVIDER_COOKIE, isProviderId, type ProviderId } from
  * Read from a cookie rather than passed on every call: the choice is a property
  * of the browser doing the work, and threading it through every fetch in the
  * client would mean a dozen call sites that could each forget. A request that
- * arrives before the cookie has ever been set gets fal, which is where the
- * studio started.
+ * arrives before the cookie has ever been set gets DEFAULT_PROVIDER, which is
+ * Replicate — the studio started on fal, and this comment used to say so.
  */
 export async function activeProvider(): Promise<ProviderId> {
   const jar = await cookies();

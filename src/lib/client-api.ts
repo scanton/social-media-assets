@@ -46,13 +46,39 @@ export async function uploadToFal(file: File, onProgress?: (pct: number) => void
     }),
   });
   if (!init.ok) await readError(init);
-  const { mode, uploadUrl, fileUrl } = (await init.json()) as {
+  const { mode, uploadUrl, fileUrl, maxBytes } = (await init.json()) as {
     mode?: "direct" | "proxy";
     uploadUrl: string;
     fileUrl: string | null;
+    /** Set only where the proxy route has a ceiling — see the upload-url route. */
+    maxBytes?: number;
   };
 
   if (mode === "proxy") {
+    /*
+     * Refused before the bytes move, not after.
+     *
+     * The proxy route runs on a platform that caps request bodies, and the cap
+     * is enforced at the edge: a 10 MB file is uploaded in full and then
+     * answered with a bare 413, so the user waits through the whole transfer
+     * to be told "Upload failed (413)" — which names neither the cause nor
+     * anything they can act on. Checking the size first costs nothing and can
+     * say what is actually wrong.
+     *
+     * Deliberately not a silent downscale. This is somebody's card animation
+     * on its way to a video model; quietly re-encoding it smaller trades their
+     * quality for our convenience without asking.
+     */
+    if (maxBytes && file.size > maxBytes) {
+      const mb = (n: number) => `${(n / 1_000_000).toFixed(1)} MB`;
+      throw new Error(
+        `That file is ${mb(file.size)}, and Replicate uploads are capped at ${mb(maxBytes)} without a `
+        + `fal key — they have to pass through this app's server, which cannot take more. Add your `
+        + `fal.ai key (switch the header to fal, paste it, switch back) and uploads go straight from `
+        + `your browser to fal's CDN with no limit, while generation stays on Replicate. Or use a `
+        + `smaller file.`,
+      );
+    }
     const body = new FormData();
     body.append("file", file, file.name || `upload-${Date.now()}`);
     const url = await new Promise<string>((resolve, reject) => {
