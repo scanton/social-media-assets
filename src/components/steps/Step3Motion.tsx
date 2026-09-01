@@ -23,8 +23,8 @@ export function Step3Motion() {
   const s = useStudio();
   const { provider } = useProvider();
   const [showPrompt, setShowPrompt] = useState(false);
-  // Re-encoding needs MediaRecorder + canvas capture; fail visibly rather than
-  // silently dropping the logo.
+  // Re-encoding needs a WebCodecs encoder or, failing that, MediaRecorder plus
+  // canvas capture; fail visibly rather than silently dropping the logo.
   const stampable = canStampVideo();
 
   const stills = s.assets.filter((a) => a.kind === "base");

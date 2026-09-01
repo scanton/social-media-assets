@@ -72,6 +72,18 @@ export const OFFLINE_FPS = 30;
 export interface FrameSource {
   at(t: number): Promise<CanvasImageSource | null>;
   close(): Promise<void>;
+  /** The clip's own length, in seconds. */
+  duration: number;
+  /**
+   * The clip's own frame rate, or null when it cannot be worked out.
+   *
+   * Worth knowing when the output is a re-encode of this clip rather than new
+   * motion drawn over it. Encoding a 24fps source at 30fps has to repeat two
+   * frames in every twelve, and an uneven repeat is visible as judder on a slow
+   * pan — the exact thing a card animation is usually doing. Matching the
+   * source rate makes it a 1:1 frame mapping instead.
+   */
+  frameRate: number | null;
 }
 
 /**
@@ -89,6 +101,7 @@ export async function openFrameSource(
   let input: Input;
   let sink: CanvasSink;
   let length: number;
+  let frameRate: number | null = null;
   try {
     input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
     const track = await input.getPrimaryVideoTrack();
@@ -97,6 +110,15 @@ export async function openFrameSource(
     // so resizing here would be a second resample of the same pixels.
     sink = new CanvasSink(track);
     length = await input.computeDuration();
+    try {
+      // A prefix rather than the whole file: a hundred packets is a good
+      // estimate of frame rate and does not pay for a full scan to get it.
+      const stats = await track.computePacketStats(100);
+      const rate = stats.averagePacketRate;
+      frameRate = Number.isFinite(rate) && rate > 0 ? rate : null;
+    } catch {
+      frameRate = null; // an unknown rate is a caller's choice to make, not a failure
+    }
   } catch {
     return null;
   }
@@ -119,6 +141,8 @@ export async function openFrameSource(
   };
 
   return {
+    duration: length,
+    frameRate,
     async at(t) {
       if (opts.loop && length > 0 && t - passStart >= length) {
         // Wrapped. Rewind by whole clip lengths so a deck several times the
