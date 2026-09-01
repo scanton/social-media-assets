@@ -245,7 +245,7 @@ How much of a person appears. No option here shows a face — faces are the thin
 
 ### How close
 
-How much of the frame the card takes up. Separate from camera angle: that says where the camera is, this says how close it gets.
+How much of the frame the card takes up. Separate from camera angle: that says where the camera is, this says how close it gets. Every setting pushes in harder when the device is a phone — a phone screen is only about six inches tall, so a shot framed at a comfortable distance from a person leaves the artwork too small to read while somebody is scrolling.
 
   - **Hero close-up** — The card is the whole point and fills most of the frame.
   - **Fills the frame** — Closer still — card edge to edge, almost no room for anything else.
@@ -938,4 +938,4 @@ How fast anything moves. All optional, and off unless you pick one. Whatever you
 `llms-full.txt` is generated from `src/lib/help.ts` and `src/lib/options.ts` in the
 HeartStamp Asset Studio codebase. Do not edit by hand; run `pnpm llms`.
 
-version: 77eaa5decedb
+version: 3e2257d8fe9a

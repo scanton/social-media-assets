@@ -41,8 +41,9 @@ export function OneShot() {
   const { provider } = useProvider();
   const { base, video } = s;
   const [showPrompt, setShowPrompt] = useState(false);
-  // Re-encoding needs MediaRecorder + canvas capture; every current browser has
-  // them, but fail visibly rather than silently dropping the logo.
+  // Re-encoding needs a WebCodecs encoder or, failing that, MediaRecorder plus
+  // canvas capture; every current browser has one of the two, but fail visibly
+  // rather than silently dropping the logo.
   const stampable = canStampVideo();
 
   const isPrint = s.surface === "print";

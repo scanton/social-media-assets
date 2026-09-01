@@ -17,11 +17,19 @@ import {
   seekTo,
   type RenderProgress,
 } from "@/lib/video-encode";
+import {
+  OFFLINE_FPS,
+  canEncodeOffline,
+  encodeDeterministic,
+  openFrameSource,
+  scheduleSourceAudio,
+} from "@/lib/video-encode-offline";
 
 /* The names this module has always exported, kept so its callers do not have to
    care that the machinery moved. */
 export { pickRecorderMime };
-export const canStampVideo = canRecordVideo;
+/** Either route out is enough; the deterministic one is preferred. */
+export const canStampVideo = () => canEncodeOffline() || canRecordVideo();
 export type StampProgress = RenderProgress;
 
 /*
@@ -31,8 +39,18 @@ export type StampProgress = RenderProgress;
  * full-frame transparent overlay; it returned a video with no logo on it and
  * the endpoint's handling of image tracks isn't documented anywhere reachable.
  * This route is fully testable instead: decode the clip, redraw every frame
- * through a canvas with the wordmark painted on, and record the canvas straight
+ * through a canvas with the wordmark painted on, and encode the canvas straight
  * back out to MP4. Same paintLogo() the stills use, so placement matches.
+ *
+ * Encoded off the clock, by the same mechanism as the PopKit export and for the
+ * same reason. Playing the clip and recording the canvas in real time means the
+ * output is as long as the frames the machine kept up with, so a slow machine
+ * silently returns a TRUNCATED card — and this pass runs on a clip a model was
+ * already paid to generate, which makes losing the end of it worse here than
+ * anywhere else in the studio. video-encode-offline.ts stamps every frame with
+ * its own timestamp, so a slow machine takes longer and nothing else.
+ *
+ * MediaRecorder stays behind it for browsers with no WebCodecs encoder.
  */
 
 /**
@@ -91,14 +109,22 @@ export async function renderStampedVideo(
   onProgress?: (p: StampProgress) => void,
 ): Promise<Blob> {
   const mime = pickRecorderMime();
-  if (!mime) throw new Error("This browser can't re-encode video — the clip is unchanged.");
+  if (!mime && !canEncodeOffline()) {
+    throw new Error("This browser can't re-encode video — the clip is unchanged.");
+  }
 
   onProgress?.({ stage: "Downloading clip" });
   // Remote clips come through our proxy so the canvas stays untainted — a
   // tainted canvas can't be captured at all.
   const res = await fetch(sameOrigin(videoUrl) ? videoUrl : downloadUrl(videoUrl, "clip.mp4"));
   if (!res.ok) throw new Error(`Could not read the rendered clip (${res.status}).`);
-  const objectUrl = URL.createObjectURL(await res.blob());
+  /*
+   * The bytes are kept, not just the object URL. The deterministic path reads
+   * frames and audio out of the file itself rather than off a playing element,
+   * and a Blob is what a demuxer takes.
+   */
+  const sourceBlob = await res.blob();
+  const objectUrl = URL.createObjectURL(sourceBlob);
 
   const video = document.createElement("video");
   video.src = objectUrl;
@@ -127,18 +153,114 @@ export async function renderStampedVideo(
       video.onerror = () => reject(new Error("Could not decode the rendered clip."));
     });
 
-    const w = video.videoWidth;
-    const h = video.videoHeight;
-    if (!w || !h) throw new Error("The rendered clip has no video track.");
+    /*
+     * Rounded down to even. H.264 stores chroma at half resolution in each
+     * direction, so an odd width or height is not representable and the
+     * encoder refuses the config outright. Losing a row of pixels is
+     * invisible; losing the stamp is not.
+     */
+    const even = (n: number) => Math.max(2, Math.floor(n / 2) * 2);
+    const w = even(video.videoWidth);
+    const h = even(video.videoHeight);
+    if (!video.videoWidth || !video.videoHeight) {
+      throw new Error("The rendered clip has no video track.");
+    }
 
     onProgress?.({ stage: "Preparing" });
     const logos = await heartStampLogo();
 
+    /*
+     * One colour for the whole clip, decided by the last frame.
+     *
+     * Measuring every frame would be right per-frame and wrong overall — a hand
+     * or a bright prop crossing the corner would flip the lettering mid-shot,
+     * which reads as a glitch. So it is measured once and held.
+     *
+     * On a scratch canvas, not the one being encoded, for two reasons.
+     * pickLogoVariant reads pixels back, and the `willReadFrequently` hint that
+     * makes that cheap makes every frame handed to a video encoder dearer. And
+     * on the MediaRecorder path anything drawn before recording starts can be
+     * flushed out as a stray first frame, which is a bug this studio has
+     * already shipped once.
+     */
+    const scratch = document.createElement("canvas");
+    scratch.width = w;
+    scratch.height = h;
+    const sctx = scratch.getContext("2d", { alpha: false, willReadFrequently: true });
+    if (!sctx) throw new Error("Canvas is unavailable in this browser.");
+    const variant = await variantFromLastFrame(video, sctx, logos, w, h);
+
     const canvas = document.createElement("canvas");
     canvas.width = w;
     canvas.height = h;
-    const ctx = canvas.getContext("2d", { alpha: false, willReadFrequently: true });
+    const ctx = canvas.getContext("2d", { alpha: false });
     if (!ctx) throw new Error("Canvas is unavailable in this browser.");
+
+    /* ---- off the clock: every frame stamped, however long it takes ---- */
+    if (canEncodeOffline()) {
+      const source = await openFrameSource(sourceBlob, { loop: false });
+      if (source) {
+        try {
+          const duration = source.duration || video.duration || 0;
+          if (!duration) throw new Error("The rendered clip has no length.");
+
+          /*
+           * The clip's own frame rate, when it will admit to one.
+           *
+           * This pass re-encodes an existing clip rather than drawing new
+           * motion, so the source cadence is worth preserving: pushing 24fps
+           * out at 30 repeats two frames in every twelve, and an uneven repeat
+           * shows up as judder on exactly the slow push-in a card animation
+           * tends to be doing. Matching the source makes it 1:1. The bounds are
+           * a sanity check on a number that comes from measuring a file.
+           */
+          const detected = source.frameRate;
+          const fps = detected && detected >= 1 && detected <= 120 ? detected : OFFLINE_FPS;
+          const frames = Math.max(1, Math.round(duration * fps));
+
+          /*
+           * The clip's own audio, mixed offline. The element is muted here —
+           * that is what keeps this pass silent for the user — and a muted
+           * element yields silence through Web Audio, which is how a stamped
+           * clip once shipped with no sound. Reading the file directly sidesteps
+           * the whole question.
+           */
+          const rate = 48_000;
+          const octx = new OfflineAudioContext(2, Math.max(1, Math.ceil(duration * rate)), rate);
+          const hasSound = await scheduleSourceAudio(sourceBlob, octx, octx.destination, duration);
+          const audio = hasSound ? await octx.startRendering() : null;
+
+          const { blob } = await encodeDeterministic({
+            canvas,
+            fps,
+            frames,
+            audio,
+            paint: async (_i, t) => {
+              const frame = await source.at(t);
+              if (frame) ctx.drawImage(frame, 0, 0, w, h);
+              paintLogo(ctx, logos, w, h, variant);
+            },
+            onProgress: (done, total) =>
+              onProgress?.({
+                stage: "Stamping",
+                pct: Math.min(99, Math.round((done / total) * 100)),
+                realtime: false,
+              }),
+          });
+
+          onProgress?.({ stage: "Stamping", pct: 100, realtime: false });
+          if (!blob.size) throw new Error("Re-encoding produced an empty file.");
+          return blob;
+        } finally {
+          await source.close();
+        }
+      }
+      // A clip the demuxer cannot open falls through to the recorder below,
+      // which decodes it the browser's way instead.
+    }
+
+    /* ---- on the clock: the fallback ---- */
+    if (!mime) throw new Error("This browser can't re-encode video — the clip is unchanged.");
 
     // 0 fps = manual mode: a frame is emitted only when we ask, which keeps the
     // output in lockstep with the decoded frames instead of a fixed timer.
@@ -172,20 +294,6 @@ export async function renderStampedVideo(
     const stopped = new Promise<void>((resolve) => {
       recorder.onstop = () => resolve();
     });
-
-    /*
-     * One colour for the whole clip, decided by the last frame.
-     *
-     * Measuring every frame would be right per-frame and wrong overall — a hand
-     * or a bright prop crossing the corner would flip the lettering mid-shot,
-     * which reads as a glitch. So it is measured once and held.
-     *
-     * The measurement happens here, before recording starts, because frames are
-     * encoded in order: by the time the last frame arrives, every earlier frame
-     * has already been stamped. variantFromLastFrame seeks to the end, reads the
-     * corner, and rewinds to zero.
-     */
-    const variant = await variantFromLastFrame(video, ctx, logos, w, h);
 
     let painted = 0;
     const paint = () => {
@@ -228,6 +336,7 @@ export async function renderStampedVideo(
           onProgress?.({
             stage: "Stamping",
             pct: total ? Math.min(99, Math.round((video.currentTime / total) * 100)) : undefined,
+            realtime: true,
           });
         });
       });
@@ -241,7 +350,7 @@ export async function renderStampedVideo(
     recorder.stop();
     await stopped;
 
-    onProgress?.({ stage: "Stamping", pct: 100 });
+    onProgress?.({ stage: "Stamping", pct: 100, realtime: true });
 
     const blob = new Blob(chunks, { type: mime.split(";")[0] });
     if (!blob.size) throw new Error("Re-encoding produced an empty file.");
