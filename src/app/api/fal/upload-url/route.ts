@@ -9,25 +9,57 @@ import { activeProvider } from "@/lib/active-provider";
  * The browser PUTs the file bytes straight to fal's CDN, so a 40 MB card video
  * never touches our server (and never hits a serverless body-size limit).
  * Only the tiny "initiate" call needs the user's key, which stays server-side.
+ *
+ * Used for Replicate too, whenever a fal key is on the browser — which reads
+ * oddly until you see what the alternative costs.
+ *
+ * Replicate has no signed-URL upload: /v1/files is a multipart POST carrying
+ * the token, and the token is httpOnly precisely so the browser never holds
+ * it, so those bytes have to come through our own function. Vercel caps a
+ * function's request body at 4.5 MB — a platform limit, not a setting, with no
+ * config key to raise it — and a 10 MB card animation dies there on a 413.
+ * That is not a hypothetical: it is how this route got written up.
+ *
+ * fal's CDN is already paid for, already public, and already expires in a
+ * week, and Replicate takes any public HTTPS URL as a file input. So the file
+ * goes to fal's CDN and Replicate is handed the link. Nothing about the
+ * generation moves: it still runs on the user's Replicate account.
+ *
+ * Only when there is no fal key does Replicate fall back to the proxy, which
+ * still works — under 4.5 MB.
  */
 export async function POST(req: Request) {
   if (!(await currentUser())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
     /*
-     * Replicate has no signed-URL equivalent: its upload is a multipart POST to
-     * /v1/files, authenticated with the token. The token is httpOnly by design,
-     * so the browser cannot make that call itself and the bytes have to come
-     * through here — see the `mode: "proxy"` branch the client takes instead.
-     *
-     * Answering with the mode rather than an error keeps the decision in one
-     * place; the client asks "where do I put this" and is told.
+     * fal's CDN is the upload route for both providers, so this only needs the
+     * fal key — not the active one. A Replicate user with a fal key on the
+     * browser gets the direct upload and no size ceiling.
      */
-    if ((await activeProvider()) === "replicate") {
-      return NextResponse.json({ mode: "proxy", uploadUrl: "/api/upload", fileUrl: null });
+    const key = await readFalKey();
+    const provider = await activeProvider();
+
+    if (provider === "replicate" && !key) {
+      /*
+       * No fal key, so the bytes have to come through our own function, and
+       * the platform's ceiling applies. Declared rather than discovered:
+       * without it a 10 MB file uploads in full and is then answered with a
+       * bare 413, so the user waits through the whole transfer to be told
+       * nothing they can act on.
+       *
+       * Only on Vercel. `next dev` has no such limit, which is exactly why
+       * this reached production without showing up locally, and hard-coding
+       * the smaller number everywhere would hide the difference rather than
+       * report it.
+       *
+       * Under the 4.5 MB by a margin, because the multipart envelope — the
+       * boundary lines, the filename, the headers — is counted too.
+       */
+      const maxBytes = process.env.VERCEL ? 4_300_000 : undefined;
+      return NextResponse.json({ mode: "proxy", uploadUrl: "/api/upload", fileUrl: null, maxBytes });
     }
 
-    const key = await readFalKey();
     if (!key) throw new MissingKeyError();
 
     const { fileName, contentType } = (await req.json()) as {

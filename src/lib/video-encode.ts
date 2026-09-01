@@ -41,12 +41,22 @@ export type RenderProgress = {
   /**
    * Frames per second actually achieved.
    *
-   * Worth surfacing because this export records in real time: the finished file
-   * is as long as the frames it was given, so a machine painting at half speed
-   * produces half a deck. Silence there means a truncated render looks like a
-   * bug in the deck rather than a machine that could not keep up.
+   * Only meaningful while `realtime` is true, and only reported there. On that
+   * path the finished file is as long as the frames it was given, so a machine
+   * painting at half speed produces half a deck, and silence about it makes a
+   * truncated render look like a bug in the deck rather than a machine that
+   * could not keep up.
    */
   fps?: number;
+  /**
+   * Whether this render is on a clock.
+   *
+   * False means WebCodecs is stamping each frame with its own timestamp (see
+   * video-encode-offline.ts), so a slow machine costs time and nothing else —
+   * and the "this machine is behind" warning would be a lie. True means the
+   * MediaRecorder fallback, where it is the truth.
+   */
+  realtime?: boolean;
 };
 
 /**

@@ -758,7 +758,7 @@ The badge that sits beside the caption — a shape, a border treatment and usual
 
 ### Timeline length
 
-How long the deck runs when the background is a still. A clip brings its own length; a photograph has none, so this is it. Capped at a minute because the export records in real time — a minute of deck is a minute of watching it render.
+How long the deck runs when the background is a still. A clip brings its own length; a photograph has none, so this is it. Capped at a minute because a long deck is a long wait at the export — the render is frame by frame, and a slow machine spends longer on it rather than cutting it short.
 
 ### Playing the deck
 
@@ -938,4 +938,4 @@ How fast anything moves. All optional, and off unless you pick one. Whatever you
 `llms-full.txt` is generated from `src/lib/help.ts` and `src/lib/options.ts` in the
 HeartStamp Asset Studio codebase. Do not edit by hand; run `pnpm llms`.
 
-version: bd8ff518ce35
+version: 77eaa5decedb
