@@ -297,7 +297,14 @@ Anything the controls above do not cover — a specific prop, a colour story, a 
 
 ### Your own background
 
-Skip the generated scene and drop in a photograph you already have. The card gets composited into it. Choosing one locks the scene controls, because the picture now decides the setting, the lighting and the framing.
+Skip the generated scene and drop in a photograph you already have. The card gets composited into it. Choosing one locks the scene controls, because the picture now decides the setting, the lighting and the framing. What it does not decide is the shape: the orientations you tick below still set that, so a photograph of a different ratio is cropped to fit, and a wide shot picked for a 9:16 render loses its sides. Match the shape you are rendering and the framing you chose is the framing you get. These are the sizes each orientation is rendered at, largest quality to smallest — supply the shape, and at least the larger size if you have it.
+
+  - **9:16 Vertical — TikTok / Reels / Stories** — 2160 × 3840 at 4K, 720 × 1296 at 720p.
+  - **4:5 Portrait — Instagram feed** — 2160 × 2704 at 4K, 736 × 912 at 720p.
+  - **1:1 Square — Feed / carousel** — 2160 × 2160 at 4K, 816 × 816 at 720p.
+  - **16:9 Landscape — YouTube / web hero** — 3840 × 2160 at 4K, 1296 × 720 at 720p.
+  - **2:3 Tall — Pinterest** — 2160 × 3248 at 4K, 720 × 1088 at 720p.
+  - **3:4 Portrait — Pinterest / ads** — 2160 × 2880 at 4K, 720 × 960 at 720p.
 
 
 ## Step 2 — who is in frame
@@ -927,4 +934,4 @@ How fast anything moves. All optional, and off unless you pick one. Whatever you
 `llms-full.txt` is generated from `src/lib/help.ts` and `src/lib/options.ts` in the
 HeartStamp Asset Studio codebase. Do not edit by hand; run `pnpm llms`.
 
-version: 2747073db5c4
+version: 26e4023c9d45

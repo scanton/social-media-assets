@@ -26,6 +26,7 @@ import {
   FRAMINGS,
   HANDWRITING_STYLES,
   IMAGE_RESOLUTIONS,
+  imageSizeFor,
   INK_COLOURS,
   LIGHTING,
   LOOKS,
@@ -68,6 +69,27 @@ const fromNames = (names: readonly string[], notes: Record<string, string>): Hel
 
 const title = (name: string) =>
   name.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (c) => c.toUpperCase());
+
+/**
+ * What size a supplied background should be.
+ *
+ * Derived rather than written down. These numbers come from `imageSizeFor`,
+ * which is what step 2 actually asks the model for, so they cannot drift from
+ * the renders — and a tooltip quoting stale dimensions is worse than one that
+ * says nothing, because someone will crop to them.
+ *
+ * Both ends of the range are given. The shape is the part that matters: a
+ * photograph of the wrong ratio gets cropped to fit and the framing you chose
+ * is not the framing you get. The pixels only decide how much detail survives.
+ */
+const BACKGROUND_SIZES: HelpTerm[] = ASPECTS.map((a) => {
+  const small = imageSizeFor(a.id, "720p");
+  const large = imageSizeFor(a.id, "4k");
+  return {
+    term: `${a.label} — ${a.channel}`,
+    what: `${large.width} × ${large.height} at 4K, ${small.width} × ${small.height} at 720p.`,
+  };
+});
 
 /* ------------------------- kit catalogue names ------------------------ */
 
@@ -289,7 +311,8 @@ export const HELP: Record<string, HelpEntry> = {
   "scene.background": {
     title: "Your own background",
     body:
-      "Skip the generated scene and drop in a photograph you already have. The card gets composited into it. Choosing one locks the scene controls, because the picture now decides the setting, the lighting and the framing.",
+      "Skip the generated scene and drop in a photograph you already have. The card gets composited into it. Choosing one locks the scene controls, because the picture now decides the setting, the lighting and the framing. What it does not decide is the shape: the orientations you tick below still set that, so a photograph of a different ratio is cropped to fit, and a wide shot picked for a 9:16 render loses its sides. Match the shape you are rendering and the framing you chose is the framing you get. These are the sizes each orientation is rendered at, largest quality to smallest — supply the shape, and at least the larger size if you have it.",
+    terms: BACKGROUND_SIZES,
   },
 
   /* ------------------------------ styling ----------------------------- */
