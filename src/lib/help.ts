@@ -839,6 +839,11 @@ export const HELP: Record<string, HelpEntry> = {
     body:
       "Off, the media is cropped to cover the well: it keeps its proportions and whatever falls outside the shape is trimmed. On, it is stretched to fit exactly — nothing is lost and the picture is distorted instead. Worth turning on when what the crop was cutting off is the part that mattered, like a logo in the corner of a clip. A few percent of stretch is invisible; a lot is not.",
   },
+  "pop.wellFit": {
+    title: "Fit",
+    body:
+      "How the clip meets a screen it does not match — which, for a 9:16 clip going onto a phone, is always: a modern iPhone screen is closer to 9:19.5, so something has to give. Crop to cover keeps the proportions and trims the top and bottom. Stretch to fill keeps every pixel and squashes them; a few percent is invisible, this much usually is not, and it shows first on faces and logos. Letterbox with chrome gives up neither: the clip sits at its own shape in the middle and the bands above and below get the phone's own furniture — a clock and status icons at the top, a home indicator at the bottom — so they read as a phone playing a video rather than as bars. If the clip already matches the screen there are no bands to put furniture in, and this behaves exactly like cropping.",
+  },
   "pop.wellCaption": {
     title: "Well caption",
     body:

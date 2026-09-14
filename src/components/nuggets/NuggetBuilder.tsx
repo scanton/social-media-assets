@@ -15,9 +15,9 @@ import {
   MEDALLION_SCALE_DEFAULT, MEDALLION_SCALE_KIT_DEFAULT,
   beatKind, defaultDwellSeconds, floorForBeat,
   STILL_DEFAULT_S, STILL_MAX_S, STILL_MIN_S,
-  MEDALLION_SIDES, medallionCount,
+  MEDALLION_SIDES, medallionCount, wellFit,
   type Background, type Beat, type BeatArrow, type BeatMedallion, type BeatMedallions,
-  type CanvasId, type MedallionSide, type ProtectedRegion, type SoundCue,
+  type CanvasId, type MedallionSide, type ProtectedRegion, type SoundCue, type WellFit,
 } from "@/lib/popkit/deck";
 import { fitBeat, renderBeat, safeWidth } from "@/lib/popkit/preview";
 import { frame } from "@/lib/popkit/kit/frames.js";
@@ -455,7 +455,9 @@ export function NuggetBuilder() {
    * validator strings instead of a sentence. Same cause, same refusal.
    */
   const webOnlyWell = useMemo(() => {
-    const i = beats.findIndex((b) => b.well && (b.well.bare || b.well.quad || b.well.stretch));
+    const i = beats.findIndex(
+      (b) => b.well && (b.well.bare || b.well.quad || wellFit(b.well) !== "cover"),
+    );
     const w = i === -1 ? null : beats[i].well;
     return w
       ? {
@@ -463,7 +465,9 @@ export function NuggetBuilder() {
           what:
             w.bare || w.quad
               ? "is laid into the scene with a corner-pin"
-              : "stretches its media to fill",
+              : wellFit(w) === "chrome"
+                ? "letterboxes its media behind phone chrome"
+                : "stretches its media to fill",
         }
       : null;
   }, [beats]);
@@ -1395,17 +1399,34 @@ export function NuggetBuilder() {
                       />
                     </Field>
 
-                    <Switch
-                      checked={Boolean(selected.well.stretch)}
-                      onChange={(v) => patch({ well: { ...selected.well!, stretch: v } })}
-                      label="Stretch to fill"
-                      help="pop.wellStretch"
+                    {/*
+                      * Three ways for a clip to meet a screen it does not match,
+                      * which for a 9:16 clip in a ~9:19.5 phone is always. A
+                      * switch could only offer two of them, so this is a picker.
+                      */}
+                    <Field
+                      label="Fit"
+                      help="pop.wellFit"
                       hint={
-                        selected.well.stretch
-                          ? "Distorted to fit exactly — nothing cropped."
-                          : "Cropped to cover — proportions kept, edges trimmed."
+                        wellFit(selected.well) === "chrome"
+                          ? "Letterboxed, with a status bar and home indicator over the bars."
+                          : wellFit(selected.well) === "stretch"
+                            ? "Distorted to fit exactly — nothing cropped."
+                            : "Cropped to cover — proportions kept, edges trimmed."
                       }
-                    />
+                    >
+                      <Select
+                        value={wellFit(selected.well)}
+                        onChange={(fit) =>
+                          patch({ well: { ...selected.well!, fit: fit as WellFit } })
+                        }
+                        options={[
+                          { id: "cover", label: "Crop to cover", emoji: "\u2702\ufe0f", hint: "Proportions kept, edges trimmed" },
+                          { id: "chrome", label: "Letterbox with chrome", emoji: "\ud83d\udcf1", hint: "Nothing cropped, nothing squashed" },
+                          { id: "stretch", label: "Stretch to fill", emoji: "\u2194\ufe0f", hint: "Fills exactly, distorts to do it" },
+                        ]}
+                      />
+                    </Field>
 
                     <Field
                       label="Perspective"
@@ -1551,13 +1572,17 @@ export function NuggetBuilder() {
                       </Field>
                     </div>
 
+                    {/* No chrome here: an iPhone status bar inside a polaroid
+                        frame is not a thing anyone is trying to make. */}
                     <Switch
-                      checked={Boolean(selected.well.stretch)}
-                      onChange={(v) => patch({ well: { ...selected.well!, stretch: v } })}
+                      checked={wellFit(selected.well) === "stretch"}
+                      onChange={(v) =>
+                        patch({ well: { ...selected.well!, fit: v ? "stretch" : "cover" } })
+                      }
                       label="Stretch to fill"
                       help="pop.wellStretch"
                       hint={
-                        selected.well.stretch
+                        wellFit(selected.well) === "stretch"
                           ? "Distorted to fit exactly — nothing cropped."
                           : "Cropped to cover — proportions kept, edges trimmed."
                       }

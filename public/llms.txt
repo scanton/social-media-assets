@@ -266,6 +266,7 @@ which choice to pick.
 - **Shape** — The aspect the media is fitted to inside the well — cropped to it by default, or stretched to it with "Stretch to fill" below.
 - **Well size** — How big the well is drawn, independently of any text size.
 - **Stretch to fill** — Off, the media is cropped to cover the well: it keeps its proportions and whatever falls outside the shape is trimmed.
+- **Fit** — How the clip meets a screen it does not match — which, for a 9:16 clip going onto a phone, is always: a modern iPhone screen is closer to 9:19.5, so something has to give.
 - **Well caption** — A line under the media, inside the frame — the well's own label rather than a separate nugget.
 - **Kicker** — The small line above the caption, usually a category or a source — "BEFORE", "STEP 2", "@handle".
 - **Medallion** — The badge that sits beside the caption — a shape, a border treatment and usually a glyph.
@@ -299,4 +300,4 @@ which choice to pick.
 `llms.txt` is generated from `src/lib/help.ts` and `src/lib/options.ts` in the
 HeartStamp Asset Studio codebase. Do not edit by hand; run `pnpm llms`.
 
-version: a19c5449b036
+version: 01ff9647d31d
