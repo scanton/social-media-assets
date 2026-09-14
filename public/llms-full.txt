@@ -802,7 +802,7 @@ What to keep out: extra fingers, watermarks, text, blur. Not every model support
 
 ### Model settings
 
-These are read from the model's own published schema, not written by us, which is why they change completely when you switch models and why the wording is sometimes the vendor's rather than ours. Anything left alone uses that model's own default, with one or two exceptions where we open on something more sensible — GPT Image 2 starts at medium quality rather than high, because the difference is hard to see at social sizes and easy to see on the bill.
+These are read from the model's own published schema, not written by us, which is why they change completely when you switch models and why the wording is sometimes the vendor's rather than ours. Anything left alone uses that model's own default, with one or two exceptions where we open on something more sensible — the GPT Image models start at medium quality rather than their own default, because the difference is hard to see at social sizes and easy to see on the bill — and GPT Image 2.5 added two tiers above high.
 
 ### What gets sent
 
@@ -938,4 +938,4 @@ How fast anything moves. All optional, and off unless you pick one. Whatever you
 `llms-full.txt` is generated from `src/lib/help.ts` and `src/lib/options.ts` in the
 HeartStamp Asset Studio codebase. Do not edit by hand; run `pnpm llms`.
 
-version: 3e2257d8fe9a
+version: 26d97acd1a35

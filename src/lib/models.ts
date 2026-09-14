@@ -41,11 +41,25 @@ export type ModelSlot = {
    * than at compile. Each of these was chosen by reading the model's own
    * published schema —
    *
-   *   `openai/gpt-image-2` serves both image steps. It takes `input_images`,
-   *   so it edits as well as generates — one model where fal splits the two
-   *   across an endpoint and its `/edit` variant. Replicate lists it only under
-   *   text-to-image, which is editorial rather than structural and is why the
-   *   composite step could not see it until that search was widened.
+   *   `openai/gpt-image-2.5-flare` serves both image steps. It takes
+   *   `input_images`, so it edits as well as generates — one model where fal
+   *   splits the two across `/text-to-image` and `/edit`. Replicate lists the
+   *   GPT Image models only under text-to-image, which is editorial rather
+   *   than structural and is why the composite step could not see gpt-image-2
+   *   until that search was widened; the same widening covers this one.
+   *
+   *   Note the ids do NOT follow gpt-image-2's shape on either provider —
+   *   fal publishes `openai/gpt-image-2.5/flare/text-to-image` and
+   *   `.../flare/edit`, Replicate a single `openai/gpt-image-2.5-flare` — so
+   *   neither is derivable from the old name or from each other. Both were
+   *   read off the live catalogues, which is also how the Sunburst variant
+   *   sitting beside Flare was ruled out rather than picked by accident.
+   *
+   *   Its inputs are the same shape gpt-image-2 used, which is why nothing in
+   *   model-input.ts had to change: `input_images` and `number_of_images` are
+   *   already aliased, `aspect_ratio` is still derived from `image_size`, and
+   *   `quality` merely gained `xhigh` and `max` above the four values the
+   *   studio sends.
    *
    *   Both video steps run on `bytedance/seedance-2.5`, read from the API's
    *   own schema rather than off its docs page — which shows a subset, and
@@ -104,8 +118,8 @@ export const MODEL_SLOTS: Record<ModelSlotId, ModelSlot> = {
     blurb: "Builds the lifestyle still from the prompt alone, when no artwork is attached.",
     category: "text-to-image",
     requires: ["prompt"],
-    fallback: "openai/gpt-image-2",
-    replicateFallback: "openai/gpt-image-2",
+    fallback: "openai/gpt-image-2.5/flare/text-to-image",
+    replicateFallback: "openai/gpt-image-2.5-flare",
   },
   compositeImage: {
     id: "compositeImage",
@@ -115,8 +129,8 @@ export const MODEL_SLOTS: Record<ModelSlotId, ModelSlot> = {
     // `image_urls` rather than `image_url`: the step sends up to three
     // references, so a single-image endpoint cannot carry the payload.
     requires: ["prompt", "image_urls"],
-    fallback: "openai/gpt-image-2/edit",
-    replicateFallback: "openai/gpt-image-2",
+    fallback: "openai/gpt-image-2.5/flare/edit",
+    replicateFallback: "openai/gpt-image-2.5-flare",
   },
   animate: {
     id: "animate",

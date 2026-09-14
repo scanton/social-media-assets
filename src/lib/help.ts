@@ -902,7 +902,7 @@ export const HELP: Record<string, HelpEntry> = {
   "bench.settings": {
     title: "Model settings",
     body:
-      "These are read from the model's own published schema, not written by us, which is why they change completely when you switch models and why the wording is sometimes the vendor's rather than ours. Anything left alone uses that model's own default, with one or two exceptions where we open on something more sensible — GPT Image 2 starts at medium quality rather than high, because the difference is hard to see at social sizes and easy to see on the bill.",
+      "These are read from the model's own published schema, not written by us, which is why they change completely when you switch models and why the wording is sometimes the vendor's rather than ours. Anything left alone uses that model's own default, with one or two exceptions where we open on something more sensible — the GPT Image models start at medium quality rather than their own default, because the difference is hard to see at social sizes and easy to see on the bill — and GPT Image 2.5 added two tiers above high.",
   },
   "bench.compiled": {
     title: "What gets sent",
