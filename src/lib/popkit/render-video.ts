@@ -8,7 +8,8 @@ import { wellLayout } from "./kit/media.js";
 import { CUE_TABLE } from "./cues";
 import { makeTicker, pickRecorderMime, seekTo, type RenderProgress } from "@/lib/video-encode";
 import { coverFit, heartStampLogo, paintLogo, variantForBackground, type LogoSet, type LogoVariant } from "@/lib/watermark";
-import { beatScaleFor, type Beat, type CanvasId } from "./deck";
+import { beatScaleFor, wellFit, type Beat, type CanvasId, type WellFit } from "./deck";
+import { chromeFits, letterbox, screenChromeUri } from "./screen-chrome";
 import {
   coverCrop, drawImageInQuad, quadSize, roundedQuadPath, sourceHeight, sourceWidth, type Quad,
 } from "@/lib/perspective";
@@ -184,6 +185,23 @@ interface WellClip {
    * playing element and already showing the right thing.
    */
   current?: CanvasImageSource;
+  /**
+   * The phone furniture for a letterboxed well, rasterised once.
+   *
+   * Absent unless the well asks for `chrome`, and absent too when the media
+   * turns out to match the screen closely enough that there are no bands to
+   * put anything in — see chromeFits.
+   */
+  chrome?: HTMLImageElement;
+  /**
+   * Scratch canvas the letterboxed frame is composed into before it is drawn.
+   *
+   * Needed because a corner-pinned well warps its media onto a quad, and what
+   * has to be warped is the finished picture — black bands, clip and furniture
+   * together — not the clip alone. Composing here rather than at the draw site
+   * keeps both the pinned and the flat path on one drawImage of one image.
+   */
+  plate?: HTMLCanvasElement;
   /** The media rectangle inside the well, in the well's own coordinates. */
   L: { mediaX: number; mediaY: number; mediaW: number; mediaH: number; radius: number; outerW: number };
 }
@@ -247,6 +265,28 @@ async function openWellClips(beats: Beat[], canvas: CanvasId): Promise<Map<strin
      * Pre-warp a pinned still into a full-canvas layer, once. The paint loop
      * then blits it, which is one drawImage instead of a mesh.
      */
+    /*
+     * The furniture, rasterised once at open time.
+     *
+     * Its size is the aperture's own, so the proportions inside it are right
+     * whatever resolution the plate ends up being drawn at. Skipped entirely
+     * when the media already matches the screen closely enough that there are
+     * no bands — painting a status bar over the picture would be worse than
+     * painting none.
+     */
+    let chrome: HTMLImageElement | undefined;
+    if (wellFit(well) === "chrome") {
+      const boxW = Math.max(2, L.mediaW);
+      const boxH = Math.max(2, L.mediaH);
+      const bands = letterbox(boxW, boxH, sourceWidth(media), sourceHeight(media));
+      if (chromeFits(boxW, bands.top, bands.bottom)) {
+        const img = new Image();
+        img.src = screenChromeUri({ w: boxW, h: boxH, top: bands.top, bottom: bands.bottom });
+        await img.decode().catch(() => undefined);
+        chrome = img;
+      }
+    }
+
     let warped: HTMLCanvasElement | undefined;
     const quad = well.quad;
     if (quad && well.kind === "image") {
@@ -264,14 +304,43 @@ async function openWellClips(beats: Beat[], canvas: CanvasId): Promise<Map<strin
           lc.closePath();
           lc.clip();
         }
-        const sw = sourceWidth(media);
-        const sh = sourceHeight(media);
-        drawImageInQuad(lc, media, q, { srcRect: coverCrop({ width: sw, height: sh }, q) });
+        /*
+         * A letterboxed still is composed before it is warped, not after.
+         *
+         * The pre-warp exists so a pinned still pays the mesh once instead of
+         * every frame, and that only works if what gets warped is the finished
+         * picture. Warping the bare image and adding furniture afterwards
+         * would lay a flat status bar across a foreshortened screen.
+         */
+        const flat = chrome
+          ? (() => {
+              const pw = Math.max(2, Math.round(L.mediaW));
+              const ph = Math.max(2, Math.round(L.mediaH));
+              const cv2 = document.createElement("canvas");
+              cv2.width = pw;
+              cv2.height = ph;
+              const c2 = cv2.getContext("2d", { alpha: false });
+              if (!c2) return media;
+              c2.fillStyle = "#000";
+              c2.fillRect(0, 0, pw, ph);
+              const box = letterbox(pw, ph, sourceWidth(media), sourceHeight(media));
+              c2.drawImage(media, box.x, box.y, box.w, box.h);
+              c2.drawImage(chrome, 0, 0, pw, ph);
+              return cv2 as CanvasImageSource;
+            })()
+          : media;
+        const sw = sourceWidth(flat);
+        const sh = sourceHeight(flat);
+        drawImageInQuad(lc, flat, q, {
+          // A composed plate is already the aperture's shape, so cropping it to
+          // cover would trim furniture off the edges.
+          srcRect: chrome ? undefined : coverCrop({ width: sw, height: sh }, q),
+        });
         if (well.gloss) paintGloss(lc, q, well.gloss, 32);
         warped = layer;
       }
     }
-    out.set(b.id, { media, L, warped });
+    out.set(b.id, { media, L, warped, chrome });
   }
   return out;
 }
@@ -329,6 +398,52 @@ function paintGloss(
   }
 
   drawImageInQuad(ctx, layer, quad, { srcRect: { x: 0, y: 0, w, h }, steps });
+}
+
+/**
+ * What actually goes into the well this frame.
+ *
+ * For `cover` and `stretch` that is the clip itself and the caller's existing
+ * crop maths applies. For `chrome` it is a composed plate the size of the
+ * aperture: black, the clip letterboxed into it, and the phone furniture over
+ * the bands. The plate then draws as a 1:1 fill, which is why it comes back
+ * flagged `exact` — there is nothing left to crop or squash, the fitting
+ * already happened inside it.
+ *
+ * Composing into a canvas held on the clip rather than a fresh one per frame:
+ * this runs every frame of the render, and allocating a 1000×2000 canvas
+ * thirty times a second is the kind of thing that used to make this export
+ * come out short.
+ */
+function wellPicture(
+  clip: WellClip,
+  frame: CanvasImageSource,
+  fit: WellFit,
+  boxW: number,
+  boxH: number,
+): { image: CanvasImageSource; exact: boolean } {
+  if (fit !== "chrome" || !clip.chrome) return { image: frame, exact: fit === "stretch" };
+
+  const w = Math.max(2, Math.round(boxW));
+  const h = Math.max(2, Math.round(boxH));
+  let plate = clip.plate;
+  if (!plate) {
+    plate = document.createElement("canvas");
+    clip.plate = plate;
+  }
+  if (plate.width !== w || plate.height !== h) {
+    plate.width = w;
+    plate.height = h;
+  }
+  const pc = plate.getContext("2d", { alpha: false });
+  if (!pc) return { image: frame, exact: false };
+
+  pc.fillStyle = "#000";
+  pc.fillRect(0, 0, w, h);
+  const box = letterbox(w, h, sourceWidth(frame), sourceHeight(frame));
+  pc.drawImage(frame, box.x, box.y, box.w, box.h);
+  pc.drawImage(clip.chrome, 0, 0, w, h);
+  return { image: plate, exact: true };
 }
 
 export interface NuggetRenderResult {
@@ -643,15 +758,18 @@ export async function renderNuggets({
           ctx2d.closePath();
           ctx2d.clip();
         }
-        drawImageInQuad(ctx2d, frame, q, {
+        const qs = quadSize(q);
+        const shown = wellPicture(well, frame, wellFit(b.well), qs.w, qs.h);
+        drawImageInQuad(ctx2d, shown.image, q, {
           /*
-           * Omitting srcRect maps the whole frame onto the quad, which is
-           * exactly what stretching means here — nothing is left outside to be
-           * cropped, and the aspect gives instead.
+           * Omitting srcRect maps the whole image onto the quad, which is what
+           * stretching means here — nothing is left outside to be cropped, and
+           * the aspect gives instead. A chrome plate is already the quad's own
+           * shape, so it takes the same path and nothing gives.
            */
-          srcRect: b.well.stretch
+          srcRect: shown.exact
             ? undefined
-            : coverCrop({ width: sourceWidth(frame), height: sourceHeight(frame) }, q),
+            : coverCrop({ width: sourceWidth(shown.image), height: sourceHeight(shown.image) }, q),
           /*
            * Coarser than the 32 the card compositor uses. That density exists
            * to land print artwork pixel-accurately in a one-off composite; this
@@ -687,13 +805,23 @@ export async function renderNuggets({
          * is laid straight into the aperture and the aspect gives — so both
          * paths end at the same call rather than diverging.
          */
-        const vw = sourceWidth(frame);
-        const vh = sourceHeight(frame);
-        const cover = b.well?.stretch ? 0 : Math.max(well.L.mediaW / vw, well.L.mediaH / vh);
+        const shown = wellPicture(
+          well,
+          frame,
+          wellFit(b.well),
+          // Plate resolution in CANVAS pixels, not well units: `k` is the
+          // scale this aperture is being drawn at, and a plate built at well
+          // size would be resampled up and come out soft.
+          well.L.mediaW * k,
+          well.L.mediaH * k,
+        );
+        const vw = sourceWidth(shown.image);
+        const vh = sourceHeight(shown.image);
+        const cover = shown.exact ? 0 : Math.max(well.L.mediaW / vw, well.L.mediaH / vh);
         const dw2 = cover ? vw * cover : well.L.mediaW;
         const dh2 = cover ? vh * cover : well.L.mediaH;
         ctx2d.drawImage(
-          frame,
+          shown.image,
           well.L.mediaX + (well.L.mediaW - dw2) / 2,
           well.L.mediaY + (well.L.mediaH - dh2) / 2,
           dw2, dh2,

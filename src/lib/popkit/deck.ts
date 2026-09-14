@@ -39,6 +39,7 @@ export type CanvasId = "reels" | "youtube" | "square" | "ios" | "desktop";
 export type SoundCue =
   | "bubble-pop-1"
   | "bubble-pop-2"
+  | "video-popup"
   | "pop-in"
   | "pop-in-alt"
   | "pop-out"
@@ -132,6 +133,8 @@ export interface BeatMedallion {
  * in for the glyph inside a caption nugget. That one really is a medallion.
  * ADDED in v10.
  */
+export type WellFit = "cover" | "stretch" | "chrome";
+
 export interface BeatWell {
   /** One of W01..W10, when it came from a template. Kept for the picker. */
   template?: string;
@@ -167,6 +170,22 @@ export interface BeatWell {
    * Off means cover, which is what every existing deck expects.
    */
   stretch?: boolean;
+  /**
+   * How the media meets a shape it does not match. Supersedes `stretch`.
+   *
+   * `cover` crops, `stretch` distorts, and `chrome` does neither: it letterboxes
+   * the media and fills the bands with phone furniture — a status bar above, a
+   * home indicator below — so the bars read as a phone playing a video rather
+   * than as a botched fit. That is the answer for the case this keeps coming
+   * back to, a 9:16 clip going into a roughly 9:19.5 phone screen, where cover
+   * loses the top and bottom of the frame and stretch is visible on anything
+   * with a face or a logo in it. Screen wells only; an iPhone status bar inside
+   * a polaroid frame is not a thing.
+   *
+   * `stretch` is still read when this is absent, so decks built before it keep
+   * the fit they were given. Nothing writes `stretch` any more — see wellFit.
+   */
+  fit?: WellFit;
   caption?: string;
   kicker?: string;
   badge?: { text: string; bg?: string };
@@ -446,7 +465,7 @@ export const ANTI_CLATTER_MS = 250;
  */
 export const SOUND_CUES: SoundCue[] = [
   "silent",
-  "bubble-pop-1", "bubble-pop-2",
+  "bubble-pop-1", "bubble-pop-2", "video-popup",
   "pop-in", "pop-in-alt", "pop-out", "stamp", "paper-slide",
   "seal", "chime", "tick", "soft-error",
 ];
@@ -457,6 +476,18 @@ export const SOUND_CUES: SoundCue[] = [
  * as two separate moments". Five frames is the floor that leaves.
  */
 export const POINTER_LEAD_MIN_S = 5 / 30;
+
+/**
+ * How this well fits its media, accounting for decks that predate `fit`.
+ *
+ * One reader so the migration lives in a single place: everything asks this
+ * rather than looking at either field, and `stretch` can eventually be deleted
+ * by removing one line here.
+ */
+export function wellFit(well: Pick<BeatWell, "fit" | "stretch"> | undefined): WellFit {
+  if (!well) return "cover";
+  return well.fit ?? (well.stretch ? "stretch" : "cover");
+}
 
 export type BeatKind = "nugget" | "well" | "arrow";
 

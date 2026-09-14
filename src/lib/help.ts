@@ -522,6 +522,19 @@ export const HELP: Record<string, HelpEntry> = {
     terms: gloss(MESSAGE_PLACEMENTS),
   },
 
+  /* ------------------------------ thread ------------------------------ */
+
+  "thread.panel": {
+    title: "The conversation",
+    body:
+      "The messages, in order, ending with the card link. The ▶ marks where the live conversation starts: everything above it is already on screen when the clip opens, and everything from it down arrives one at a time while the camera watches. That split is what makes it read as a phone somebody just picked up rather than a thread being demonstrated — a conversation that starts empty always looks staged. Incoming messages get a typing indicator first, for about as long as they would take to type; your own do not, because you know what you wrote.",
+  },
+  "thread.card": {
+    title: "The card",
+    body:
+      "The animation that plays when the link is tapped. It opens in a browser sheet on the phone, plays there for a beat, and then the frame pushes in until the card fills the whole video — so the thread sets it up and the card still gets the screen it was made for. Its length decides the length of the finished clip, and its own audio comes with it, moved to where the card starts. The thumbnail is the picture inside the link bubble; without one the bubble still works, it is just grey.",
+  },
+
   /* ------------------------------ popkit ------------------------------ */
 
   "pop.canvas": {
@@ -838,6 +851,11 @@ export const HELP: Record<string, HelpEntry> = {
     title: "Stretch to fill",
     body:
       "Off, the media is cropped to cover the well: it keeps its proportions and whatever falls outside the shape is trimmed. On, it is stretched to fit exactly — nothing is lost and the picture is distorted instead. Worth turning on when what the crop was cutting off is the part that mattered, like a logo in the corner of a clip. A few percent of stretch is invisible; a lot is not.",
+  },
+  "pop.wellFit": {
+    title: "Fit",
+    body:
+      "How the clip meets a screen it does not match — which, for a 9:16 clip going onto a phone, is always: a modern iPhone screen is closer to 9:19.5, so something has to give. Crop to cover keeps the proportions and trims the top and bottom. Stretch to fill keeps every pixel and squashes them; a few percent is invisible, this much usually is not, and it shows first on faces and logos. Letterbox with chrome gives up neither: the clip sits at its own shape in the middle and the bands above and below get the phone's own furniture — a clock and status icons at the top, a home indicator at the bottom — so they read as a phone playing a video rather than as bars. If the clip already matches the screen there are no bands to put furniture in, and this behaves exactly like cropping.",
   },
   "pop.wellCaption": {
     title: "Well caption",

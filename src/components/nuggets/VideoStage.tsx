@@ -5,9 +5,10 @@ import { CANVASES } from "@/lib/popkit/catalogue";
 import { renderBeat, safeZone } from "@/lib/popkit/preview";
 import { tryGlyphDataUri } from "@/lib/popkit/glyphs";
 import {
-  beatScaleFor,
-  type Anchor, type Beat, type CanvasId, type MedallionSide, type ProtectedRegion,
+  beatScaleFor, wellFit,
+  type Anchor, type Beat, type CanvasId, type MedallionSide, type ProtectedRegion, type WellFit,
 } from "@/lib/popkit/deck";
+import { chromeFits, letterbox, screenChromeUri } from "@/lib/popkit/screen-chrome";
 import { quadSize, quadToCssMatrix, type Quad } from "@/lib/perspective";
 import { glossCss, glossEdgeCss } from "@/lib/popkit/screen-gloss";
 import type { Transport as Clock } from "@/lib/popkit/use-playhead";
@@ -525,7 +526,7 @@ export function VideoStage({
                       scale={w / preview.w}
                       playing={playing && live}
                       at={playhead - beat.t}
-                      stretch={beat.well.stretch}
+                      fit={wellFit(beat.well)}
                     />
                     {!!beat.well.gloss && (
                       <span
@@ -625,12 +626,12 @@ function WellMedia({
   scale,
   playing,
   at,
-  stretch,
+  fit = "cover",
 }: {
   src: string;
   kind: "image" | "video";
-  /** Fill the aperture by stretching rather than cropping to cover it. */
-  stretch?: boolean;
+  /** How the media meets a shape it does not match. See wellFit. */
+  fit?: WellFit;
   /** The aperture, in canvas px. */
   rect: { x: number; y: number; w: number; h: number; radius: number };
   /** Canvas px to screen px. */
@@ -668,32 +669,105 @@ function WellMedia({
   };
 
   /*
-   * Cover unless the well asks to stretch. The well decides its own shape, so
-   * media that does not match is cropped rather than squashed — right until the
-   * cropped part is the part that mattered, which is what `stretch` is for.
+   * Cover unless told otherwise. The well decides its own shape, so media that
+   * does not match is cropped rather than squashed — right until the cropped
+   * part is the part that mattered, which is what `stretch` is for.
    *
-   * `fill` rather than `contain`: contain would letterbox, and inside a well
-   * that means the frame's own fill showing through the gaps, or a bare screen
-   * with bars painted onto it. Neither is a thing anyone wants to render.
+   * `contain` used to be ruled out here, on the grounds that letterboxing inside
+   * a well means the frame's own fill showing through the gaps or a bare screen
+   * with bars painted on it. That still holds — with the furniture from
+   * screen-chrome.ts over them, the bars stop reading as a fault and start
+   * reading as a phone, which is the whole of the `chrome` mode.
    */
-  const fit = stretch ? "object-fill" : "object-cover";
+  const object =
+    fit === "stretch" ? "object-fill" : fit === "chrome" ? "object-contain" : "object-cover";
 
-  if (kind === "image") {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img src={src} alt="" className={cx("pointer-events-none absolute", fit)} style={box} />;
+  /*
+   * The media's own size, which the browser only knows once it has loaded it.
+   *
+   * Needed because whether there is any room for furniture depends on how far
+   * the clip's shape is from the screen's, and a clip that already matches
+   * leaves no bands to put it in. The export reads this straight off the
+   * decoded media; here it has to be waited for, so the chrome appears a beat
+   * after the picture rather than being guessed at and corrected.
+   *
+   * Set from the element's own load event, not an effect — an effect that sets
+   * state on every render is the cascade the React Compiler lint exists to
+   * stop, and this genuinely is event-driven.
+   */
+  const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
+
+  /*
+   * The furniture, built at the aperture's size in CANVAS px rather than screen
+   * px: the SVG scales with its <img>, so building it at screen size would make
+   * the clock creep every time the preview was resized — and would stop it
+   * matching the export, which knows nothing about the preview's scale.
+   */
+  const bands = fit === "chrome" && natural ? letterbox(rect.w, rect.h, natural.w, natural.h) : null;
+  const chrome =
+    bands && chromeFits(rect.w, bands.top, bands.bottom)
+      ? screenChromeUri({ w: rect.w, h: rect.h, top: bands.top, bottom: bands.bottom })
+      : null;
+
+  const media =
+    kind === "image" ? (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={src}
+        alt=""
+        onLoad={(e) =>
+          setNatural({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })
+        }
+        className={cx("pointer-events-none absolute h-full w-full", object)}
+      />
+    ) : (
+      <video
+        ref={ref}
+        src={src}
+        muted
+        loop
+        playsInline
+        preload="auto"
+        onLoadedMetadata={(e) =>
+          setNatural({ w: e.currentTarget.videoWidth, h: e.currentTarget.videoHeight })
+        }
+        className={cx("pointer-events-none absolute h-full w-full", object)}
+      />
+    );
+
+  /*
+   * Wrapped rather than positioned directly, so the black backing, the
+   * letterboxed media and the furniture share one box and cannot drift apart.
+   * The wrapper is only introduced for `chrome`; the other two modes keep the
+   * element exactly where it was, which is one less thing for this change to
+   * have moved by accident.
+   */
+  if (fit !== "chrome") {
+    return kind === "image" ? (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={src} alt="" className={cx("pointer-events-none absolute", object)} style={box} />
+    ) : (
+      <video
+        ref={ref}
+        src={src}
+        muted
+        loop
+        playsInline
+        preload="auto"
+        className={cx("pointer-events-none absolute", object)}
+        style={box}
+      />
+    );
   }
 
   return (
-    <video
-      ref={ref}
-      src={src}
-      muted
-      loop
-      playsInline
-      preload="auto"
-      className={cx("pointer-events-none absolute", fit)}
-      style={box}
-    />
+    <div className="pointer-events-none absolute overflow-hidden bg-black" style={box}>
+      {media}
+      {chrome && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={chrome} alt="" className="absolute inset-0 h-full w-full" />
+      )}
+    </div>
   );
 }
 
@@ -806,7 +880,7 @@ function PinnedScreen({
           scale={1}
           playing={playing && live}
           at={at}
-          stretch={well.stretch}
+          fit={wellFit(well)}
         />
         {/* Inside the transformed box, so the sheen foreshortens with the
             surface rather than lying flat across the frame. */}
