@@ -77,6 +77,12 @@ type StudioValue = {
   setCardVideoId: (id: string | null) => void;
   backgroundId: string | null;
   setBackgroundId: (id: string | null) => void;
+  /** A sample of the user's own hand, used as a style reference. Input only. */
+  handwritingId: string | null;
+  setHandwritingId: (id: string | null) => void;
+  /** The user's actual signature, reproduced rather than imitated. Input only. */
+  signatureId: string | null;
+  setSignatureId: (id: string | null) => void;
   baseId: string | null;
   setBaseId: (id: string | null) => void;
 
@@ -117,8 +123,10 @@ export function StudioProvider({ children }: { children: ReactNode }) {
 
   // assets / base / video / surface live in an external store so they survive a
   // reload without a hydration-mismatch dance. See lib/persisted-store.ts.
-  const { assets, base, video, surface, cardFrontId, cardInsideId, cardVideoId, backgroundId, baseId } =
-    usePersisted();
+  const {
+    assets, base, video, surface, cardFrontId, cardInsideId, cardVideoId,
+    backgroundId, handwritingId, signatureId, baseId,
+  } = usePersisted();
 
   const [step, setStepRaw] = useState(1);
 
@@ -136,6 +144,14 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   );
   const setBackgroundId = useCallback(
     (backgroundId: string | null) => updatePersisted({ backgroundId }),
+    [],
+  );
+  const setHandwritingId = useCallback(
+    (handwritingId: string | null) => updatePersisted({ handwritingId }),
+    [],
+  );
+  const setSignatureId = useCallback(
+    (signatureId: string | null) => updatePersisted({ signatureId }),
     [],
   );
   const setBaseId = useCallback((baseId: string | null) => updatePersisted({ baseId }), []);
@@ -195,6 +211,12 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       cardVideoId: keep(current.cardVideoId, () => nextOf("card-video")),
       // A background locks the scene controls, so it is cleared rather than swapped.
       backgroundId: current.backgroundId && gone.has(current.backgroundId) ? null : current.backgroundId,
+      // Cleared rather than swapped, for the same reason: the replacement would
+      // be somebody else's handwriting.
+      handwritingId:
+        current.handwritingId && gone.has(current.handwritingId) ? null : current.handwritingId,
+      signatureId:
+        current.signatureId && gone.has(current.signatureId) ? null : current.signatureId,
       baseId: keep(current.baseId, () => nextOf("base")),
       ...(motionUsable(current.video.motionId, assets, current.surface)
         ? {}
@@ -218,6 +240,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       cardInsideId: null,
       cardVideoId: null,
       backgroundId: null,
+      handwritingId: null,
+      signatureId: null,
       baseId: null,
     });
   }, []);
@@ -496,20 +520,35 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         setKeyDialogOpen(true);
         return;
       }
-      if (!spec.message.trim() && !spec.signature.trim()) {
-        toast("Write something first — a message or a signature.", "error");
+      // An uploaded signature is content in its own right: a card carrying
+      // nothing but somebody's real signature is a perfectly good card.
+      const signedByUpload = assets.some((a) => a.id === signatureId && a.kind === "signature");
+      if (!spec.message.trim() && !spec.signature.trim() && !signedByUpload) {
+        toast("Write something first — a message, a signature, or an uploaded one.", "error");
         return;
       }
 
       const spread = assets.find((a) => a.id === cardInsideId && a.kind === "card-art");
       const hasSpread = Boolean(spread);
+      const sample = assets.find((a) => a.id === handwritingId && a.kind === "handwriting");
+      const signature = assets.find((a) => a.id === signatureId && a.kind === "signature");
 
       const prompt = buildInsideMessagePrompt({
         ...spec,
         hasSpread,
+        hasHandSample: Boolean(sample),
+        hasSignatureSample: Boolean(signature),
         cardSizeId: base.cardSizeId,
         extraNotes: spec.notes,
       });
+
+      /*
+       * Order is load-bearing: the prompt names these by position, so this
+       * array and the ordinals in buildInsideMessagePrompt are built from the
+       * same sequence — spread first, handwriting sample second. Get it the
+       * wrong way round and the model is told the sample is the card.
+       */
+      const references = [spread?.url, sample?.url, signature?.url].filter(Boolean) as string[];
 
       // An open spread is landscape; match the card's real proportions so the
       // model isn't also deciding the shape of the paper.
@@ -521,11 +560,18 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         {
           label: spec.signature.trim() ? `Inside · ${spec.signature.trim().slice(0, 20)}` : "Inside message",
           kind: "card-art",
-          slot: hasSpread ? "compositeImage" : "baseImage",
-          model: modelFor(hasSpread ? "compositeImage" : "baseImage"),
+          /*
+           * The slot follows whether there is anything to edit, not whether
+           * there is a spread. A handwriting sample with no spread is still an
+           * image going in, so it needs the image-to-image model — sent to the
+           * text-to-image slot the reference would simply be dropped, and the
+           * result would silently come back in a generic hand.
+           */
+          slot: references.length ? "compositeImage" : "baseImage",
+          model: modelFor(references.length ? "compositeImage" : "baseImage"),
           input: {
             prompt,
-            ...(hasSpread ? { image_urls: [spread!.url] } : {}),
+            ...(references.length ? { image_urls: references } : {}),
             image_size: size,
             quality: base.quality,
             num_images: 1,
@@ -543,7 +589,12 @@ export function StudioProvider({ children }: { children: ReactNode }) {
               label: spec.signature.trim()
                 ? `Signed · ${spec.signature.trim().slice(0, 20)}`
                 : "Inside message",
-              tags: ["inside spread", "handwritten", spec.styleId],
+              tags: [
+                "inside spread",
+                "handwritten",
+                sample ? "own hand" : spec.styleId,
+                ...(signature ? ["own signature"] : []),
+              ],
               createdAt: Date.now(),
               prompt,
               panel: "inside" as const,
@@ -552,7 +603,10 @@ export function StudioProvider({ children }: { children: ReactNode }) {
         },
       ]);
     },
-    [assets, base.cardSizeId, base.imageResolution, base.quality, cardInsideId, keyConnected, modelFor, runner, toast],
+    [
+      assets, base.cardSizeId, base.imageResolution, base.quality, cardInsideId,
+      handwritingId, signatureId, keyConnected, modelFor, runner, toast,
+    ],
   );
 
   /* -------------------------- step 3: video -------------------------- */
@@ -883,6 +937,10 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       setCardVideoId,
       backgroundId,
       setBackgroundId,
+      handwritingId,
+      setHandwritingId,
+      signatureId,
+      setSignatureId,
       baseId,
       setBaseId,
       jobs: runner.jobs,
@@ -906,7 +964,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       step, setStep, surface, setSurface, assets, addAssets, removeAsset, removeAssetsByUrl, updateAsset, clearAssets,
       base, setBase, video, setVideo,
       cardFrontId, setCardFrontId, cardInsideId, setCardInsideId,
-      cardVideoId, setCardVideoId, backgroundId, setBackgroundId, baseId, setBaseId,
+      cardVideoId, setCardVideoId, backgroundId, setBackgroundId,
+      handwritingId, setHandwritingId, signatureId, setSignatureId, baseId, setBaseId,
       runner.jobs, runner.busy, runner.cancelAll, basePlanCount,
       generateScenes, generateInsideMessage, generateVideo, generateOneShot,
       keyConnected, keyDialogOpen, keyHint, confettiKey,

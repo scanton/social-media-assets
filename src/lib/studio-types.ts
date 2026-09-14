@@ -8,6 +8,8 @@ export type AssetKind =
   | "card-art" /* uploaded printed-card artwork — see `panel` */
   | "card-video" /* uploaded 8–13s digital card clip */
   | "background" /* uploaded location photo the printed card is placed into */
+  | "handwriting" /* uploaded sample of the user's own hand, used as a style reference */
+  | "signature" /* uploaded signature, reproduced as the sign-off rather than imitated */
   | "base" /* generated lifestyle scene, card already on the surface */
   | "video" /* final motion asset */
   | "freeform"; /* made on the open bench, image or clip, outside either pipeline */

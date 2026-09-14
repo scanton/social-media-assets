@@ -36,7 +36,7 @@ const CATEGORIES = [
     // fal returns its catalogue newest-first, which lands a landing on
     // whatever shipped this week — sometimes a novelty like a try-on model.
     // A generalist opens better, and it's only the starting point.
-    prefer: "openai/gpt-image-2",
+    prefer: "openai/gpt-image-2.5/flare/text-to-image",
     /*
      * The same intent on Replicate, written out rather than derived. Neither
      * provider's ids are a transform of the other's — `bytedance/seedance-2.5`
@@ -45,7 +45,7 @@ const CATEGORIES = [
      * A preference that does not exist is simply not honoured; the list still
      * opens on something.
      */
-    preferReplicate: "openai/gpt-image-2",
+    preferReplicate: "openai/gpt-image-2.5-flare",
   },
   {
     id: "image-to-image", label: "Image from an image", video: false,
@@ -70,10 +70,15 @@ const CATEGORIES = [
  * that "which models do we disagree with, and about what" is one thing to read.
  */
 const HOUSE_DEFAULTS: Record<string, Record<string, unknown>> = {
-  // The schema opens on `high`. Medium is the better default here: the
-  // difference is hard to see at social sizes and easy to see on the bill,
-  // and the control is right there for the render that earns it.
+  // The schema opens on `high` (fal) or `auto` (Replicate). Medium is the
+  // better default here: the difference is hard to see at social sizes and
+  // easy to see on the bill, and the control is right there for the render
+  // that earns it. Flare added `xhigh` and `max` above `high`, which makes
+  // opening on the schema's own default a more expensive mistake than before.
   "openai/gpt-image-2": { quality: "medium" },
+  "openai/gpt-image-2.5/flare/text-to-image": { quality: "medium" },
+  "openai/gpt-image-2.5/flare/edit": { quality: "medium" },
+  "openai/gpt-image-2.5-flare": { quality: "medium" },
 };
 
 type CategoryId = (typeof CATEGORIES)[number]["id"];
