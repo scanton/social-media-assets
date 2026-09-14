@@ -368,7 +368,7 @@ Anything else that dresses the frame — a cap, sunglasses pushed up, a knit sca
 
 ### Handwritten message
 
-Asks the image model to write a note on the card's inside pages, in a hand you choose. Everything here is optional, and none of it does anything without an inside spread uploaded — there is no page to write on otherwise.
+Asks the image model to write a note on the card's inside pages, in a hand you choose — or in your own, if you upload a sample of it. Everything here is optional. Without an inside spread uploaded it writes on a blank open card generated for the purpose; with one, it writes into the empty space and leaves your artwork alone.
 
 ### Message
 
@@ -376,11 +376,15 @@ The words written inside the card. Keep it to what would genuinely fit on a page
 
 ### Signature
 
-The name at the end, written a little looser than the message — as a real signature is. Optional; leave it empty for an unsigned note.
+The name at the end, written a little looser than the message — as a real signature is. Optional; leave it empty for an unsigned note. Ignored while an uploaded signature is selected, because quoting a name here as well would ask for it twice.
+
+### Your own signature
+
+A photograph of your actual signature, reproduced on the card rather than imitated — this is the difference between it and the handwriting sample above. That one is copied as a style and its words are thrown away; this one IS the content and the mark itself is what comes through. Shoot it on plain paper, square-on, with nothing else nearby: dates, ruled lines, printed names and form boxes are not part of a signature and are discarded, but the cleaner the photo the less there is to get wrong. It is redrawn in ink on the card, so the paper and pen of your photo do not carry over.
 
 ### Handwriting
 
-Whose hand it looks like. Grouped by how the writing reads rather than by any font name, because the model is being asked to imitate a person, not to set type.
+Whose hand it looks like. Grouped by how the writing reads rather than by any font name, because the model is being asked to imitate a person, not to set type. Ignored while a sample of your own handwriting is uploaded — that replaces the preset rather than blending with it.
 
   - **Neat everyday** — Tidy, legible, unfussy
   - **Chicken scratch** — Hurried, cramped, barely legible
@@ -392,6 +396,10 @@ Whose hand it looks like. Grouped by how the writing reads rather than by any fo
   - **Elegant calligraphy** — Formal copperplate
   - **Classic cursive** — Old-fashioned joined hand
   - **Playful** — Bubbly and childlike
+
+### Your own handwriting
+
+A photograph of your real handwriting, used as a style reference so the message comes out in your hand rather than a preset one. A few lines on plain paper, shot square-on in good light, works better than a single word — the more letters it contains, the fewer the model has to invent. Include a signature if you want your sign-off to match. What it says does not matter and is never copied: only the shape of the writing is taken from it, and the paper, lighting and pen colour of the photo are all discarded.
 
 ### Pen
 
@@ -938,4 +946,4 @@ How fast anything moves. All optional, and off unless you pick one. Whatever you
 `llms-full.txt` is generated from `src/lib/help.ts` and `src/lib/options.ts` in the
 HeartStamp Asset Studio codebase. Do not edit by hand; run `pnpm llms`.
 
-version: 26d97acd1a35
+version: 672c5ad3fcbd

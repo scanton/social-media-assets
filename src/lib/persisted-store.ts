@@ -91,6 +91,17 @@ export type Persisted = {
    * controls in step 2 are locked and their stored values go unused.
    */
   backgroundId: string | null;
+  /**
+   * A photograph of the user's own handwriting, used as a style reference when
+   * writing inside the card. Unlike the others this is never a render target —
+   * it is only ever an input.
+   */
+  handwritingId: string | null;
+  /**
+   * The user's actual signature, reproduced as the sign-off. Distinct from
+   * handwritingId: that one is imitated, this one is copied.
+   */
+  signatureId: string | null;
   baseId: string | null;
 };
 
@@ -135,6 +146,8 @@ const DEFAULTS: Persisted = {
   cardInsideId: null,
   cardVideoId: null,
   backgroundId: null,
+  handwritingId: null,
+  signatureId: null,
   baseId: null,
 };
 
@@ -195,12 +208,14 @@ export function firstUsableMotion(assets: Asset[], surface: SurfaceKind): string
 /** Shape as it comes off disk: selection ids may be absent on older sessions. */
 type RawPersisted = Omit<
   Persisted,
-  "cardFrontId" | "cardInsideId" | "cardVideoId" | "backgroundId" | "baseId"
+  "cardFrontId" | "cardInsideId" | "cardVideoId" | "backgroundId" | "handwritingId" | "signatureId" | "baseId"
 > & {
   cardFrontId?: string | null;
   cardInsideId?: string | null;
   cardVideoId?: string | null;
   backgroundId?: string | null;
+  handwritingId?: string | null;
+  signatureId?: string | null;
   baseId?: string | null;
   /** Pre-split sessions kept a single artwork slot. */
   cardArtId?: string | null;
@@ -254,6 +269,17 @@ function sanitize(p: RawPersisted): Persisted {
     backgroundId:
       p.backgroundId && p.assets.some((a) => a.id === p.backgroundId && a.kind === "background")
         ? p.backgroundId
+        : null,
+    // Same reasoning as the background: never resolve a stale id into a sample
+    // being silently re-applied, because the hand it produces is not the one
+    // the preset picker is showing.
+    handwritingId:
+      p.handwritingId && p.assets.some((a) => a.id === p.handwritingId && a.kind === "handwriting")
+        ? p.handwritingId
+        : null,
+    signatureId:
+      p.signatureId && p.assets.some((a) => a.id === p.signatureId && a.kind === "signature")
+        ? p.signatureId
         : null,
     baseId: resolve(p.baseId, "base"),
     base: {
@@ -326,6 +352,8 @@ function readStorage(): Persisted {
       cardArtId: saved.cardArtId,
       cardVideoId: saved.cardVideoId,
       backgroundId: saved.backgroundId,
+      handwritingId: saved.handwritingId,
+      signatureId: saved.signatureId,
       baseId: saved.baseId,
     });
   } catch {
@@ -438,6 +466,12 @@ export function removeAssetFromRoll(id: string) {
     // quietly swapping in a different one would relock the UI around a photo
     // the user never chose.
     ...(current.backgroundId === id ? { backgroundId: null } : {}),
+    // No fallback either: silently substituting somebody else's handwriting is
+    // worse than writing in the preset hand the picker is already showing.
+    ...(current.handwritingId === id ? { handwritingId: null } : {}),
+    // Least of all this one: substituting a different person's signature is
+    // not a degraded result, it is the wrong name on the card.
+    ...(current.signatureId === id ? { signatureId: null } : {}),
     ...(current.baseId === id ? { baseId: nextOf("base") } : {}),
     ...(lostLastClip && current.video.engine === "screen-replace"
       ? { video: { ...current.video, engine: "animate" as const } }

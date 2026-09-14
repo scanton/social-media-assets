@@ -1568,9 +1568,89 @@ export type InsideMessageSelection = {
   placementId: string;
   /** False when there is no uploaded spread and the interior is made from scratch. */
   hasSpread: boolean;
+  /**
+   * A photograph of the user's own handwriting is supplied as a style
+   * reference. When set it replaces the preset hand entirely — see
+   * handSampleClause for why the two cannot both be stated.
+   */
+  hasHandSample?: boolean;
+  /**
+   * A photograph of the user's actual signature is supplied, to be reproduced
+   * as the sign-off. Independent of hasHandSample and frequently set with it:
+   * the message comes out in their hand and the card is signed with their real
+   * mark. The two clauses say opposite things about the same kind of image —
+   * see signatureClause — which is why they are separate flags rather than one.
+   */
+  hasSignatureSample?: boolean;
   cardSizeId?: string;
   extraNotes?: string;
 };
+
+/**
+ * Writing in somebody's own hand, from a photograph of it.
+ *
+ * The whole difficulty is that the sample is an image of *words*, and the
+ * model's first instinct on being handed an image of words is to reproduce
+ * those words. So the separation between what to take from it (the hand) and
+ * what to ignore (everything else, starting with what it says) is stated
+ * before anything else and then again at the end, because getting this wrong
+ * does not degrade the result — it replaces the user's message with a stranger's.
+ *
+ * The traits listed are the ones that actually distinguish one hand from
+ * another. "Match the handwriting" on its own gets a generic script; naming
+ * slant, connection, relative letter heights and how strokes terminate is what
+ * makes it somebody's.
+ *
+ * The sample's own paper, ink and lighting are explicitly discarded. It is
+ * usually a phone photograph of a notebook page under kitchen light, and none
+ * of that belongs on a greeting card — the pen colour is the user's separate
+ * choice and the paper is the card's.
+ */
+/**
+ * Putting somebody's actual signature on the card.
+ *
+ * The exact opposite instruction to handSampleClause, on the same kind of
+ * image, which is why the two are never merged and why the reference list is
+ * numbered before either of them speaks. There, the words are the one thing to
+ * throw away; here, the mark IS the content and has to survive intact. Told to
+ * "use the reference" without that distinction a model splits the difference —
+ * a signature in roughly the right style, spelling roughly the right name,
+ * which is the one outcome nobody wants on something going out with a person's
+ * name on it.
+ *
+ * Redrawn rather than pasted. A photograph of a signature carries its own
+ * paper, shadow and pen, and dropping that rectangle onto the card reads as a
+ * cut-out every time. What transfers is the shape of the mark; the ink, the
+ * stock and the light are the card's.
+ *
+ * The surrounding clutter is called out by name because signature photographs
+ * are rarely clean — they come off a form, a card, a scrap of paper, and they
+ * arrive with dates, ruled lines, printed names and whatever else was nearby.
+ */
+function signatureClause(ordinal: string, alsoWritten: boolean): string {
+  return [
+    `SIGNATURE — the ${ordinal} reference image contains a real signature. Unlike a style reference, this one is CONTENT: reproduce that signature itself`,
+    "Copy the mark as it is drawn — the same letterforms, the same slant and proportions, the same flourishes, loops, crossings, underline or full stop if it has them, the same places the pen lifts and the same places it runs on. It must be recognisable as that person's signature, not merely a signature in a similar style",
+    "Take nothing else from that image. Any dates, printed names, ruled or dotted lines, boxes, form labels, borders, smudges or other writing around the signature are not part of it and must not appear",
+    "Redraw it as ink on this card rather than pasting the photograph in: no rectangular patch, no visible crop, no second paper texture, no drop shadow and no edge where one image meets another. It carries the card's own stock, the pen colour specified below, and the card's own lighting and focus",
+    "Set it at a natural size for a signature on a card of this size — comfortably readable, not filling the panel, and not shrunk to a detail",
+    alsoWritten
+      ? "It goes at the end, below the written message, where a card is signed. The message above it is written text; this is the only part reproduced from a reference"
+      : "It goes where a card is signed, and it is the only writing on the card",
+  ].join(". ");
+}
+
+function handSampleClause(ordinal: string): string {
+  return [
+    `HANDWRITING REFERENCE — the ${ordinal} reference image is a photograph of real handwriting, supplied so you can copy the HAND. It is a style reference and nothing else`,
+    "DO NOT read, transcribe, reproduce, echo or borrow any of the words, letters, names, dates or marks that appear in it. Whatever it happens to say is irrelevant and must not appear anywhere in the output. The words you write are the ones specified above and only those",
+    "Do not place, paste, composite or show that reference image anywhere in the picture. Nothing of it appears except the way the writing is shaped",
+    "What to take from it: the shapes of the individual letters, the slant, whether and where letters join up or stay separate, the spacing between letters and between words, the relative heights of capitals, ascenders and descenders, the loop shapes, the stroke weight and how it thickens and thins under pressure, how strokes begin and terminate, and the general neatness or looseness of the hand",
+    "Match those faithfully enough that the person whose writing it is would recognise it as their own",
+    "For any letter, digit or punctuation mark the sample does not happen to contain, invent the form that hand would plausibly use — consistent with its slant, proportions and connections — rather than falling back on a neutral script for those characters",
+    "What to ignore completely: the paper, background, surface, lighting, shadows, focus, grain, crop, scale, angle and ink colour of that photograph. None of it carries over. The writing goes on the card's own stock, in the pen colour specified below, lit by the card's own photograph",
+  ].join(". ");
+}
 
 /**
  * Compiles the prompt that writes a message inside the card.
@@ -1597,26 +1677,72 @@ export function buildInsideMessagePrompt(sel: InsideMessageSelection): string {
   const quoted = (label: string, text: string) =>
     text.trim() ? `${label}: "${text.trim().replace(/\s*\n\s*/g, " / ")}"` : undefined;
 
+  /*
+   * A supplied signature replaces the typed sign-off rather than joining it.
+   * Quoting "Love, Sarah" while also handing over a signature reading "Sarah"
+   * asks for the name twice, and the model obliges.
+   */
   const lines = [
     quoted("MESSAGE", sel.message),
-    quoted("SIGN-OFF", sel.signature),
+    sel.hasSignatureSample ? undefined : quoted("SIGN-OFF", sel.signature),
   ].filter(Boolean) as string[];
 
-  return joinPrompts([
-    sel.hasSpread
-      ? "The supplied image is the printed inside spread of a folded greeting card, lying open and flat, photographed square-on"
-      : `A folded greeting card lying open and flat, photographed square-on, showing both blank inside panels of a ${card.open[0]} × ${card.open[1]} inch open spread on warm off-white card stock with a soft centre crease`,
+  /*
+   * With two references in play, which is which has to be said first.
+   *
+   * The endpoint gives images no names, so position is the only handle the
+   * prompt has on them — the same problem referenceKeyClause solves for scenes.
+   * It matters more here than anywhere else in this file: confuse the spread
+   * with the handwriting sample and the model writes the sample's words onto
+   * the card.
+   */
+  const refs: string[] = [];
+  if (sel.hasSpread) refs.push("the printed inside spread of a folded greeting card, lying open and flat, photographed square-on");
+  if (sel.hasHandSample) refs.push("a photograph of real handwriting, supplied only as a style reference");
+  const sampleOrdinal = ORDINALS[refs.length - 1] ?? "last";
+  if (sel.hasSignatureSample) refs.push("a photograph of a real signature, to be reproduced as the sign-off");
+  const signatureOrdinal = ORDINALS[refs.length - 1] ?? "last";
 
-    "TASK: write a personal handwritten message onto this open card. Change nothing else about the image",
+  return joinPrompts([
+    refs.length > 1
+      ? `${refs.length} reference images are supplied, in this order: ${refs
+          .map((r, i) => `the ${ORDINALS[i] ?? `image ${i + 1}`} is ${r}`)
+          .join(", ")}`
+      : refs.length === 1
+        ? `One reference image is supplied: it is ${refs[0]}`
+        : undefined,
+
+    sel.hasSpread
+      ? undefined
+      : `The card itself is not supplied: draw it. A folded greeting card lying open and flat, photographed square-on, showing both blank inside panels of a ${card.open[0]} × ${card.open[1]} inch open spread on warm off-white card stock with a soft centre crease`,
+
+    sel.hasSpread
+      ? "TASK: write a personal handwritten message onto this open card. Change nothing else about the image"
+      : "TASK: write a personal handwritten message onto that open card",
 
     // 1. The words, verbatim.
-    `Write exactly these words, spelled and punctuated exactly as given, on separate lines in this order — ${lines.join(" | ")}`,
-    "Reproduce that text character for character. Do not correct it, rephrase it, translate it, abbreviate it, re-punctuate it, add words of your own or leave any word out. Every letter must be clearly legible and correctly spelled",
-    "A forward slash in the text above marks a line break, not a character to draw",
+    lines.length
+      ? `Write exactly these words, spelled and punctuated exactly as given, on separate lines in this order — ${lines.join(" | ")}`
+      : undefined,
+    lines.length
+      ? "Reproduce that text character for character. Do not correct it, rephrase it, translate it, abbreviate it, re-punctuate it, add words of your own or leave any word out. Every letter must be clearly legible and correctly spelled"
+      : undefined,
+    lines.length ? "A forward slash in the text above marks a line break, not a character to draw" : undefined,
+    sel.hasSignatureSample
+      ? "The sign-off is not typed out here: it is the signature in the reference image, described below. Do not invent a name, and do not write one in addition to it"
+      : undefined,
 
     // 2. Handwriting, not type.
     `CRITICAL: this must read as genuine handwriting put on the paper by a human hand with a pen — not as a typeface, not as a "handwriting font", and not as digital text pasted onto the photograph`,
-    `The hand is ${style.prompt}`,
+    /*
+     * One or the other, never both. A preset hand and a sampled hand are two
+     * different sets of letterforms, and stating both leaves the model to pick
+     * — which in practice means averaging them into neither.
+     */
+    sel.hasHandSample ? handSampleClause(sampleOrdinal) : `The hand is ${style.prompt}`,
+    sel.hasSignatureSample
+      ? signatureClause(signatureOrdinal, Boolean(sel.message.trim()))
+      : undefined,
     `It is written in ${ink.prompt}, with the natural variation of real pen on paper: stroke weight that thickens and thins with pressure, tiny wobbles in the line, letters that are never twice identical, and a baseline that drifts very slightly rather than sitting perfectly level`,
     "The ink sits into the paper's surface and takes the same lighting, focus and grain as the rest of the photograph",
 
@@ -1625,10 +1751,24 @@ export function buildInsideMessagePrompt(sel: InsideMessageSelection): string {
     "Keep it inside the card's edges with a comfortable margin, and never let it run over the centre fold in a way that hides a word",
     "Size the writing so the whole message fits comfortably in that area without crowding, shrinking to a cramped block, or running off the card",
     sel.hasSpread
-      ? "ABSOLUTE RULE — everything already printed on this spread stays exactly as it is: same artwork, same colours, same typography, same layout, same position. Do not redraw, recolour, restyle, move, crop, re-typeset or cover any of it. The handwritten message is the only thing added to the image, and it goes in empty space that is already free of artwork"
+      ? `ABSOLUTE RULE — everything already printed on this spread stays exactly as it is: same artwork, same colours, same typography, same layout, same position. Do not redraw, recolour, restyle, move, crop, re-typeset or cover any of it. ${
+          sel.hasSignatureSample
+            ? "The handwriting — the message and the signature — is the only thing added to the image, and it goes"
+            : "The handwritten message is the only thing added to the image, and it goes"
+        } in empty space that is already free of artwork`
       : "Both inside panels are otherwise completely blank — no printed artwork, no borders, no decorative elements, no lines or grid",
 
     "No watermarks, no captions, no logos, and no text anywhere in the image other than what is specified above",
+    // Said twice deliberately. The failure it guards against — the sample's own
+    // words turning up on the card — produces a confident, well-rendered,
+    // completely wrong result, which is the kind a user only notices late.
+    sel.hasHandSample
+      ? sel.hasSignatureSample
+        ? "FINAL CHECK: the two reference photographs are used for opposite purposes and must not be confused. Nothing the handwriting reference says appears anywhere; the signature reference is reproduced exactly once, as the sign-off"
+        : "FINAL CHECK: the only words in the image are the message and sign-off quoted above. Not one word, name or letter from the handwriting reference appears anywhere"
+      : sel.hasSignatureSample
+        ? "FINAL CHECK: the signature is reproduced exactly once, as the sign-off, and nothing else from that photograph appears"
+        : undefined,
     sel.extraNotes?.trim(),
   ]);
 }

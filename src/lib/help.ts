@@ -475,7 +475,7 @@ export const HELP: Record<string, HelpEntry> = {
   "hand.panel": {
     title: "Handwritten message",
     body:
-      "Asks the image model to write a note on the card's inside pages, in a hand you choose. Everything here is optional, and none of it does anything without an inside spread uploaded — there is no page to write on otherwise.",
+      "Asks the image model to write a note on the card's inside pages, in a hand you choose — or in your own, if you upload a sample of it. Everything here is optional. Without an inside spread uploaded it writes on a blank open card generated for the purpose; with one, it writes into the empty space and leaves your artwork alone.",
   },
   "hand.message": {
     title: "Message",
@@ -485,13 +485,23 @@ export const HELP: Record<string, HelpEntry> = {
   "hand.signature": {
     title: "Signature",
     body:
-      "The name at the end, written a little looser than the message — as a real signature is. Optional; leave it empty for an unsigned note.",
+      "The name at the end, written a little looser than the message — as a real signature is. Optional; leave it empty for an unsigned note. Ignored while an uploaded signature is selected, because quoting a name here as well would ask for it twice.",
+  },
+  "hand.signatureSample": {
+    title: "Your own signature",
+    body:
+      "A photograph of your actual signature, reproduced on the card rather than imitated — this is the difference between it and the handwriting sample above. That one is copied as a style and its words are thrown away; this one IS the content and the mark itself is what comes through. Shoot it on plain paper, square-on, with nothing else nearby: dates, ruled lines, printed names and form boxes are not part of a signature and are discarded, but the cleaner the photo the less there is to get wrong. It is redrawn in ink on the card, so the paper and pen of your photo do not carry over.",
   },
   "hand.style": {
     title: "Handwriting",
     body:
-      "Whose hand it looks like. Grouped by how the writing reads rather than by any font name, because the model is being asked to imitate a person, not to set type.",
+      "Whose hand it looks like. Grouped by how the writing reads rather than by any font name, because the model is being asked to imitate a person, not to set type. Ignored while a sample of your own handwriting is uploaded — that replaces the preset rather than blending with it.",
     terms: gloss(HANDWRITING_STYLES),
+  },
+  "hand.sample": {
+    title: "Your own handwriting",
+    body:
+      "A photograph of your real handwriting, used as a style reference so the message comes out in your hand rather than a preset one. A few lines on plain paper, shot square-on in good light, works better than a single word — the more letters it contains, the fewer the model has to invent. Include a signature if you want your sign-off to match. What it says does not matter and is never copied: only the shape of the writing is taken from it, and the paper, lighting and pen colour of the photo are all discarded.",
   },
   "hand.ink": {
     title: "Pen",

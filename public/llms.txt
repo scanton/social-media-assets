@@ -186,10 +186,12 @@ which choice to pick.
 
 ## Step 2 — the handwritten message
 
-- **Handwritten message** — Asks the image model to write a note on the card's inside pages, in a hand you choose.
+- **Handwritten message** — Asks the image model to write a note on the card's inside pages, in a hand you choose — or in your own, if you upload a sample of it.
 - **Message** — The words written inside the card.
 - **Signature** — The name at the end, written a little looser than the message — as a real signature is.
+- **Your own signature** — A photograph of your actual signature, reproduced on the card rather than imitated — this is the difference between it and the handwriting sample above.
 - **Handwriting** — Whose hand it looks like.
+- **Your own handwriting** — A photograph of your real handwriting, used as a style reference so the message comes out in your hand rather than a preset one.
 - **Pen** — What it was written with.
 - **Written** — Where on the inside spread the message sits.
 
@@ -297,4 +299,4 @@ which choice to pick.
 `llms.txt` is generated from `src/lib/help.ts` and `src/lib/options.ts` in the
 HeartStamp Asset Studio codebase. Do not edit by hand; run `pnpm llms`.
 
-version: f3c704a56bb8
+version: a19c5449b036
