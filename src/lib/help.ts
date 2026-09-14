@@ -522,6 +522,19 @@ export const HELP: Record<string, HelpEntry> = {
     terms: gloss(MESSAGE_PLACEMENTS),
   },
 
+  /* ------------------------------ thread ------------------------------ */
+
+  "thread.panel": {
+    title: "The conversation",
+    body:
+      "The messages, in order, ending with the card link. The ▶ marks where the live conversation starts: everything above it is already on screen when the clip opens, and everything from it down arrives one at a time while the camera watches. That split is what makes it read as a phone somebody just picked up rather than a thread being demonstrated — a conversation that starts empty always looks staged. Incoming messages get a typing indicator first, for about as long as they would take to type; your own do not, because you know what you wrote.",
+  },
+  "thread.card": {
+    title: "The card",
+    body:
+      "The animation that plays when the link is tapped. It opens in a browser sheet on the phone, plays there for a beat, and then the frame pushes in until the card fills the whole video — so the thread sets it up and the card still gets the screen it was made for. Its length decides the length of the finished clip, and its own audio comes with it, moved to where the card starts. The thumbnail is the picture inside the link bubble; without one the bubble still works, it is just grey.",
+  },
+
   /* ------------------------------ popkit ------------------------------ */
 
   "pop.canvas": {

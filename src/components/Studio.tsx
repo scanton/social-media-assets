@@ -308,6 +308,18 @@ function StudioShell({
             </span>
           </Link>
           <Link
+            href="/thread"
+            className="focus-stamp group flex items-center gap-2.5 rounded-2xl border border-hairline bg-white px-4 py-2.5 text-left text-ink transition-all duration-200 hover:-translate-y-0.5 hover:border-stamp-300 hover:bg-stamp-50/50 active:scale-[0.98]"
+          >
+            <span className="text-lg leading-none">💬</span>
+            <span className="min-w-0">
+              <span className="block text-sm font-bold leading-tight">Thread</span>
+              <span className="mt-0.5 hidden text-[11px] font-medium leading-tight text-ink-faint 2xl:block">
+                A text conversation that opens a card
+              </span>
+            </span>
+          </Link>
+          <Link
             href="/freeform"
             className="focus-stamp group flex items-center gap-2.5 rounded-2xl border border-hairline bg-white px-4 py-2.5 text-left text-ink transition-all duration-200 hover:-translate-y-0.5 hover:border-stamp-300 hover:bg-stamp-50/50 active:scale-[0.98]"
           >
