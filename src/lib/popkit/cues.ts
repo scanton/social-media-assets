@@ -20,7 +20,7 @@ import { CUES } from "./kit/feedback.js";
  * IMPORT THIS MODULE, NOT `kit/feedback.js`, anywhere the table is read. Doing
  * so is what guarantees the registration has run first: a module that reads
  * `CUES` at module scope — the picker builds its length map that way — would
- * otherwise race the side effect below and miss these two.
+ * otherwise race the side effect below and miss them.
  */
 
 interface CueSpec {
@@ -60,6 +60,32 @@ const EXTRA: Record<string, CueSpec> = {
     ms: 140,
     gain: 0.62,
     desc: "Same bubble, drier and shorter. Arrows, and an alternate for repeats.",
+  },
+  /*
+   * Supplied as a 2.7 second MP3 with 150ms of silence in front of it and two
+   * seconds of nothing behind — the same shape as the bubble pops arrived in,
+   * and the same fix. The player starts a buffer at the beat with no offset, so
+   * untrimmed it would have landed 150ms late, which at 30fps is four and a
+   * half frames after the nugget it is supposed to be announcing.
+   *
+   *   ffmpeg -i mtv-videopopup.mp3 -af "pan=mono|c0=0.5*c0+0.5*c1,
+   *     silenceremove=start_periods=1:start_threshold=-50dB:detection=peak,
+   *     atrim=end=0.50,afade=t=out:st=0.44:d=0.06:curve=tri"
+   *     -ar 48000 -sample_fmt s16 -ac 1 video-popup.wav
+   *
+   * 500ms rather than the pops' 140: this one has a ring-out that is most of
+   * its character, and cutting at 100ms leaves a click where a sting should be.
+   * It is spent by 500ms — the tail is below -30dB from 350ms on.
+   *
+   * Lower gain than the pops despite being the same full scale on disk. It is
+   * three times as long and much denser, so matched by the numbers it sits well
+   * on top of everything else in a deck.
+   */
+  "video-popup": {
+    file: "video-popup.wav",
+    ms: 500,
+    gain: 0.5,
+    desc: "A bright broadcast sting, like a music-video popup. Loud and deliberate — one per deck, not one per beat.",
   },
 };
 

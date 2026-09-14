@@ -39,6 +39,7 @@ export type CanvasId = "reels" | "youtube" | "square" | "ios" | "desktop";
 export type SoundCue =
   | "bubble-pop-1"
   | "bubble-pop-2"
+  | "video-popup"
   | "pop-in"
   | "pop-in-alt"
   | "pop-out"
@@ -446,7 +447,7 @@ export const ANTI_CLATTER_MS = 250;
  */
 export const SOUND_CUES: SoundCue[] = [
   "silent",
-  "bubble-pop-1", "bubble-pop-2",
+  "bubble-pop-1", "bubble-pop-2", "video-popup",
   "pop-in", "pop-in-alt", "pop-out", "stamp", "paper-slide",
   "seal", "chime", "tick", "soft-error",
 ];
