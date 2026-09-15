@@ -28,7 +28,7 @@ import { ModelPicker } from "../ModelPicker";
 import { DetailsPanel, SubjectFields } from "../SubjectStyling";
 import { ScreenAligner } from "../ScreenAligner";
 import { Button, Chip, Field, Select, Stepper, cx, useToast } from "../ui";
-import { Panel, ResultsGrid, SectionHead } from "./shared";
+import { Locked, Panel, ResultsGrid, SectionHead } from "./shared";
 
 export function Step2Scene() {
   const s = useStudio();
@@ -184,18 +184,26 @@ export function Step2Scene() {
 
           <BackgroundPanel subject="card" />
 
+          {/*
+            * Only the part the photograph actually decides is locked.
+            *
+            * It fixes the place — the setting, the light, the grade. It has no
+            * opinion about who is holding the card, how the card is presented,
+            * or how close the camera gets, and locking those along with the
+            * rest left this route unable to make the shot it exists for.
+            */}
           <Panel
             title="The scene"
             help="scene.panel"
-            locked={locked}
             lockNote={
               locked ? (
                 <>
                   <span className="font-bold">
-                    Locked — &ldquo;{background!.label}&rdquo; is the scene.
+                    &ldquo;{background!.label}&rdquo; is the setting.
                   </span>{" "}
-                  Setting, lighting, film look, who&apos;s in frame and how close all come from
-                  the photograph now. {unlock} to describe a scene instead.
+                  Setting, lighting and film look come from the photograph now. Everything about
+                  the person, the card and the framing still applies — they are what gets added
+                  to it. {unlock} to describe a scene instead.
                 </>
               ) : undefined
             }
@@ -236,6 +244,11 @@ export function Step2Scene() {
                 />
               </Field>
 
+              <Locked
+                when={locked}
+                note="The photograph decides these three."
+              >
+              <div className="space-y-4">
               <Field
                 label="Setting"
                 help="scene.setting"
@@ -268,6 +281,8 @@ export function Step2Scene() {
                   />
                 </Field>
               </div>
+              </div>
+              </Locked>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="Who's in frame" help="scene.presence">
@@ -304,21 +319,16 @@ export function Step2Scene() {
           <Panel
             title="Camera angles"
             help="scene.angle"
-            locked={locked}
             lockNote={
               locked ? (
                 <>
-                  <span className="font-bold">Locked — the photograph is the angle.</span> The
-                  camera position is already fixed by your background, so the batch is one render
-                  per orientation. {unlock} to shoot multiple angles.
+                  <span className="font-bold">These describe the card, not the camera.</span> How
+                  the card is turned to the lens is still yours, flat lay included — a top-down
+                  photograph of a surface is exactly the background a flat lay wants.
                 </>
               ) : undefined
             }
-            aside={
-              <span className="sticker">
-                {locked ? "From the photo" : `${base.angleIds.length} selected`}
-              </span>
-            }
+            aside={<span className="sticker">{base.angleIds.length} selected</span>}
           >
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {ANGLES.map((a) => (

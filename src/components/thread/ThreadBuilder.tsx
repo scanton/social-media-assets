@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { CANVASES } from "@/lib/popkit/catalogue";
 import type { CanvasId } from "@/lib/popkit/deck";
 import { chromeSvgFor, paintThread } from "@/lib/thread/paint";
@@ -174,7 +175,25 @@ export function ThreadBuilder() {
   const ready = Boolean(card);
 
   return (
-    <div className="mx-auto grid max-w-[110rem] gap-5 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+    <div className="mx-auto max-w-[110rem] px-4 py-5 sm:px-6">
+      <header className="mb-5">
+        <Link
+          href="/"
+          className="focus-stamp mb-4 inline-flex items-center gap-1.5 text-xs font-bold text-ink-faint transition-colors hover:text-stamp-600"
+        >
+          <span aria-hidden>←</span> Asset Studio
+        </Link>
+        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-stamp-600">THREAD</p>
+        <h1 className="mt-2 font-display text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">
+          Thread Tool
+        </h1>
+        <p className="mt-2 max-w-2xl text-sm leading-relaxed text-ink-soft">
+          A text conversation that ends in a card. The preview is the render — the same paint
+          function draws both — so what you see here is what comes out of the file.
+        </p>
+      </header>
+
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
       {/* ------------------------------ editor ----------------------------- */}
       <div className="space-y-5">
         <Panel title="The conversation" help="thread.panel">
@@ -392,6 +411,7 @@ export function ThreadBuilder() {
             ? `Encoded frame by frame — a slower machine takes longer, not shorter. About ${total.toFixed(0)}s of video.`
             : "This browser has no video encoder, so the thread can't be rendered here."}
         </p>
+      </div>
       </div>
     </div>
   );

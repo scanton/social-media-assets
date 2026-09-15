@@ -300,16 +300,21 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   /* ------------------- step 2: the finished scene --------------------- */
 
   /*
-   * A supplied location photograph already fixes where the camera is, so step 2
-   * locks the angle chips and the batch collapses to one render per orientation
-   * × variation rather than multiplying by angles that can't be honoured.
+   * A supplied location photograph fixes where the camera is, but not how the
+   * card is turned to it, so the angle chips stay live and the batch multiplies
+   * by them as it always did.
+   *
+   * It did collapse to one render per orientation, on the reasoning that the
+   * angles "can't be honoured". That was true of the top-down flat lay and
+   * false of the rest — three-quarter and straight-on describe the card, not
+   * the lens — and collapsing them all cost the background route the variety
+   * that is the whole point of a batch.
    */
   const backgroundAsset = assets.find((a) => a.id === backgroundId && a.kind === "background");
   // Both products can be composited into a supplied photograph now: printed
   // cards through the scene still, digital cards straight into the clip.
   const usingBackground = Boolean(backgroundAsset);
-  const basePlanCount =
-    (usingBackground ? 1 : base.angleIds.length) * base.aspectIds.length * base.variations;
+  const basePlanCount = base.angleIds.length * base.aspectIds.length * base.variations;
 
   /**
    * One pass now does what used to take two. When card artwork is selected we
@@ -325,13 +330,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       setKeyDialogOpen(true);
       return;
     }
-    if (!base.aspectIds.length || (!usingBackground && !base.angleIds.length)) {
-      toast(
-        usingBackground
-          ? "Pick at least one orientation."
-          : "Pick at least one camera angle and one orientation.",
-        "error",
-      );
+    if (!base.aspectIds.length || !base.angleIds.length) {
+      toast("Pick at least one camera angle and one orientation.", "error");
       return;
     }
 
@@ -371,8 +371,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     const shotLabel = usingBackground
       ? backgroundAsset!.label || "Background"
       : device?.label ?? "Scene";
-    // Locked to one pass: the photograph is the angle.
-    const angleIds = usingBackground ? [base.angleIds[0] ?? "pov"] : base.angleIds;
+    const angleIds = base.angleIds;
     const specs: JobSpec[] = [];
 
     for (const aspectId of base.aspectIds) {
@@ -446,7 +445,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
                     label: `${shotLabel} · v${v}`,
                     tags: [
                       aspectId,
-                      usingBackground ? "your background" : angleId,
+                      angleId,
                       hasCard ? "card placed" : "blank surface",
                       usingBackground ? backgroundAsset!.label : scene?.label ?? "scene",
                     ],

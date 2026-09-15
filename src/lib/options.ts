@@ -1997,19 +1997,63 @@ function cardOnSurfaceClause(surface: SurfaceKind): string {
  * fixes where the camera is, but nothing in it says how big the card should be,
  * and left unsaid the card comes back as a detail in the corner.
  */
-function backgroundSceneClause(surface: SurfaceKind): string {
+function backgroundSceneClause(surface: SurfaceKind, withPeople: boolean): string {
   const subject = surface === "print" ? "printed greeting card" : "device";
   const payload = surface === "print" ? "its printed artwork is" : "what is playing on its screen is";
+  /*
+   * What the photograph decides, and what it does not.
+   *
+   * It fixes the place: the setting, the light, the camera, the surfaces. It
+   * does NOT decide who is holding the card, because in most supplied photos
+   * nobody is — it is a kitchen, a desk, a park bench. Reading "preserve this
+   * exactly" as "add nothing but the card" is what had every subject control
+   * greyed out, and it made the background route useless for the shot people
+   * actually want, which is somebody holding the card in a place they chose.
+   *
+   * So the licence is explicit and bounded: the card, and the person presenting
+   * it, may be added. Everything else in the frame stays as it was.
+   */
   return [
-    "CRITICAL REQUIREMENT: the supplied location photograph is the scene, and it is already finished",
-    "keep it exactly as it is — same framing, same crop, same camera position and perspective, same lighting direction and colour, same depth of field, same surfaces, props and people",
-    `do not re-stage it, re-light it, re-shoot it from another angle, extend its edges, or add or remove anything from it beyond the ${subject} itself`,
+    "CRITICAL REQUIREMENT: the supplied location photograph is the setting, and the setting is already finished",
+    "keep the place exactly as it is — same framing, same crop, same camera position and perspective, same lighting direction and colour, same depth of field, same surfaces and props",
+    withPeople
+      ? `do not re-stage it, re-light it, re-shoot it from another angle or extend its edges. Two things may be ADDED to it and nothing else: the ${subject}, and the person presenting it, described below. Anyone already in the photograph stays exactly as they are`
+      : `do not re-stage it, re-light it, re-shoot it from another angle, extend its edges, or add or remove anything from it beyond the ${subject} itself`,
+    withPeople
+      ? `the person is in that place, lit by that photograph's own light and standing, sitting or leaning where the surfaces in it allow — not pasted in front of it`
+      : undefined,
     `place the ${subject} into that photograph as a real physical object, resting on, standing on or held against something that is genuinely there`,
     "match its scale, perspective and contact shadows to the surfaces already in the photograph, and let the photograph's own light fall across it, so it reads as having been there when the shutter fired",
     `the ${subject} picks up that photograph's grain, white balance, exposure and depth of field`,
     `the ${subject} is still the subject: place it near the centre of frame and large enough that ${payload} sharp and legible at a glance while someone is scrolling, while staying a physically plausible size for the surfaces and distances in the photograph`,
-  ].join(". ");
+  ].filter(Boolean).join(". ");
 }
+
+/**
+ * A supplied photograph is a still. The clip must not be.
+ *
+ * backgroundSceneClause tells the model to keep the place exactly as it is, and
+ * for a photograph that is right — but a video model reads "keep it exactly as
+ * it is" as "hold still", and the result is a frozen photograph with a playing
+ * rectangle inside it. Which is precisely what came back: the device screen was
+ * the only thing moving in the whole frame, and a motionless world around a
+ * moving screen reads as a compositing error rather than a shot.
+ *
+ * So the preservation rule gets a companion that says which kind of sameness is
+ * meant. The PLACE stays the same; the world in it does not stay still. The
+ * distinction is spelled out with examples on both sides, because "make it move
+ * but do not change it" is exactly the sort of instruction a model resolves by
+ * doing neither.
+ *
+ * Only for video. The scene still has no business moving.
+ */
+const LIVING_BACKGROUND_CLAUSE = [
+  "CRITICAL — this is a live-action clip, not a photograph with one moving rectangle in it. The supplied photograph is the SETTING and the opening frame, not a still to be held",
+  "from the first frame the world in it is alive: anyone in shot breathes, shifts their weight, blinks and moves naturally; hair, clothing, foliage, steam, liquid, curtains and flames stir; traffic, passers-by and background activity carry on; light flickers or shifts as the real thing would",
+  "the camera itself has the small, continuous life of a real handheld or tripod shot rather than being locked to a frozen plate",
+  "what stays the same is the PLACE, not the moment: the same location, the same framing and composition, the same lighting direction and colour, the same surfaces and props, and the same people — nobody is replaced, nobody new walks into the foreground, and the shot never cuts or re-frames to somewhere else",
+  "a finished clip in which the background is motionless while only the screen plays is wrong, and is the specific failure to avoid",
+].join(". ");
 
 /** Compile the scene prompt for GPT-Image-2 (text-to-image or edit). */
 export function buildScenePrompt(sel: SceneSelection): string {
@@ -2024,8 +2068,15 @@ export function buildScenePrompt(sel: SceneSelection): string {
 
   const bg = Boolean(sel.hasBackground);
 
+  /*
+   * How the card is presented is a choice even with a supplied photograph.
+   *
+   * The photo says where; the device says whether the card is held in a hand,
+   * standing on a table or lying flat with its envelope. Dropping it left the
+   * control live and the prompt deaf to it, which is worse than locking it.
+   */
   const subjectLine = bg
-    ? "A photorealistic lifestyle photograph: one printed greeting card composited into the supplied location photograph"
+    ? `A photorealistic lifestyle photograph of ${device?.prompt ?? "a printed greeting card"}, composited into the supplied location photograph`
     : sel.surface === "print"
       ? `A photorealistic lifestyle photograph of ${device?.prompt ?? "a printed greeting card"}`
       : `A photorealistic lifestyle photograph of ${device?.prompt ?? "a smartphone"}`;
@@ -2038,25 +2089,37 @@ export function buildScenePrompt(sel: SceneSelection): string {
     referenceKeyClause(refs) ??
       (bg && refs.length === 1 ? `One reference image is supplied: ${refs[0]}` : undefined),
     subjectLine,
-    bg ? backgroundSceneClause(sel.surface) : undefined,
+    bg ? backgroundSceneClause(sel.surface, sel.presenceId !== "none") : undefined,
     /*
-     * Everything the background photograph already decides. Emitting these
-     * alongside it would ask the model to re-shoot the photo it was told to
-     * preserve, which is the one instruction that has to survive intact.
+     * A supplied photograph decides the PLACE — the setting, the light, the
+     * grade. It does not decide who is in it, how the card is held, or how
+     * close the camera gets to it, so those still apply.
+     *
+     * The earlier version dropped all of this together, on the reasoning that
+     * emitting it would ask the model to re-shoot the photo it was told to
+     * preserve. That is true of the setting and the lighting and false of
+     * everything else, and treating them alike left the background route
+     * unable to make the shot it exists for: somebody holding the card,
+     * somewhere the user picked.
      */
     bg ? undefined : scene?.prompt,
-    bg ? undefined : presence?.prompt,
-    bg
-      ? undefined
-      : subjectClause({
-          presenceId: sel.presenceId,
-          ethnicityId: sel.ethnicityId,
-          genderId: sel.genderId,
-          ageId: sel.ageId,
-          details: sel.details,
-        }),
-    bg ? undefined : angle?.prompt,
-    bg ? undefined : framingClause(sel.framingId, sel.surface, sel.deviceId),
+    presence?.prompt,
+    subjectClause({
+      presenceId: sel.presenceId,
+      ethnicityId: sel.ethnicityId,
+      genderId: sel.genderId,
+      ageId: sel.ageId,
+      details: sel.details,
+    }),
+    /*
+     * The angle is about how the CARD is presented to the lens, not where the
+     * lens is — that the photograph does fix. "Three-quarter" and "straight on"
+     * are still choices with a supplied background; a top-down flat lay over a
+     * photograph taken at eye level is the one that fights it, and the picker
+     * says so rather than the prompt silently dropping it.
+     */
+    angle?.prompt,
+    framingClause(sel.framingId, sel.surface, sel.deviceId),
     /*
      * Only when somebody is actually holding it. A card standing on a table or
      * a billboard by a road has no hands to miscount, and the rule would be
@@ -2067,9 +2130,9 @@ export function buildScenePrompt(sel: SceneSelection): string {
       : undefined,
     bg ? undefined : light?.prompt,
     bg ? undefined : look?.prompt,
-    bg || !audience
-      ? undefined
-      : `the styling, wardrobe and props should read as authentically ${audience.prompt}`,
+    // Wardrobe and props on the person, which a photograph of an empty kitchen
+    // has no opinion about.
+    audience ? `the styling, wardrobe and props should read as authentically ${audience.prompt}` : undefined,
     aspect ? `composed for a ${aspect.id} ${aspect.label.split(" ")[1].toLowerCase()} social crop` : undefined,
     sel.hasCard ? cardOnSurfaceClause(sel.surface) : blankSurfaceClause(sel.surface),
     // Scenes here always show the card folded, front panel out.
@@ -2089,7 +2152,7 @@ export function buildScenePrompt(sel: SceneSelection): string {
       ? NO_ENVELOPE_CLAUSE
       : undefined,
     !bg && sel.surface === "print" ? NO_FACES_CLAUSE : undefined,
-    bg ? undefined : PLAUSIBLE_PLACEMENT_CLAUSE,
+    PLAUSIBLE_PLACEMENT_CLAUSE,
     "Photorealistic, sharp, high dynamic range, believable real-world materials and physics",
     // The HeartStamp mark is composited on afterwards in the browser, so the
     // model must not try to draw one of its own.
@@ -2708,6 +2771,15 @@ export function buildOneShotPrompt(sel: {
     PLAUSIBLE_PLACEMENT_CLAUSE,
   ];
 
+  /*
+   * The same list with the two things a supplied photograph overrules taken
+   * out: its own setting, and its own lighting and grade. Built by filtering
+   * rather than written twice, so the two cannot drift.
+   */
+  const settingWithPhoto = setting.filter(
+    (clause) => clause !== scene?.prompt && clause !== light?.prompt && clause !== look?.prompt,
+  );
+
   if (sel.surface === "print") {
     /*
      * The card contract goes FIRST, before any scene description.
@@ -2751,10 +2823,16 @@ export function buildOneShotPrompt(sel: {
     bg
       ? `A photorealistic live-action clip: ${device?.prompt ?? "a smartphone"} placed into the location photograph in @Image1`
       : `A photorealistic live-action clip of ${device?.prompt ?? "a smartphone"}`,
-    bg ? backgroundSceneClause("screen") : undefined,
-    // Everything the photograph already decides. Emitting these alongside it
-    // would ask the model to re-shoot the shot it was told to preserve.
-    ...(bg ? [] : setting),
+    bg ? backgroundSceneClause("screen", sel.presenceId !== "none") : undefined,
+    // Immediately after the preservation rule, because it is the half of it
+    // that a video model otherwise gets wrong.
+    bg ? LIVING_BACKGROUND_CLAUSE : undefined,
+    /*
+     * Same split as buildScenePrompt: the photograph fixes the place, so the
+     * setting and the grade are dropped, and everything about the person and
+     * the framing still applies.
+     */
+    ...(bg ? settingWithPhoto : setting),
     "@Video1 is a HeartStamp greeting-card animation playing full-screen on that device. It must appear genuinely displayed on the screen, filling it edge to edge, from the very first frame of the clip",
     "Lock it to the screen with correct perspective and keystone for the whole clip — it must never slide, drift, detach or change",
     "Give it believable emissive screen brightness plus the scene's own reflections, so it reads as displayed rather than pasted on",
