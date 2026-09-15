@@ -25,7 +25,7 @@ import { AssetThumb } from "./AssetThumb";
 import { BackgroundPanel } from "./BackgroundPanel";
 import { ModelPicker } from "./ModelPicker";
 import { DetailsPanel, SubjectFields } from "./SubjectStyling";
-import { Panel, ResultsGrid, SectionHead } from "./steps/shared";
+import { Locked, Panel, ResultsGrid, SectionHead } from "./steps/shared";
 
 /**
  * Scene, motion and output on one page, rendered straight through Seedance with
@@ -153,18 +153,27 @@ export function OneShot() {
 
           <BackgroundPanel subject="device" />
 
+          {/*
+            * Only the three things the photograph decides are locked — the same
+            * split as the printed-card step. It fixes the place; it has no
+            * opinion about who is holding the device or how close the camera
+            * gets, and locking those left this route unable to make the shot it
+            * exists for.
+            */}
           <Panel
             title="The scene"
             help="scene.panel"
-            locked={locked}
             lockNote={
               locked ? (
                 <>
                   <span className="font-bold">
-                    Locked — &ldquo;{background!.label}&rdquo; is the scene.
+                    &ldquo;{background!.label}&rdquo; is the setting.
                   </span>{" "}
-                  Setting, device framing, lighting, film look and who&apos;s in frame all come
-                  from the photograph now.{" "}
+                  Setting, lighting and film look come from the photograph now. Everything about
+                  the person, the device and the framing still applies — they are what gets added
+                  to it. Your photograph is a still, but the clip will not be: the scene is asked
+                  to come alive in it — people breathing and shifting, fabric and foliage stirring,
+                  the world carrying on — rather than sitting frozen behind a playing screen.{" "}
                   <button
                     type="button"
                     onClick={() => s.setBackgroundId(null)}
@@ -193,26 +202,45 @@ export function OneShot() {
                 </div>
               </Field>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Device" help="scene.device">
-                  <Select
-                    value={base.deviceId}
-                    onChange={(deviceId) => s.setBase({ deviceId })}
-                    options={devices.map((d) => ({ id: d.id, label: d.label, emoji: d.emoji }))}
-                  />
-                </Field>
-                <Field label="Setting" help="scene.setting">
-                  <Select
-                    value={base.sceneId}
-                    onChange={(sceneId) => s.setBase({ sceneId })}
-                    options={(sceneMissing ? SCENES : scenes).map((sc) => ({
-                      id: sc.id,
-                      label: sc.label,
-                      emoji: sc.emoji,
-                    }))}
-                  />
-                </Field>
-              </div>
+              <Field label="Device" help="scene.device">
+                <Select
+                  value={base.deviceId}
+                  onChange={(deviceId) => s.setBase({ deviceId })}
+                  options={devices.map((d) => ({ id: d.id, label: d.label, emoji: d.emoji }))}
+                />
+              </Field>
+
+              <Locked when={locked} note="The photograph decides these three.">
+                <div className="space-y-4">
+                  <Field label="Setting" help="scene.setting">
+                    <Select
+                      value={base.sceneId}
+                      onChange={(sceneId) => s.setBase({ sceneId })}
+                      options={(sceneMissing ? SCENES : scenes).map((sc) => ({
+                        id: sc.id,
+                        label: sc.label,
+                        emoji: sc.emoji,
+                      }))}
+                    />
+                  </Field>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Field label="Lighting" help="scene.lighting">
+                      <Select
+                        value={base.lightingId}
+                        onChange={(lightingId) => s.setBase({ lightingId })}
+                        options={LIGHTING.map((l) => ({ id: l.id, label: l.label, emoji: l.emoji }))}
+                      />
+                    </Field>
+                    <Field label="Film look" help="scene.look">
+                      <Select
+                        value={base.lookId}
+                        onChange={(lookId) => s.setBase({ lookId })}
+                        options={LOOKS.map((l) => ({ id: l.id, label: l.label, emoji: l.emoji }))}
+                      />
+                    </Field>
+                  </div>
+                </div>
+              </Locked>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="Camera angle" help="scene.angleOne">
@@ -232,23 +260,6 @@ export function OneShot() {
                       emoji: f.emoji,
                       hint: f.hint,
                     }))}
-                  />
-                </Field>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Lighting" help="scene.lighting">
-                  <Select
-                    value={base.lightingId}
-                    onChange={(lightingId) => s.setBase({ lightingId })}
-                    options={LIGHTING.map((l) => ({ id: l.id, label: l.label, emoji: l.emoji }))}
-                  />
-                </Field>
-                <Field label="Film look" help="scene.look">
-                  <Select
-                    value={base.lookId}
-                    onChange={(lookId) => s.setBase({ lookId })}
-                    options={LOOKS.map((l) => ({ id: l.id, label: l.label, emoji: l.emoji }))}
                   />
                 </Field>
               </div>

@@ -105,6 +105,39 @@ export function ResultsGrid({
   );
 }
 
+/**
+ * Greys out part of a panel rather than all of it.
+ *
+ * A supplied background photograph decides some of the scene and not the rest,
+ * and locking the whole panel over that was what made the background route
+ * unusable for the shot it exists for. Same `inert` as Panel — keyboard and
+ * screen readers skip it too, so it cannot be reached by tabbing into
+ * something that visibly says it does not apply.
+ */
+export function Locked({
+  when,
+  note,
+  children,
+}: {
+  when: boolean;
+  /** Why, and what still works. Stays interactive and outside the inert block. */
+  note?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className="space-y-2">
+      {when && note && (
+        <p className="rounded-xl border border-hairline bg-canvas-2 px-3 py-2 text-xs leading-relaxed text-ink-soft">
+          {note}
+        </p>
+      )}
+      <div inert={when} className={cx("transition-opacity duration-300", when && "opacity-45")}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export function Panel({
   title,
   children,
