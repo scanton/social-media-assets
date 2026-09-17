@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { currentUser } from "@/auth";
 import { activeProvider } from "@/lib/active-provider";
+import type { Capability } from "@/lib/providers";
 import { submitToProvider } from "@/lib/generate";
 import { fetchInputSchema, isModelAllowed, isModelInOpenCategory } from "@/lib/model-catalog";
 import { adaptInput } from "@/lib/model-input";
-import { isModelSlotId, type ModelSlotId } from "@/lib/models";
+import { isModelSlotId, slotCapability, type ModelSlotId } from "@/lib/models";
 import { errorResponse } from "@/lib/api-errors";
 
 /**
@@ -19,10 +20,12 @@ export async function POST(req: Request) {
   if (!(await currentUser())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   try {
-    const { model, slot, input } = (await req.json()) as {
+    const { model, slot, input, category } = (await req.json()) as {
       model?: string;
       slot?: string;
       input?: unknown;
+      /** Freeform only: which of the four open categories this is. */
+      category?: string;
     };
 
     /*
@@ -50,7 +53,23 @@ export async function POST(req: Request) {
      * this step sends. Without that check an open deployment would proxy any of
      * fal's ~1,400 endpoints.
      */
-    const provider0 = await activeProvider();
+    /*
+     * Who serves this, which is a per-capability question: images and video are
+     * chosen separately. Resolved here rather than in the client so the
+     * allowlist, the schema and the submit all agree about who is being talked
+     * to on this one request.
+     */
+    /*
+     * Freeform says which category it is submitting, because a model id alone
+     * does not: `bytedance/seedance-2.5` is a video model and
+     * `openai/gpt-image-2.5-flare` an image one, and nothing about the strings
+     * says so. The guided steps do not need telling — their slot already knows.
+     */
+    const need: Capability = freeform
+      ? (typeof category === "string" && category.endsWith("-video") ? "video" : "image")
+      : slotCapability(slot as ModelSlotId);
+    const provider0 = await activeProvider(need);
+
     const allowed = freeform
       ? await isModelInOpenCategory(model, provider0)
       : await isModelAllowed(model, slot as ModelSlotId, provider0);
@@ -66,13 +85,25 @@ export async function POST(req: Request) {
     }
 
     const provider = provider0;
-    const schema = await fetchInputSchema(model, provider);
-    const adapted = adaptInput(input as Record<string, unknown>, schema);
 
-    const requestId = await submitToProvider(provider, model, adapted.input);
+    /*
+     * OpenAI is the one provider with no published input schema to adapt
+     * against, so it maps the payload itself — see toOpenAIRequest. Running it
+     * through adaptInput with a schema invented here would be guessing with
+     * extra steps, and would drop fields the real API accepts.
+     */
+    const adapted =
+      provider === "openai"
+        ? { input: input as Record<string, unknown>, dropped: [], coerced: [] }
+        : adaptInput(input as Record<string, unknown>, await fetchInputSchema(model, provider));
+
+    const { requestId, data } = await submitToProvider(provider, model, adapted.input);
 
     return NextResponse.json({
       requestId,
+      // Present only when the provider answered with the picture rather than a
+      // ticket. The client skips polling when it is there.
+      ...(data !== undefined ? { data } : {}),
       provider,
       model,
       // Reported rather than silent: a dropped aspect ratio changes the asset.

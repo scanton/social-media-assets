@@ -522,6 +522,34 @@ export const HELP: Record<string, HelpEntry> = {
     terms: gloss(MESSAGE_PLACEMENTS),
   },
 
+  /* ------------------------------ plates ------------------------------ */
+
+  "plate.device": {
+    title: "The device",
+    body:
+      "Which device, and how close. These are plates rather than finished pictures: the screen is left flat white so card artwork can be composited onto it afterwards, which is why nothing is allowed to cross it and why the framing starts closer than anywhere else in the studio.",
+  },
+  "plate.framing": {
+    title: "How close",
+    body:
+      "How much of the frame the screen fills. Image models frame further back than they are asked to, so after each render the tool finds the blank screen and crops in on it, then scales back to full size (plates are rendered a size up so this stays sharp). Tight leaves the screen at about 70% of the frame with room for the hand; Extreme closeup, the default, takes it to about 86%, so the whole phone just fits; \"Screen fills the frame\" goes to about 96% and lets the phone's body crop off the edges while the screen's own corners stay in. Each plate is shown both ways, cropped in and as rendered, side by side: click the one you want, and Preview and Download use it. If the screen cannot be found, the plate is kept as rendered and tagged \"screen not found\".",
+  },
+  "plate.hands": {
+    title: "Whose hand",
+    body:
+      "The hand is supporting cast — it gives the device scale and warmth. It holds by the outer edges and the back only, because a fingertip over the glass makes the plate unusable rather than merely untidy. Turn hands off for the device propped on a surface by itself.",
+  },
+  "plate.place": {
+    title: "The place",
+    body:
+      "Where the shot happens, present only as soft blurred colour behind the device. The same settings, lighting and film looks the card pipelines use — at this distance they read as atmosphere rather than as a location.",
+  },
+  "plate.render": {
+    title: "Render",
+    body:
+      "One render per orientation, per variation. It opens on one; turning variations up is worth it once a shot is close, because the grip and the exact distance move between renders more than anything else does.",
+  },
+
   /* ------------------------------ thread ------------------------------ */
 
   "thread.panel": {
@@ -621,12 +649,12 @@ export const HELP: Record<string, HelpEntry> = {
   "pop.dwell": {
     title: "Dwell",
     body:
-      "How long the nugget stays on screen, including its pop-in and pop-out. Text needs roughly three and a half seconds to be read at all; arrows and media wells have no such floor because there is nothing to read.",
+      "How long the nugget stays on screen, including its pop-in and pop-out. A new beat opens at roughly the time its copy takes to read, which grows with the caption — but two seconds is the shortest anything may be, and that is the only length flagged. Arrows answer to a different rule: they point rather than being read, and are measured in lead frames.",
   },
   "pop.sound": {
     title: "Sound cue",
     body:
-      "A short sound played as the nugget appears. It is mixed into the exported video and previewed here when you pick one. \"None\" is a real choice — a deck where every beat clicks gets tiring fast.",
+      "A short sound played as the nugget appears. It is mixed into the exported video and previewed here when you pick one. \"None\" is a real choice — a deck where every beat clicks gets tiring fast. You can also add your own: any audio file is trimmed to its first sound on the way in, because a cue with silence in front of it lands behind the thing it is announcing. Yours are kept on this browser, not in the deck.",
   },
   "pop.colourway": {
     title: "Colourway",

@@ -31,6 +31,8 @@ import { Timeline } from "./Timeline";
 import { collectIssues, checkDwell, type Issue, type PlacedArrow, type PlacedBox } from "@/lib/popkit/rules";
 import { makeZip } from "@/lib/popkit/zip";
 import { playCue } from "@/lib/popkit/cue-player";
+import { forgetCustomCue, useCustomCues } from "@/lib/popkit/use-cues";
+import { CUSTOM_PREFIX, deleteCue, saveCue } from "@/lib/popkit/cue-store";
 import { renderNuggets } from "@/lib/popkit/render-video";
 import { isSvg, normaliseImage, toDataUri } from "@/lib/popkit/assets";
 import { canRecordVideo, type RenderProgress } from "@/lib/video-encode";
@@ -677,6 +679,13 @@ export function NuggetBuilder() {
   const occasionOptions = useMemo(() => glyphOptions(OCCASION_GLYPHS), []);
 
   /* ---- the two rules this pass already enforces ---- */
+  /*
+   * Uploaded cues, hydrated from IndexedDB and registered into the same table
+   * the player and the export mixer read.
+   */
+  const myCues = useCustomCues();
+  const [cueError, setCueError] = useState<string | null>(null);
+
   const chars = selected?.text?.length ?? 0;
   const overCap = chars > CAPTION_MAX_CHARS;
   const floor = selected ? floorForBeat(selected) : 0;
@@ -1789,10 +1798,21 @@ export function NuggetBuilder() {
                             // sound nothing alike.
                             playCue(v);
                           }}
-                          options={SOUND_CUES.map((id) => ({
-                            id,
-                            label: id === "silent" ? "No sound" : `${id}${CUE_MS[id] ? ` · ${CUE_MS[id]}ms` : ""}`,
-                          }))}
+                          options={[
+                            ...SOUND_CUES.map((id) => ({
+                              id,
+                              label: id === "silent" ? "No sound" : `${id}${CUE_MS[id] ? ` · ${CUE_MS[id]}ms` : ""}`,
+                            })),
+                            // Yours last, so the shipped pack keeps the order
+                            // people have learned and an upload is where you
+                            // would look for it.
+                            ...myCues.map((c) => ({
+                              id: CUSTOM_PREFIX + c.id,
+                              label: `${c.name} · ${c.ms}ms`,
+                              emoji: "\ud83c\udf99\ufe0f",
+                              hint: "Yours",
+                            })),
+                          ]}
                         />
                       </div>
                       <button
@@ -1807,6 +1827,74 @@ export function NuggetBuilder() {
                           <path d="M4 2.5l7 4.5-7 4.5z" fill="currentColor" />
                         </svg>
                       </button>
+                    </div>
+
+                    {/* Your own sounds, under the picker they feed. */}
+                    <div className="mt-2.5 space-y-2">
+                      <label className="focus-stamp inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-hairline bg-white px-3 py-1.5 text-[11px] font-bold text-ink transition-all hover:-translate-y-0.5 hover:border-stamp-300">
+                        <span aria-hidden>＋</span> Add your own sound
+                        <input
+                          type="file"
+                          accept="audio/*"
+                          className="hidden"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            e.target.value = "";
+                            if (!file) return;
+                            try {
+                              const key = await saveCue(file);
+                              patch({ cue: key as SoundCue });
+                              // Audition it, like picking one from the list.
+                              window.setTimeout(() => playCue(key), 60);
+                            } catch (err) {
+                              setCueError((err as Error).message);
+                            }
+                          }}
+                        />
+                      </label>
+                      {cueError && (
+                        <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-2.5 py-1.5 text-[11px] text-red-900">
+                          {cueError}
+                        </p>
+                      )}
+                      {myCues.length > 0 && (
+                        <ul className="space-y-1">
+                          {myCues.map((c) => (
+                            <li key={c.id} className="flex items-center gap-2 text-[11px] text-ink-soft">
+                              <button
+                                type="button"
+                                onClick={() => playCue(CUSTOM_PREFIX + c.id)}
+                                className="focus-stamp rounded-lg border border-hairline bg-white px-2 py-0.5 font-bold text-ink"
+                              >
+                                ▶
+                              </button>
+                              <span className="min-w-0 flex-1 truncate">{c.name}</span>
+                              <span className="tabular-nums text-ink-faint">{c.ms}ms</span>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  const key = CUSTOM_PREFIX + c.id;
+                                  await deleteCue(key);
+                                  forgetCustomCue(key);
+                                  // A beat pointing at a cue that no longer
+                                  // exists would render silent with no sign of
+                                  // why, so it is reset rather than left.
+                                  setBeats((bs) =>
+                                    bs.map((b) => (b.cue === key ? { ...b, cue: "silent" as SoundCue } : b)),
+                                  );
+                                }}
+                                className="focus-stamp rounded-lg px-1.5 py-0.5 text-ink-faint hover:bg-canvas-2"
+                              >
+                                ✕
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      <p className="text-[11px] leading-relaxed text-ink-faint">
+                        Trimmed to the first sound on the way in — a cue with silence in front of
+                        it lands late, and yours will not.
+                      </p>
                     </div>
                   </Field>
                   <Field

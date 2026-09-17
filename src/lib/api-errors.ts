@@ -60,7 +60,10 @@ function readValidation(body: unknown): string | undefined {
 /** Normalises fal client / network errors into a JSON response the studio can render. */
 export function errorResponse(err: unknown) {
   if (err instanceof MissingKeyError) {
-    return NextResponse.json({ error: err.message, code: "NO_KEY" }, { status: 428 });
+    return NextResponse.json(
+      { error: err.message, code: "NO_KEY", provider: err.provider },
+      { status: 428 },
+    );
   }
   const e = err as { status?: number; message?: string; body?: unknown };
   const status = typeof e.status === "number" && e.status >= 400 && e.status < 600 ? e.status : 500;

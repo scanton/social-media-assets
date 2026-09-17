@@ -2,7 +2,7 @@
 
 import { createPlayer } from "./kit/feedback.js";
 // Side effect: registers HeartStamp's cues into the table the player reads.
-import "./cues";
+import { CUE_TABLE, cueSrc } from "./cues";
 
 /**
  * Plays a sound cue in the browser.
@@ -20,8 +20,48 @@ let player: ReturnType<typeof createPlayer> | null = null;
 
 const ensure = () => (player ??= createPlayer("/sfx/"));
 
+/*
+ * Uploaded cues do not go through the kit's player.
+ *
+ * It builds its URL as `basePath + file`, so `"/sfx/" + "blob:http://…"`
+ * resolves to nothing at all. Rather than fork the vendored file over one
+ * string concatenation, anything carrying its own URL is played here, through
+ * the same shape of graph — a buffer source into a gain node set from the
+ * table — so a custom cue and a shipped one sound the same at the same number.
+ */
+let ctx: AudioContext | null = null;
+const buffers = new Map<string, AudioBuffer>();
+
+async function playFromUrl(cue: string, url: string): Promise<void> {
+  const AC: typeof AudioContext =
+    window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+  ctx ??= new AC();
+  if (ctx.state === "suspended") await ctx.resume().catch(() => {});
+  let buf = buffers.get(url);
+  if (!buf) {
+    const res = await fetch(url);
+    buf = await ctx.decodeAudioData(await res.arrayBuffer());
+    buffers.set(url, buf);
+  }
+  const src = ctx.createBufferSource();
+  const g = ctx.createGain();
+  g.gain.value = CUE_TABLE[cue]?.gain ?? 0.6;
+  src.buffer = buf;
+  src.connect(g);
+  g.connect(ctx.destination);
+  src.start();
+}
+
 export function playCue(cue: string | undefined): void {
   if (!cue || cue === "silent") return;
+  const spec = CUE_TABLE[cue];
+  if (spec?.url) {
+    void playFromUrl(cue, spec.url).catch(() => {
+      /* a cue that will not decode is a silent beat, not a broken editor */
+    });
+    return;
+  }
+  if (!cueSrc(cue)) return;
   void ensure().play(cue, "none");
 }
 

@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { currentUser } from "@/auth";
-import { PROVIDER_COOKIE, isProviderId } from "@/lib/providers";
+import {
+  PROVIDERS, isProviderId, providerCookieFor, type Capability,
+} from "@/lib/providers";
 import { activeProvider } from "@/lib/active-provider";
 
 const ONE_YEAR = 60 * 60 * 24 * 365;
@@ -15,22 +17,40 @@ const ONE_YEAR = 60 * 60 * 24 * 365;
  */
 export async function GET() {
   if (!(await currentUser())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  return NextResponse.json({ provider: await activeProvider() });
+  return NextResponse.json({
+    image: await activeProvider("image"),
+    video: await activeProvider("video"),
+  });
 }
 
 export async function POST(req: Request) {
   if (!(await currentUser())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const { provider } = (await req.json().catch(() => ({}))) as { provider?: unknown };
+  const { provider, need } = (await req.json().catch(() => ({}))) as {
+    provider?: unknown;
+    need?: unknown;
+  };
   if (!isProviderId(provider)) {
     return NextResponse.json({ error: `Unknown provider: ${String(provider)}` }, { status: 400 });
   }
+  const capability: Capability = need === "video" ? "video" : "image";
+  /*
+   * Refused rather than quietly redirected. Picking OpenAI for video is not a
+   * preference the studio can honour, and storing it so that every later read
+   * has to correct it would be storing a lie.
+   */
+  if (!PROVIDERS[provider].does[capability]) {
+    return NextResponse.json(
+      { error: `${PROVIDERS[provider].label} does not render ${capability}.` },
+      { status: 400 },
+    );
+  }
   const jar = await cookies();
-  jar.set(PROVIDER_COOKIE, provider, {
+  jar.set(providerCookieFor(capability), provider, {
     httpOnly: false,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
     maxAge: ONE_YEAR,
   });
-  return NextResponse.json({ provider });
+  return NextResponse.json({ provider, need: capability });
 }

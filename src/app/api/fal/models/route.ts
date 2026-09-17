@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { currentUser } from "@/auth";
 import { categoryModels, compatibleModels, isOpenCategory } from "@/lib/model-catalog";
 import { activeProvider } from "@/lib/active-provider";
-import { slotFallback } from "@/lib/models";
+import { slotFallback, slotCapability } from "@/lib/models";
 import { MODEL_SLOTS, isModelSlotId } from "@/lib/models";
 
 /**
@@ -26,12 +26,21 @@ export async function GET(req: Request) {
    * is, which is what the freeform page needs: it builds its controls from
    * whatever the chosen model declares rather than requiring a fixed shape.
    */
-  const provider = await activeProvider();
+  /*
+   * Resolved by capability, not read straight off the cookie.
+   *
+   * OpenAI does images only, so asking it for the video slots returns an empty
+   * picker — which is exactly what happened the first time this shipped: the
+   * Motion step offered nothing at all rather than Replicate's models. The
+   * provider that will actually run the job is the one whose catalogue belongs
+   * in the picker, and `providerFor` is the single answer to which that is.
+   */
   const category = params.get("category");
   if (category) {
     if (!isOpenCategory(category)) {
       return NextResponse.json({ error: `Unknown category: ${category}` }, { status: 400 });
     }
+    const provider = await activeProvider(category.endsWith("-video") ? "video" : "image");
     try {
       return NextResponse.json(
         { category, provider, models: await categoryModels(category, provider), partial: false },
@@ -48,6 +57,7 @@ export async function GET(req: Request) {
   }
 
   const definition = MODEL_SLOTS[slot];
+  const provider = await activeProvider(slotCapability(slot));
 
   try {
     const models = await compatibleModels(definition, provider);

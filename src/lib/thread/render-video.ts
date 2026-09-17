@@ -6,6 +6,7 @@ import {
 import type { RenderProgress } from "@/lib/video-encode";
 import { chromeSvgFor, paintThread } from "./paint";
 import { cardStartsAt, clipLength, schedule, type Thread } from "./thread";
+import { SOUND_GAIN, loadSounds, soundEvents } from "./sounds";
 
 /**
  * Burns a thread and its card into a clip.
@@ -103,8 +104,35 @@ export async function renderThread({
     const delay = octx.createDelay(Math.max(1, cardAt + 1));
     delay.delayTime.value = cardAt;
     delay.connect(carrier);
-    const hasSound = await scheduleSourceAudio(card, octx, delay, source.duration);
-    const audio = hasSound ? await octx.startRendering() : null;
+    const hasCardSound = await scheduleSourceAudio(card, octx, delay, source.duration);
+
+    /*
+     * The phone's own sounds, laid in beside the card's.
+     *
+     * Scheduled from `soundEvents`, which reads the same schedule the painter
+     * does — so a chime cannot land on a frame where its bubble has not yet
+     * appeared. A Web Audio graph sums whatever is connected, so these and the
+     * card's audio mix by construction and neither knows about the other.
+     */
+    const events = soundEvents(thread);
+    let hasPhoneSound = false;
+    if (events.length) {
+      const buffers = await loadSounds(octx);
+      for (const e of events) {
+        const buf = buffers[e.name];
+        if (!buf || e.at < 0 || e.at >= duration) continue;
+        const src = octx.createBufferSource();
+        const g = octx.createGain();
+        g.gain.value = SOUND_GAIN[e.name];
+        src.buffer = buf;
+        src.connect(g);
+        g.connect(octx.destination);
+        src.start(e.at);
+        hasPhoneSound = true;
+      }
+    }
+
+    const audio = hasCardSound || hasPhoneSound ? await octx.startRendering() : null;
 
     const canvas = document.createElement("canvas");
     canvas.width = w;

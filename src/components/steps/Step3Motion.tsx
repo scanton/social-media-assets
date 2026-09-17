@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { toPromptDialect } from "@/lib/prompt-dialect";
-import { useProvider } from "@/lib/use-provider";
+import { useProviders } from "@/lib/use-provider";
 import {
   buildAnimatePrompt,
   buildCardOpenPrompt,
@@ -21,7 +21,8 @@ import { Panel, ResultsGrid, SectionHead } from "./shared";
 
 export function Step3Motion() {
   const s = useStudio();
-  const { provider } = useProvider();
+  // The prompt preview is written for the provider that will animate it.
+  const provider = useProviders().providers.video;
   const [showPrompt, setShowPrompt] = useState(false);
   // Re-encoding needs a WebCodecs encoder or, failing that, MediaRecorder plus
   // canvas capture; fail visibly rather than silently dropping the logo.

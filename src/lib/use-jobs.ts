@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import { awaitJob, NoKeyError, submitJob } from "@/lib/client-api";
 import type { ModelSlotId } from "@/lib/models";
+import type { ProviderId } from "@/lib/providers";
 import type { Asset, AssetKind, Job } from "@/lib/studio-types";
 
 export type JobSpec = {
@@ -27,7 +28,8 @@ const MAX_CONCURRENT = 3;
 
 export function useJobRunner(opts: {
   onAssets: (assets: Asset[]) => void;
-  onNeedKey: () => void;
+  /** Called with the provider whose key is missing, when the server said. */
+  onNeedKey: (provider?: ProviderId) => void;
   onBatchDone: (result: { produced: number; failed: number; firstError?: string }) => void;
 }) {
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -62,6 +64,7 @@ export function useJobRunner(opts: {
       let firstError: string | undefined;
       let cursor = 0;
       let sawKeyError = false;
+      let missingKeyFor: ProviderId | undefined;
 
       const worker = async () => {
         for (;;) {
@@ -77,11 +80,19 @@ export function useJobRunner(opts: {
           patch(job.id, { state: "running" });
 
           try {
-            const requestId = await submitJob(spec.model, spec.slot, spec.input);
-            const data = await awaitJob<unknown>(spec.model, requestId, {
-              signal: controller.signal,
-              onUpdate: (u) => patch(job.id, { queuePosition: u.queuePosition }),
-            });
+            const { requestId, data: inline } = await submitJob(spec.model, spec.slot, spec.input);
+            /*
+             * A provider that answers with the picture has nothing to poll, so
+             * the wait is skipped rather than spent asking a stateless function
+             * about an id it never issued.
+             */
+            const data =
+              inline !== undefined
+                ? inline
+                : await awaitJob<unknown>(spec.model, requestId, {
+                    signal: controller.signal,
+                    onUpdate: (u) => patch(job.id, { queuePosition: u.queuePosition }),
+                  });
             const assets = await spec.toAssets(data, job.id, (stage) =>
               patch(job.id, { stage }),
             );
@@ -95,6 +106,7 @@ export function useJobRunner(opts: {
             }
             if (err instanceof NoKeyError) {
               sawKeyError = true;
+              missingKeyFor ??= err.provider;
               controller.abort();
               patch(job.id, { state: "error", error: err.message });
               continue;
@@ -113,7 +125,7 @@ export function useJobRunner(opts: {
       abortRef.current = null;
 
       if (sawKeyError) {
-        optsRef.current.onNeedKey();
+        optsRef.current.onNeedKey(missingKeyFor);
         return;
       }
 

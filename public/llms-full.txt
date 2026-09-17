@@ -560,11 +560,11 @@ How wide the caption is allowed to run before it wraps to another line. Narrower
 
 ### Dwell
 
-How long the nugget stays on screen, including its pop-in and pop-out. Text needs roughly three and a half seconds to be read at all; arrows and media wells have no such floor because there is nothing to read.
+How long the nugget stays on screen, including its pop-in and pop-out. A new beat opens at roughly the time its copy takes to read, which grows with the caption — but two seconds is the shortest anything may be, and that is the only length flagged. Arrows answer to a different rule: they point rather than being read, and are measured in lead frames.
 
 ### Sound cue
 
-A short sound played as the nugget appears. It is mixed into the exported video and previewed here when you pick one. "None" is a real choice — a deck where every beat clicks gets tiring fast.
+A short sound played as the nugget appears. It is mixed into the exported video and previewed here when you pick one. "None" is a real choice — a deck where every beat clicks gets tiring fast. You can also add your own: any audio file is trimmed to its first sound on the way in, because a cue with silence in front of it lands behind the thing it is announcing. Yours are kept on this browser, not in the deck.
 
 ### Colourway
 
@@ -950,4 +950,4 @@ How fast anything moves. All optional, and off unless you pick one. Whatever you
 `llms-full.txt` is generated from `src/lib/help.ts` and `src/lib/options.ts` in the
 HeartStamp Asset Studio codebase. Do not edit by hand; run `pnpm llms`.
 
-version: f0fbf4fb8281
+version: 9bf47038e82d

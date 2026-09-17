@@ -21,11 +21,13 @@ export async function GET(req: Request) {
 
   // The same guard the submit route uses: a schema lookup is cheap, but an
   // open lookup over every fal endpoint is still an open proxy.
-  if (!(await isModelInOpenCategory(model, await activeProvider()))) {
+  // Freeform only reaches here for a model it just listed, so the active
+  // provider is the one that listed it.
+  if (!(await isModelInOpenCategory(model, await activeProvider("image")))) {
     return NextResponse.json({ error: `${model} is not an image or video model` }, { status: 400 });
   }
 
-  const schema = await fetchInputSchema(model, await activeProvider());
+  const schema = await fetchInputSchema(model, await activeProvider("image"));
   if (!schema) return NextResponse.json({ error: "That model has no readable schema" }, { status: 502 });
 
   return NextResponse.json(

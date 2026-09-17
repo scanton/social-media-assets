@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MODEL_SLOTS, type ModelSlotId } from "@/lib/models";
+import { MODEL_SLOTS, slotCapability, slotFallback, type ModelSlotId } from "@/lib/models";
 import { loadCatalog, useModelChoices, type CatalogEntry } from "@/lib/model-prefs";
-import { useProvider } from "@/lib/use-provider";
+import { useProviders } from "@/lib/use-provider";
 import { Select, cx } from "./ui";
 import { HelpTip } from "./HelpTip";
 
@@ -25,7 +25,8 @@ export function ModelPicker({ slot }: { slot: ModelSlotId }) {
   const selected = modelFor(slot);
 
   const [open, setOpen] = useState(false);
-  const { provider } = useProvider();
+  const { providers } = useProviders();
+  const provider = providers[slotCapability(slot)];
   /*
    * The loaded list remembers which provider it came from.
    *
@@ -62,7 +63,7 @@ export function ModelPicker({ slot }: { slot: ModelSlotId }) {
   }, [open, models, error, slot, provider]);
 
   const current = models?.find((m) => m.id === selected);
-  const isDefault = selected === definition.fallback;
+  const isDefault = selected === slotFallback(definition, provider);
 
   /*
    * Only the controls this kind of step actually has. Warning an image model

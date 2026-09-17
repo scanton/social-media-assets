@@ -24,7 +24,7 @@ export async function readReplicateKey(): Promise<string | null> {
 
 export async function requireReplicateKey(): Promise<string> {
   const key = await readReplicateKey();
-  if (!key) throw new MissingKeyError("Replicate");
+  if (!key) throw new MissingKeyError("replicate");
   return key;
 }
 

@@ -23,6 +23,19 @@ function whichProvider(url: string, fallback: ProviderId = "fal"): ProviderId {
 async function validate(provider: ProviderId, key: string): Promise<boolean | null> {
   if (provider === "replicate") return validateReplicateKey(key);
 
+  if (provider === "openai") {
+    /*
+     * Listing models is the cheapest authenticated call OpenAI has: no tokens
+     * spent, no image drawn, and it fails 401 on a bad key. It also proves the
+     * key can reach the API at all, which a shape check cannot.
+     */
+    const probe = await fetch("https://api.openai.com/v1/models", {
+      headers: { Authorization: `Bearer ${key}` },
+    }).catch(() => null);
+    if (probe && (probe.status === 401 || probe.status === 403)) return false;
+    return true;
+  }
+
   // fal: minting a 60-second scoped token proves the credential without work.
   const probe = await fetch("https://rest.alpha.fal.ai/tokens/", {
     method: "POST",
@@ -77,10 +90,14 @@ export async function POST(req: Request) {
   if (!spec.looksLikeKey(trimmed)) {
     return NextResponse.json(
       {
-        error:
-          provider === "fal"
-            ? "That doesn't look like a fal key. They look like `abc123…:9f8e7d…`."
-            : "That doesn't look like a Replicate token. They are one long run of letters and numbers.",
+        // One message per provider. This was a two-way ternary written when
+        // there were two, so a malformed OpenAI key was told it did not look
+        // like a Replicate token.
+        error: {
+          fal: "That doesn't look like a fal key. They look like `abc123…:9f8e7d…`.",
+          replicate: "That doesn't look like a Replicate token. They are one long run of letters and numbers.",
+          openai: "That doesn't look like an OpenAI key. They start with `sk-`, usually `sk-proj-`.",
+        }[provider],
       },
       { status: 400 },
     );

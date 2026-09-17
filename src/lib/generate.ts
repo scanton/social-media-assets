@@ -5,6 +5,7 @@ import { replicateModel } from "@/lib/replicate-catalog";
 import type { ProviderId } from "@/lib/providers";
 import { inputInDialect } from "@/lib/prompt-dialect";
 import { normaliseOutput } from "@/lib/provider-output";
+import { renderWithOpenAI, requireOpenAIKey } from "@/lib/openai-server";
 
 /**
  * Submitting and polling, for either provider.
@@ -16,15 +17,32 @@ import { normaliseOutput } from "@/lib/provider-output";
 
 /* ----------------------------- submitting ---------------------------- */
 
+/**
+ * A queued job, or a finished one.
+ *
+ * fal and Replicate hand back an id to poll. OpenAI hands back the picture, so
+ * there is nothing to poll and `data` is set instead — the client skips the
+ * wait rather than asking a stateless function to remember a result it was
+ * never given anywhere to put.
+ */
+export type Submitted = { requestId: string; data?: unknown };
+
 export async function submitToProvider(
   provider: ProviderId,
   model: string,
   input: Record<string, unknown>,
-): Promise<string> {
+): Promise<Submitted> {
+  if (provider === "openai") {
+    const key = await requireOpenAIKey();
+    const data = await renderWithOpenAI(key, model, input);
+    // The id is for the log line and the job tile, not for a lookup.
+    return { requestId: `openai-${Date.now().toString(36)}`, data };
+  }
+
   if (provider === "fal") {
     const fal = await falForRequest();
     const queued = await fal.queue.submit(model, { input });
-    return queued.request_id;
+    return { requestId: queued.request_id };
   }
 
   // `@Video1` is fal's spelling; Replicate reads `[Video1]`. See prompt-dialect.
@@ -52,7 +70,7 @@ export async function submitToProvider(
       }))) as { id?: unknown };
 
   if (typeof body?.id !== "string") throw new Error("Replicate did not return a prediction id.");
-  return body.id;
+  return { requestId: body.id };
 }
 
 /* ------------------------------ polling ------------------------------ */
@@ -86,6 +104,13 @@ export async function statusFromProvider(
     }
     const result = await fal.queue.result(model, { requestId });
     return { status: "COMPLETED", data: result.data };
+  }
+
+  if (provider === "openai") {
+    // Unreachable in practice: the submit route answers inline, so the client
+    // never polls. Explicit rather than silently falling into Replicate's
+    // branch with an id Replicate has never heard of.
+    throw new Error("OpenAI renders return immediately and are not polled.");
   }
 
   const key = await requireReplicateKey();

@@ -45,6 +45,15 @@ export interface Thread {
   liveFrom: number;
   /** Multiplier on every derived pause. Below 1 is brisker. */
   pace: number;
+  /**
+   * Phone sounds: a chime per message, and a tap on the link.
+   *
+   * One switch for the whole thread rather than a flag per message. A
+   * conversation where some messages are audible and others are not does not
+   * describe anything real, and the per-message control would be four more
+   * clicks to arrive back where this started.
+   */
+  sound: boolean;
   /** The card link's preview: title, domain, and the thumbnail. */
   cardTitle: string;
   cardDomain: string;
@@ -55,6 +64,7 @@ export const DEFAULT_THREAD: Thread = {
   clock: "9:41",
   liveFrom: 3,
   pace: 1,
+  sound: true,
   cardTitle: "A card for you 💌",
   cardDomain: "heartstamp.com",
   messages: [

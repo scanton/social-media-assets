@@ -71,6 +71,11 @@ export type ModelSlot = {
    *   are the clauses keeping content inside the screen.
    */
   replicateFallback: string;
+  /**
+   * The same step on OpenAI. Absent on the video steps, which OpenAI cannot do
+   * at all — see `providerFor`, which routes those to Replicate instead.
+   */
+  openaiFallback?: string;
 };
 
 /**
@@ -120,6 +125,8 @@ export const MODEL_SLOTS: Record<ModelSlotId, ModelSlot> = {
     requires: ["prompt"],
     fallback: "openai/gpt-image-2.5/flare/text-to-image",
     replicateFallback: "openai/gpt-image-2.5-flare",
+    // Direct, so the id is OpenAI's own rather than an aggregator's.
+    openaiFallback: "gpt-image-2.5-flare",
   },
   compositeImage: {
     id: "compositeImage",
@@ -131,6 +138,8 @@ export const MODEL_SLOTS: Record<ModelSlotId, ModelSlot> = {
     requires: ["prompt", "image_urls"],
     fallback: "openai/gpt-image-2.5/flare/edit",
     replicateFallback: "openai/gpt-image-2.5-flare",
+    // Direct, so the id is OpenAI's own rather than an aggregator's.
+    openaiFallback: "gpt-image-2.5-flare",
   },
   animate: {
     id: "animate",
@@ -153,8 +162,14 @@ export const MODEL_SLOTS: Record<ModelSlotId, ModelSlot> = {
   },
 };
 
+/** Whether a step draws a picture or a clip. Decides which provider serves it. */
+export function slotCapability(slot: ModelSlotId): "image" | "video" {
+  return MODEL_SLOTS[slot].category.endsWith("-video") ? "video" : "image";
+}
+
 /** The shipped default for a step on a given provider. */
 export function slotFallback(slot: ModelSlot, provider: ProviderId): string {
+  if (provider === "openai") return slot.openaiFallback ?? slot.replicateFallback;
   return provider === "replicate" ? slot.replicateFallback : slot.fallback;
 }
 

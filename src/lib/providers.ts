@@ -1,5 +1,5 @@
 /**
- * The two places a render can happen.
+ * The places a render can happen.
  *
  * The studio was built against fal, and every generation still describes the
  * same job in the same shape: a prompt, some reference URLs, a resolution, a
@@ -17,7 +17,10 @@
  * reason about. One provider is active at a time and the header says which.
  */
 
-export type ProviderId = "fal" | "replicate";
+export type ProviderId = "fal" | "replicate" | "openai";
+
+/** The two kinds of work, and the axis the provider choice runs along. */
+export type Capability = "image" | "video";
 
 export interface ProviderSpec {
   id: ProviderId;
@@ -38,6 +41,15 @@ export interface ProviderSpec {
    * valid key somebody actually has.
    */
   looksLikeKey: (value: string) => boolean;
+  /**
+   * What this provider is asked to do.
+   *
+   * The first two do both, so until now "the active provider" could stand for
+   * the whole pipeline. OpenAI's image API is images and nothing else, which
+   * makes the provider a per-capability choice rather than a global one — see
+   * `providerFor`.
+   */
+  does: { image: boolean; video: boolean };
 }
 
 export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
@@ -50,6 +62,7 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
     hintCookie: "hs_fal_hint",
     // fal keys are `<uuid>:<hex secret>`.
     looksLikeKey: (v) => /^[A-Za-z0-9-]{8,}:[A-Za-z0-9]{16,}$/.test(v.trim()),
+    does: { image: true, video: true },
   },
   replicate: {
     id: "replicate",
@@ -67,6 +80,25 @@ export const PROVIDERS: Record<ProviderId, ProviderSpec> = {
      * the wrong box.
      */
     looksLikeKey: (v) => /^[A-Za-z0-9_-]{20,}$/.test(v.trim()),
+    does: { image: true, video: true },
+  },
+  openai: {
+    id: "openai",
+    label: "OpenAI",
+    keysUrl: "https://platform.openai.com/api-keys",
+    keyExample: "sk-proj-XXXXXXXXXXXXXXXXXXXXXXXX",
+    cookie: "hs_openai_key",
+    hintCookie: "hs_openai_hint",
+    /*
+     * `sk-` is OpenAI's long-standing prefix and `sk-proj-` its project-scoped
+     * form, but the rest is opaque and the length has changed more than once.
+     * Loose on purpose, like the others: the real gate is the request, and a
+     * regex tight enough to be satisfying is tight enough to refuse somebody's
+     * actual key.
+     */
+    looksLikeKey: (v) => /^sk-[A-Za-z0-9_-]{20,}$/.test(v.trim()),
+    // Images only. The Images API has no video endpoint at all.
+    does: { image: true, video: false },
   },
 };
 
@@ -76,23 +108,49 @@ export const isProviderId = (v: unknown): v is ProviderId =>
   typeof v === "string" && v in PROVIDERS;
 
 /**
- * Which provider the studio is pointed at.
+ * Which provider the studio is pointed at — one answer per capability.
  *
  * Readable rather than httpOnly: it is a preference, not a secret, and the
  * header has to render the current one before any request goes out.
+ *
+ * Two cookies rather than one, because the two choices are genuinely
+ * independent. Drawing on OpenAI says nothing about where a clip should be
+ * rendered, and the single cookie made that a consequence rather than a
+ * decision — video "fell" to Replicate because OpenAI could not do it, which is
+ * the right default and the wrong way to arrive at it.
  */
-export const PROVIDER_COOKIE = "hs_provider";
+export const IMAGE_PROVIDER_COOKIE = "hs_provider_image";
+export const VIDEO_PROVIDER_COOKIE = "hs_provider_video";
 
 /**
- * Replicate, as of the move.
+ * The cookie the studio used when one provider served everything.
  *
- * fal is where the studio started and where its prompts were tuned, and the
- * prompts still read in fal's dialect — `@Video1` — with the translation to
- * Replicate's `[Video1]` happening on the way out. That is worth knowing when
- * reading them, but it is not a reason to open on the provider we are no
- * longer using by default.
+ * Read as a fallback so a browser that has been here before keeps the provider
+ * it chose, rather than being silently moved to the new defaults the first time
+ * it loads. Never written.
  */
-export const DEFAULT_PROVIDER: ProviderId = "replicate";
+export const LEGACY_PROVIDER_COOKIE = "hs_provider";
+
+export const providerCookieFor = (need: Capability) =>
+  need === "video" ? VIDEO_PROVIDER_COOKIE : IMAGE_PROVIDER_COOKIE;
+
+/**
+ * OpenAI for pictures, Replicate for clips.
+ *
+ * Images go direct to the model's own vendor rather than through an aggregator.
+ * Video stays on Replicate: fal is where the studio started and where its
+ * prompts were tuned — they still read in fal's dialect, `@Video1`, translated
+ * to Replicate's `[Video1]` on the way out — but Replicate is where the video
+ * models the slots point at actually live.
+ */
+export const DEFAULT_IMAGE_PROVIDER: ProviderId = "openai";
+export const DEFAULT_VIDEO_PROVIDER: ProviderId = "replicate";
+
+export const defaultProviderFor = (need: Capability) =>
+  need === "video" ? DEFAULT_VIDEO_PROVIDER : DEFAULT_IMAGE_PROVIDER;
+
+/** Kept for the handful of callers that just need *a* provider, e.g. a schema fetch. */
+export const DEFAULT_PROVIDER: ProviderId = DEFAULT_IMAGE_PROVIDER;
 
 /**
  * Can this provider serve media back to a browser?
@@ -108,4 +166,29 @@ export const DEFAULT_PROVIDER: ProviderId = "replicate";
  * putting it somewhere the user can neither watch nor download is worse than
  * not uploading it at all.
  */
-export const providerHostsMedia = (provider: ProviderId): boolean => provider !== "replicate";
+export const providerHostsMedia = (provider: ProviderId): boolean =>
+  provider !== "replicate" && provider !== "openai";
+
+/* ------------------------- who serves what ------------------------- */
+
+/**
+ * Which providers a user may pick for a given job.
+ *
+ * The video list is the short one: OpenAI's Images API has no video endpoint,
+ * so offering it there would be offering a choice that cannot be honoured.
+ */
+export const providersThatDo = (need: Capability): ProviderId[] =>
+  PROVIDER_IDS.filter((id) => PROVIDERS[id].does[need]);
+
+/**
+ * A stored choice, made safe.
+ *
+ * A cookie can hold anything — an old value, a hand-edited one, or a provider
+ * that could once do the job and no longer can. Rather than trust it, every
+ * read passes through here, so "can this provider actually do this?" is asked
+ * in one place instead of at each call site.
+ */
+export function providerFor(chosen: ProviderId | undefined, need: Capability): ProviderId {
+  if (chosen && PROVIDERS[chosen].does[need]) return chosen;
+  return defaultProviderFor(need);
+}

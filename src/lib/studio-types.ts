@@ -41,6 +41,10 @@ export type Asset = {
   quad?: Quad;
   /** True when artwork was supplied but the screen couldn't be located. */
   needsAlign?: boolean;
+
+  /* Set on Device Shots plates that were cropped in after rendering. */
+  /** How far the crop moved in. `rawUrl` is the render before it. */
+  cropZoom?: number;
 };
 
 export type JobState = "queued" | "running" | "done" | "error" | "cancelled";

@@ -1,11 +1,14 @@
 import "server-only";
-import { MODEL_SLOTS, slotFallback, type ModelSlot, type ModelSlotId, inputAliases } from "@/lib/models";
+import {
+  MODEL_SLOTS, slotCapability, slotFallback, type ModelSlot, type ModelSlotId, inputAliases,
+} from "@/lib/models";
 import { readClipLimit, readSupports, type ModelSupports } from "@/lib/model-input";
 import { DEFAULT_PROVIDER, type ProviderId } from "@/lib/providers";
 import {
   replicateCategoryModels, replicateCollectionFor, replicateModel, type ReplicateListed,
 } from "@/lib/replicate-catalog";
 import { readReplicateKey } from "@/lib/replicate-server";
+import { OPENAI_IMAGE_MODELS, isOpenAIImageModel } from "@/lib/openai-server";
 
 /**
  * Reads fal's model catalogue and works out which models a given step can
@@ -163,6 +166,14 @@ export async function fetchInputSchema(
   modelId: string,
   provider: ProviderId = DEFAULT_PROVIDER,
 ): Promise<InputSchema | null> {
+  /*
+   * OpenAI publishes no machine-readable schema for the Images API, and
+   * `/v1/models` needs the user's key to read — so there is nothing to fetch
+   * and nothing worth inventing. The payload is mapped by hand in
+   * openai-server.ts instead, and the freeform page falls back to its own
+   * controls when a model declares no schema.
+   */
+  if (provider === "openai") return null;
   if (provider === "replicate") {
     const key = await readReplicateKey();
     if (!key) return null;
@@ -224,6 +235,13 @@ export async function compatibleModels(
   provider: ProviderId = DEFAULT_PROVIDER,
 ): Promise<CatalogModel[]> {
   const fallbackId = slotFallback(slot, provider);
+
+  // Three models, all image, already known — no category sweep and no schema
+  // probe, because there is nothing published to probe.
+  if (provider === "openai") {
+    return slotCapability(slot.id) === "image" ? openAICatalogue(slot.category) : [];
+  }
+
   const raw = (await fetchCategoryFor(slot.category, provider, true)).filter(usable).sort(newestFirst);
 
   const CONCURRENCY = 12;
@@ -313,6 +331,16 @@ export async function isModelAllowed(
   const definition = MODEL_SLOTS[slot];
   if (modelId === slotFallback(definition, provider)) return true;
 
+  /*
+   * A fixed list rather than a category fetch. It is the whole catalogue on
+   * this provider, so membership is the allowlist — and being image-only, it
+   * can never satisfy a video slot, which is what the capability check above
+   * this one already guarantees.
+   */
+  if (provider === "openai") {
+    return slotCapability(slot) === "image" && isOpenAIImageModel(modelId);
+  }
+
   const schema = await fetchInputSchema(modelId, provider);
   if (!schema) return false;
   if (!definition.requires.every((prop) => inputAliases(prop).some((a) => a in schema.properties))) return false;
@@ -358,10 +386,36 @@ export const isOpenCategory = (v: unknown): v is OpenCategory =>
  * models is 200 outbound requests, and the schema is only needed once someone
  * has picked one.
  */
+/** The open catalogue on OpenAI: three image models, and no video at all. */
+function openAICatalogue(category: string): CatalogModel[] {
+  if (category !== "text-to-image" && category !== "image-to-image") return [];
+  return OPENAI_IMAGE_MODELS.map((m): CatalogModel => ({
+    id: m.id,
+    title: m.label,
+    description: m.description,
+    isDefault: m.id === "gpt-image-2.5-flare",
+    /*
+     * Declared rather than read, because there is no schema to read. These are
+     * the Images API's own controls: a size, a quality, and how many to make.
+     * No duration or audio, which is the same as saying it does not do video.
+     */
+    supports: {
+      resolution: false,
+      duration: false,
+      aspectRatio: false,
+      audio: false,
+      imageSize: true,
+      numImages: true,
+    },
+  }));
+}
+
 export async function categoryModels(
   category: OpenCategory,
   provider: ProviderId = DEFAULT_PROVIDER,
 ): Promise<CatalogModel[]> {
+  if (provider === "openai") return openAICatalogue(category);
+
   const raw = (await fetchCategoryFor(category, provider)).filter(usable).sort(newestFirst);
   return raw.map((m) => ({
     id: m.id as string,
@@ -382,6 +436,7 @@ export async function isModelInOpenCategory(
   modelId: string,
   provider: ProviderId = DEFAULT_PROVIDER,
 ): Promise<boolean> {
+  if (provider === "openai") return isOpenAIImageModel(modelId);
   for (const category of OPEN_CATEGORIES) {
     const inIt = (await fetchCategoryFor(category, provider)).filter(usable);
     if (inIt.some((m) => m.id === modelId)) return true;

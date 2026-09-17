@@ -36,7 +36,15 @@ export type CanvasId = "reels" | "youtube" | "square" | "ios" | "desktop";
  * two and the sentinel for none. Ours are registered into the kit's table at
  * runtime — see `cues.ts` for why that rather than a fork.
  */
+/**
+ * `custom:<id>` is an uploaded cue — see cue-store.ts.
+ *
+ * A template-literal member rather than widening the whole thing to `string`:
+ * the shipped names stay checked, and a typo in one is still a type error,
+ * which is most of what this union is for.
+ */
 export type SoundCue =
+  | `custom:${string}`
   | "bubble-pop-1"
   | "bubble-pop-2"
   | "video-popup"
@@ -536,16 +544,34 @@ export function dwellFloorSeconds(text: string | undefined): number {
 }
 
 /**
+ * The shortest a beat may be without being flagged.
+ *
+ * `dwellFloorSeconds` is a reading-time estimate, and as a WARNING threshold it
+ * was too strict: a forty-character caption computed a 3.55s floor, so trimming
+ * it to three seconds — a perfectly ordinary edit — raised an error that had to
+ * be overridden. Two seconds is the product's answer to "how short is too
+ * short", so that is what the warning uses.
+ *
+ * The estimate itself is untouched and still drives `defaultDwellSeconds`: a
+ * new beat should still OPEN at a comfortable reading length. The change is
+ * only that going below it is allowed, and going below two seconds is not.
+ */
+export const DWELL_MIN_S = 2;
+
+/**
  * The floor for a beat, whichever kind it is.
  *
  * A nugget and a well both answer to the dwell rule: one is being read, the
- * other looked at, and 2.5s is the base either way. An arrow is neither. It
- * points, and `motion-and-feedback.md` measures a pointer in lead frames rather
- * than dwell seconds, so holding a bare arrow on screen for two and a half
- * seconds would be applying the wrong rule rather than a strict one.
+ * other looked at. An arrow is neither. It points, and `motion-and-feedback.md`
+ * measures a pointer in lead frames rather than dwell seconds, so holding a
+ * bare arrow on screen for two seconds would be applying the wrong rule rather
+ * than a strict one.
  */
 export function floorForBeat(beat: Pick<Beat, "text" | "medallions" | "arrows">): number {
-  return beatKind(beat) === "arrow" ? POINTER_LEAD_MIN_S : dwellFloorSeconds(beat.text);
+  if (beatKind(beat) === "arrow") return POINTER_LEAD_MIN_S;
+  // The reading estimate is never ABOVE the minimum for a short caption, so
+  // this is a cap rather than a choice between two numbers.
+  return Math.min(dwellFloorSeconds(beat.text), DWELL_MIN_S);
 }
 
 
