@@ -1864,13 +1864,27 @@ const PLAUSIBLE_PLACEMENT_CLAUSE =
  * has "friends' hands and cutlery moving at the edges of frame" — and banning
  * hands outright would fight those.
  */
-function handsClause(noun: string, mode: "one" | "both" = "one"): string {
+function handsClause(
+  noun: string,
+  mode: "one" | "both" = "one",
+  /**
+   * Whether anything is going to move.
+   *
+   * The gesture list — a hand to the mouth, covering a laugh — is what stops a
+   * reaction growing a third arm, and it is the reason this clause exists. In a
+   * still nothing gestures, so listing gestures there is noise at best and at
+   * worst an invitation to stage one.
+   */
+  gesturing = true,
+): string {
   return [
     "HANDS AND ARMS — every person in this shot has exactly two hands and two arms and never more",
     `the person holding the ${noun} never grows a third: no extra arm, no spare hand steadying it while both of theirs are busy elsewhere, no second pair of hands, and no unattached hand reaching in to take the weight`,
     mode === "both"
       ? `both of that person's hands may work the ${noun} while it is being opened or handled, but they are those same two hands throughout — when one comes away to gesture, the other keeps hold of it and the ${noun} stays supported`
-      : `they hold the ${noun} in ONE hand and keep it in that same hand for the whole shot; their other hand is the only free one, and every gesture — a hand to the mouth, covering a laugh, waving, reaching, touching their chest, pushing back their hair — is made with that one free hand and with no other`,
+      : gesturing
+        ? `they hold the ${noun} in ONE hand and keep it in that same hand for the whole shot; their other hand is the only free one, and every gesture — a hand to the mouth, covering a laugh, waving, reaching, touching their chest, pushing back their hair — is made with that one free hand and with no other`
+        : `they hold the ${noun} in ONE hand, and that is the only hand in shot`,
     `the ${noun} is never held by a hand that belongs to nobody, and never floats unsupported`,
     "count the hands before you finish: if the number of hands in frame is more than two per person, the shot is wrong",
   ].join(". ");
@@ -2161,6 +2175,208 @@ export function buildScenePrompt(sel: SceneSelection): string {
       : sel.hasCard
         ? "No watermarks, no captions, no brand logos and no readable text anywhere except the supplied card artwork itself"
         : "Absolutely no watermarks, no captions, no brand logos and no readable text anywhere in the image",
+    sel.extraNotes?.trim(),
+  ]);
+}
+
+/* ---------------------- DEVICE CLOSEUPS (FLOW 4) --------------------- */
+
+/**
+ * How tight a device closeup is, as a share of the FRAME the screen fills.
+ *
+ * Its own scale, well above anything in FRAMINGS, because these are a different
+ * kind of picture. A scene still is a photograph of a moment that happens to
+ * contain a phone; this is a photograph OF a phone, made to have artwork
+ * dropped into it afterwards — so every pixel of screen is the deliverable and
+ * everything else is packaging.
+ *
+ * Calibrated against the reference shot, which reads as too far away: its
+ * screen is about 20% of the frame.
+ *
+ * The prompt only gets the model part of the way — it will not frame as close
+ * as asked. Device Shots finishes the move with a crop around the detected
+ * screen (lib/device-punch-in), and PUNCH_TARGET there is the real definition
+ * of each setting. Keep the two in step.
+ */
+export const DEVICE_FRAMINGS: Option[] = [
+  {
+    id: "fills",
+    label: "Screen fills the frame",
+    emoji: "\u2b1c",
+    hint: "Edges of the device may crop",
+    prompt: "fills",
+  },
+  {
+    id: "extreme",
+    label: "Extreme closeup",
+    emoji: "\ud83d\udd0d",
+    hint: "The whole device, corner to corner",
+    prompt: "extreme",
+  },
+  {
+    id: "tight",
+    label: "Tight",
+    emoji: "\ud83c\udfaf",
+    hint: "Device plus a little room",
+    prompt: "tight",
+  },
+];
+
+function deviceFramingClause(framingId: string): string {
+  /*
+   * Said in edges and distances, not in percentages of area.
+   *
+   * The first version asked for the screen to cover "60-75% of the image" and
+   * got a screen covering about a quarter of it: an area figure is something
+   * an image model has no way to check itself against. Where the device's
+   * edges sit relative to the frame's edges, and how far the lens is from the
+   * glass, are things it can actually see in its own picture.
+   *
+   * "Its long edge" rather than "its height", because the landscape phone
+   * runs the other way and the rule has to hold for both.
+   */
+  const spec: Record<string, string[]> = {
+    fills: [
+      "The lens is only a hand's width from the glass — about 10 cm — so the phone is BIGGER than the picture",
+      "The phone's body runs out of the frame: its ends and sides are cut off by the image edges, and the hand holding it is mostly out of shot, only a thumb tip or fingertips at the very edge",
+      "The glowing screen itself fills nearly the entire image: its long edge spans about 90% of the image in that direction, with only a thin band of black bezel and frame around it before the image edge",
+      "All four rounded corners of the screen are still inside the picture — the screen is never cropped, only the body around it",
+      "Almost none of the room is visible, just slivers of blurred colour in the corners",
+    ],
+    extreme: [
+      "The lens is very close to the glass — about 15 to 20 cm away — so the phone is as large as it can possibly be while still whole",
+      "The phone touches the image edges: along its long edge it runs from one side of the picture to the other, with its two ends sitting just inside the image border — a gap of no more than 3% of the image at each end",
+      "Measured along its long edge, the phone spans at least 92% of the image",
+      "The screen is therefore by far the largest thing in the photograph, and the background shows only as narrow strips of soft blurred colour beside the phone",
+      "The holding hand is barely in shot: fingertips and the side of a thumb at the edges of the device, not a whole hand and never a wrist or an arm",
+    ],
+    tight: [
+      "The lens is close — about 30 cm from the glass — much closer than someone holding a phone out to show it",
+      "Along its long edge the phone spans about 80% of the image, with a small margin of background at each end",
+      "The hand is visible enough to read, from the fingers to the base of the palm, and the room behind is a soft blurred suggestion",
+    ],
+  };
+  const lines = spec[framingId] ?? spec.extreme;
+
+  return [
+    "FRAMING — this matters more than anything else in the prompt, and it is much closer than feels natural",
+    "This is a macro product shot OF A SCREEN. It is not a lifestyle photograph that happens to contain a phone, and it is not someone holding a phone up at arm's length or across a table",
+    ...lines,
+    "Do NOT pull back to show more of the setting, the person, or the table; if in doubt, go closer",
+  ].join(". ");
+}
+
+/**
+ * The rule the whole tool exists to satisfy.
+ *
+ * These plates get artwork composited onto them afterwards, so a finger across
+ * the corner is not a cosmetic flaw — it is a plate that cannot be used. The
+ * reference shot gets this right and it is easy to get wrong, because "a hand
+ * holding a phone" is overwhelmingly a hand with fingers wrapped over the face.
+ *
+ * Stated as a grip rather than a prohibition: telling a model where the fingers
+ * DO go works better than listing where they do not, though this does both
+ * because the cost of the failure is the whole render.
+ */
+const SCREEN_CLEAR_CLAUSE = [
+  "ABSOLUTE RULE — nothing whatsoever crosses the screen",
+  "no hair, cord, lanyard, sleeve, cuff, jewellery, plant, cup, pen or prop of any kind laps over it; no glare, hotspot, reflection, shadow, smudge or fingerprint sits on it",
+  "all four corners of the screen are inside the frame, unbroken, with the bezel visible all the way around them",
+].join(". ");
+
+/** The grip half, which only applies when there is a hand in shot. */
+const SCREEN_GRIP_CLAUSE = [
+  "the hand grips the device by its outer edges and its back only: fingertips may appear along the left and right rails and the thumb may rest on a side edge, and that is all",
+  "no finger, thumb, fingernail or knuckle ever laps over the front face",
+  "if the grip in your first instinct puts a fingertip over the glass, move the hand rather than the camera",
+].join(". ");
+
+/**
+ * The screen is a white rectangle, and that is the deliverable.
+ *
+ * Deliberately harsher than `blankSurfaceClause`: this plate exists to be
+ * keyed, so the white has to be flat and the edges have to be findable. A
+ * gradient, a wallpaper or a status bar all mean the composite step has to
+ * guess where the screen is.
+ */
+const PLATE_SCREEN_CLAUSE = [
+  "CRITICAL REQUIREMENT: the screen is one pure flat white rectangle and nothing else",
+  "no user interface, no icons, no status bar, no clock, no wallpaper, no text, no imagery, no app of any kind",
+  "it is uniformly white corner to corner — no gradient, no vignette, no warm or cool cast, no screen-door texture, no moire, and no darker edge where the glass meets the bezel",
+  "it reads as one clean quadrilateral of white with sharp unambiguous corners, clearly separated from the rest of the picture by the device's own dark bezel",
+  "nothing else in the photograph is a large flat white rectangle: keep walls, bedding, paper and furniture off-white, textured or shadowed so the screen is the only clean white panel in shot",
+].join(". ");
+
+export type DeviceShotSelection = {
+  deviceId: string;
+  sceneId: string;
+  angleId: string;
+  lightingId: string;
+  lookId: string;
+  framingId: string;
+  audienceId: string;
+  /** Whose hand it is. Reuses the card pipelines' subject taxonomy. */
+  ethnicityId?: string;
+  genderId?: SubjectGenderId;
+  ageId?: SubjectAgeId;
+  details?: Record<string, string>;
+  /** No hand at all — the device propped or lying on a surface. */
+  handsOff?: boolean;
+  aspect: AspectId;
+  extraNotes?: string;
+};
+
+/**
+ * A device closeup: a blank screen, a hand, and a room behind it.
+ *
+ * Shares the scene, lighting, look, subject and detail taxonomies with the two
+ * card pipelines rather than growing its own — the question "whose hand, in
+ * what room, lit how" has one answer in this codebase and this is the third
+ * place asking it.
+ */
+export function buildDeviceShotPrompt(sel: DeviceShotSelection): string {
+  const device = byId(DEVICES, sel.deviceId);
+  const scene = byId(SCENES, sel.sceneId);
+  const angle = byId(ANGLES, sel.angleId);
+  const light = byId(LIGHTING, sel.lightingId);
+  const look = byId(LOOKS, sel.lookId);
+  const audience = byId(AUDIENCES, sel.audienceId);
+  const aspect = ASPECTS.find((a) => a.id === sel.aspect);
+
+  return joinPrompts([
+    `A photorealistic macro product photograph of ${device?.prompt ?? "a smartphone"}`,
+    deviceFramingClause(sel.framingId),
+    PLATE_SCREEN_CLAUSE,
+
+    sel.handsOff
+      ? "No hands and no people: the device is propped, leaning or lying on a surface that is genuinely there, standing on its own"
+      : "One hand holds it, and the hand is supporting cast: it is in shot to give the device scale and warmth, not to be the subject",
+    // The clear-screen rule holds either way: a plant leaf or a window
+    // reflection across the glass ruins the plate exactly as a finger does.
+    SCREEN_CLEAR_CLAUSE,
+    sel.handsOff ? undefined : SCREEN_GRIP_CLAUSE,
+    sel.handsOff
+      ? undefined
+      : handsClause("device", "one", false),
+    sel.handsOff
+      ? undefined
+      : subjectClause({
+          presenceId: "hands",
+          ethnicityId: sel.ethnicityId,
+          genderId: sel.genderId,
+          ageId: sel.ageId,
+          details: sel.details,
+        }),
+
+    scene?.prompt ? `The setting, present only as soft blurred context behind it: ${scene.prompt}` : undefined,
+    angle?.prompt,
+    light?.prompt,
+    look?.prompt,
+    audience ? `the styling, manicure and jewellery should read as authentically ${audience.prompt}` : undefined,
+    aspect ? `composed for a ${aspect.id} ${aspect.label.split(" ")[1].toLowerCase()} social crop` : undefined,
+
+    "Photorealistic, tack sharp on the device, shallow depth of field so the room falls away. Believable skin, real materials, no plastic rendering",
+    "Absolutely no watermarks, no captions, no brand logos and no readable text anywhere in the image",
     sel.extraNotes?.trim(),
   ]);
 }

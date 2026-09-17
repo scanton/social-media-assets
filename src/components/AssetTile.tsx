@@ -17,7 +17,7 @@ const EXT: Record<string, string> = {
   "video/quicktime": "mov",
 };
 
-function filenameFor(asset: Asset) {
+export function filenameFor(asset: Asset) {
   const ext = EXT[asset.contentType ?? ""] ?? (isVideo(asset) ? "mp4" : "png");
   const slug = asset.label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   return `heartstamp-${slug || asset.kind}-${asset.id.slice(-5)}.${ext}`;
