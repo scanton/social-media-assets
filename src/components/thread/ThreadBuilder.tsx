@@ -11,6 +11,7 @@ import {
   type Sender, type Thread, type ThreadMessage,
 } from "@/lib/thread/thread";
 import type { RenderProgress } from "@/lib/video-encode";
+import { SOUND_FILES, SOUND_GAIN, soundEvents } from "@/lib/thread/sounds";
 import { Uploader } from "../Uploader";
 import { Button, Field, Select, cx, useToast } from "../ui";
 import { Panel } from "../steps/shared";
@@ -126,6 +127,22 @@ export function ThreadBuilder() {
       draw(playhead);
       return;
     }
+
+    /*
+     * Sounds, fired as the playhead crosses them.
+     *
+     * Only while playing. Scrubbing across six messages would otherwise fire
+     * six chimes at once, which is noise rather than preview — and the same
+     * reason the deck's cues are entrance-only.
+     */
+    const events = soundEvents(thread);
+    let fired = events.findIndex((e) => e.at > playhead);
+    if (fired < 0) fired = events.length;
+    const ping = (name: "send" | "receive" | "tap") => {
+      const a = new Audio(SOUND_FILES[name]);
+      a.volume = SOUND_GAIN[name];
+      void a.play().catch(() => undefined);
+    };
     const loop = () => {
       const t = (performance.now() - started) / 1000;
       if (t >= total) {
@@ -133,6 +150,10 @@ export function ThreadBuilder() {
         setPlayhead(total);
         draw(total);
         return;
+      }
+      while (fired < events.length && events[fired].at <= t) {
+        ping(events[fired].name);
+        fired++;
       }
       setPlayhead(t);
       draw(t);
@@ -293,6 +314,26 @@ export function ThreadBuilder() {
               <span className="text-xs text-ink-faint">
                 ▶ marks where the live conversation starts — everything above it is already
                 on screen when the clip opens.
+              </span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => patch({ sound: !thread.sound })}
+                aria-pressed={thread.sound}
+                className={cx(
+                  "focus-stamp rounded-full border px-3.5 py-2 text-xs font-bold transition-all hover:-translate-y-0.5",
+                  thread.sound
+                    ? "border-stamp-300 bg-stamp-50 text-stamp-800"
+                    : "border-hairline bg-white text-ink-faint",
+                )}
+              >
+                {thread.sound ? "🔊 Sounds on" : "🔇 Sounds off"}
+              </button>
+              <span className="text-xs leading-relaxed text-ink-faint">
+                A chime as each message lands and a tap on the link — the phone&apos;s sounds, not
+                the card&apos;s, which come with the animation either way.
               </span>
             </div>
 
