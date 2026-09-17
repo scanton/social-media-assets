@@ -20,6 +20,8 @@ import {
 import { useModelChoices } from "@/lib/model-prefs";
 import type { Asset } from "@/lib/studio-types";
 import { useJobRunner, type JobSpec } from "@/lib/use-jobs";
+import { PROVIDERS, type Capability, type ProviderId } from "@/lib/providers";
+import { useProviders } from "@/lib/use-provider";
 import {
   addAssetsToRoll,
   removeAssetFromRoll,
@@ -50,6 +52,8 @@ export type InsideMessageSpec = {
 /* ------------------------------- store ------------------------------ */
 
 type FalImage = { url: string; content_type?: string; width?: number; height?: number };
+
+export type KeyState = { connected: boolean; hint: string | null };
 
 type StudioValue = {
   step: number;
@@ -96,13 +100,23 @@ type StudioValue = {
   generateVideo: () => void;
   generateOneShot: () => void;
 
+  /**
+   * Key status for every provider, not just one.
+   *
+   * Images and video can run on different providers, so "is a key connected"
+   * has two answers. `keyConnected` / `keyHint` remain as the IMAGE provider's,
+   * because that is what every existing gate outside this file means.
+   */
+  keys: Partial<Record<ProviderId, KeyState>>;
+  setKeyState: (provider: ProviderId, state: KeyState) => void;
+  hasKey: (need: Capability) => boolean;
   keyConnected: boolean;
-  setKeyConnected: (v: boolean) => void;
-  openKeyDialog: () => void;
+  keyHint: string | null;
+  /** Which provider the key dialog is open for, or null when it is shut. */
+  keyDialogFor: ProviderId | null;
+  openKeyDialog: (provider?: ProviderId) => void;
   keyDialogOpen: boolean;
   setKeyDialogOpen: (v: boolean) => void;
-  keyHint: string | null;
-  setKeyHint: (h: string | null) => void;
 
   confettiKey: number;
 };
@@ -156,9 +170,29 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   );
   const setBaseId = useCallback((baseId: string | null) => updatePersisted({ baseId }), []);
 
-  const [keyConnected, setKeyConnected] = useState(false);
-  const [keyHint, setKeyHint] = useState<string | null>(null);
-  const [keyDialogOpen, setKeyDialogOpen] = useState(false);
+  const { providers } = useProviders();
+  const [keys, setKeys] = useState<Partial<Record<ProviderId, KeyState>>>({});
+  const [keyDialogFor, setKeyDialogFor] = useState<ProviderId | null>(null);
+
+  const setKeyState = useCallback(
+    (provider: ProviderId, state: KeyState) => setKeys((k) => ({ ...k, [provider]: state })),
+    [],
+  );
+  const hasKey = useCallback(
+    (need: Capability) => Boolean(keys[providers[need]]?.connected),
+    [keys, providers],
+  );
+  const openKeyDialog = useCallback(
+    (provider?: ProviderId) => setKeyDialogFor(provider ?? providers.image),
+    [providers.image],
+  );
+  const setKeyDialogOpen = useCallback(
+    (v: boolean) => setKeyDialogFor(v ? providers.image : null),
+    [providers.image],
+  );
+  const keyConnected = Boolean(keys[providers.image]?.connected);
+  const keyHint = keys[providers.image]?.hint ?? null;
+  const keyDialogOpen = keyDialogFor !== null;
   const [confettiKey, setConfettiKey] = useState(0);
 
   /* ------------------------------ actions ----------------------------- */
@@ -279,9 +313,12 @@ export function StudioProvider({ children }: { children: ReactNode }) {
 
   const runner = useJobRunner({
     onAssets: addAssets,
-    onNeedKey: () => {
-      setKeyDialogOpen(true);
-      toast("Add your fal.ai key to run generations.", "error");
+    onNeedKey: (provider) => {
+      // Open for the provider the server named — which, with images and video
+      // on different providers, is not necessarily the one in the header.
+      const who = provider ?? providers.image;
+      setKeyDialogFor(who);
+      toast(`Add your ${PROVIDERS[who].label} key to run this.`, "error");
     },
     onBatchDone: ({ produced, failed, firstError }) => {
       if (produced > 0) {
@@ -327,7 +364,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
    */
   const generateScenes = useCallback(() => {
     if (!keyConnected) {
-      setKeyDialogOpen(true);
+      openKeyDialog();
       return;
     }
     if (!base.aspectIds.length || !base.angleIds.length) {
@@ -498,7 +535,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     }
 
     void runner.run(specs);
-  }, [assets, backgroundAsset, base, cardFrontId, keyConnected, modelFor, runner, surface, toast, usingBackground]);
+  }, [assets, backgroundAsset, base, cardFrontId, keyConnected, modelFor, openKeyDialog, runner, surface, toast, usingBackground]);
 
   /* ------------------- writing inside the card ----------------------- */
 
@@ -516,7 +553,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   const generateInsideMessage = useCallback(
     (spec: InsideMessageSpec) => {
       if (!keyConnected) {
-        setKeyDialogOpen(true);
+        openKeyDialog();
         return;
       }
       // An uploaded signature is content in its own right: a card carrying
@@ -604,7 +641,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     },
     [
       assets, base.cardSizeId, base.imageResolution, base.quality, cardInsideId,
-      handwritingId, signatureId, keyConnected, modelFor, runner, toast,
+      handwritingId, signatureId, keyConnected, modelFor, openKeyDialog, runner, toast,
     ],
   );
 
@@ -673,8 +710,9 @@ export function StudioProvider({ children }: { children: ReactNode }) {
   );
 
   const generateVideo = useCallback(() => {
-    if (!keyConnected) {
-      setKeyDialogOpen(true);
+    // A clip needs the VIDEO provider's key, which may not be the image one.
+    if (!hasKey("video")) {
+      setKeyDialogFor(providers.video);
       return;
     }
 
@@ -805,7 +843,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     ]);
   }, [
     assets, base.sceneId, baseId, cardVideoId, cardInsideId, finishVideo,
-    keyConnected, modelFor, runner, surface, toast, video,
+    hasKey, modelFor, providers.video, runner, surface, toast, video,
   ]);
 
   /* ------------------- straight to video (both products) -------------- */
@@ -819,8 +857,9 @@ export function StudioProvider({ children }: { children: ReactNode }) {
    * that a generated still had already invented.
    */
   const generateOneShot = useCallback(() => {
-    if (!keyConnected) {
-      setKeyDialogOpen(true);
+    // A clip needs the VIDEO provider's key, which may not be the image one.
+    if (!hasKey("video")) {
+      setKeyDialogFor(providers.video);
       return;
     }
 
@@ -909,7 +948,7 @@ export function StudioProvider({ children }: { children: ReactNode }) {
     ]);
   }, [
     assets, backgroundAsset, base, cardFrontId, cardInsideId, cardVideoId, finishVideo,
-    keyConnected, modelFor, runner, surface, toast, usingBackground, video,
+    hasKey, modelFor, providers.video, runner, surface, toast, usingBackground, video,
   ]);
 
   const value = useMemo<StudioValue>(
@@ -950,13 +989,15 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       generateInsideMessage,
       generateVideo,
       generateOneShot,
+      keys,
+      setKeyState,
+      hasKey,
       keyConnected,
-      setKeyConnected,
-      openKeyDialog: () => setKeyDialogOpen(true),
+      keyHint,
+      keyDialogFor,
+      openKeyDialog,
       keyDialogOpen,
       setKeyDialogOpen,
-      keyHint,
-      setKeyHint,
       confettiKey,
     }),
     [
@@ -967,7 +1008,8 @@ export function StudioProvider({ children }: { children: ReactNode }) {
       handwritingId, setHandwritingId, signatureId, setSignatureId, baseId, setBaseId,
       runner.jobs, runner.busy, runner.cancelAll, basePlanCount,
       generateScenes, generateInsideMessage, generateVideo, generateOneShot,
-      keyConnected, keyDialogOpen, keyHint, confettiKey,
+      keys, setKeyState, hasKey, keyConnected, keyHint, keyDialogFor, openKeyDialog,
+      keyDialogOpen, setKeyDialogOpen, confettiKey,
     ],
   );
 

@@ -38,9 +38,15 @@ export async function POST(req: Request) {
      * browser gets the direct upload and no size ceiling.
      */
     const key = await readFalKey();
-    const provider = await activeProvider();
+    const provider = await activeProvider("image");
 
-    if (provider === "replicate" && !key) {
+    /*
+     * OpenAI hosts nothing at all — its Images API takes bytes, not links — so
+     * an upload there still has to land somewhere our own server can read it
+     * back from. fal's CDN when there is a fal key, the Replicate proxy when
+     * there is not; openai-server.ts knows how to read either.
+     */
+    if (provider !== "fal" && !key) {
       /*
        * No fal key, so the bytes have to come through our own function, and
        * the platform's ceiling applies. Declared rather than discovered:
@@ -96,7 +102,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ mode: "direct", uploadUrl: json.upload_url, fileUrl: json.file_url });
   } catch (err) {
     if (err instanceof MissingKeyError) {
-      return NextResponse.json({ error: err.message, code: "NO_KEY" }, { status: 428 });
+      return NextResponse.json(
+        { error: err.message, code: "NO_KEY", provider: err.provider },
+        { status: 428 },
+      );
     }
     return NextResponse.json({ error: (err as Error).message }, { status: 500 });
   }

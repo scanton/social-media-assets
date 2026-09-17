@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRenders } from "@/lib/use-renders";
 import Link from "next/link";
 import { awaitJob, submitJob, uploadToFal } from "@/lib/client-api";
-import { useProvider } from "@/lib/use-provider";
-import { PROVIDERS, PROVIDER_IDS } from "@/lib/providers";
+import { useProviders } from "@/lib/use-provider";
+import { PROVIDERS, providersThatDo } from "@/lib/providers";
 import { activeHintGroups, compilePrompt, DEFAULT_NEGATIVE } from "@/lib/freeform";
 import { addAssetsToRoll, removeAssetFromRoll, usePersisted } from "@/lib/persisted-store";
 import type { CatalogModel, InputSchema } from "@/lib/model-catalog";
@@ -46,10 +46,12 @@ const CATEGORIES = [
      * opens on something.
      */
     preferReplicate: "openai/gpt-image-2.5-flare",
+    preferOpenAI: "gpt-image-2.5-flare",
   },
   {
     id: "image-to-image", label: "Image from an image", video: false,
     prefer: "fal-ai/nano-banana-2/edit", preferReplicate: "google/nano-banana-pro",
+    preferOpenAI: "gpt-image-2.5-flare",
   },
   {
     id: "text-to-video", label: "Video from a prompt", video: true,
@@ -79,6 +81,7 @@ const HOUSE_DEFAULTS: Record<string, Record<string, unknown>> = {
   "openai/gpt-image-2.5/flare/text-to-image": { quality: "medium" },
   "openai/gpt-image-2.5/flare/edit": { quality: "medium" },
   "openai/gpt-image-2.5-flare": { quality: "medium" },
+  "gpt-image-2.5-flare": { quality: "medium" },
 };
 
 type CategoryId = (typeof CATEGORIES)[number]["id"];
@@ -121,9 +124,13 @@ function readResult(data: unknown): Result[] {
 }
 
 export function Freeform() {
-  const { provider, setProvider } = useProvider();
+  const { providers, setProvider } = useProviders();
   useRenders();
   const [category, setCategory] = useState<CategoryId>("text-to-image");
+  // Pictures and clips have their own provider switch; this page follows
+  // whichever one the chosen category belongs to.
+  const need = category.endsWith("-video") ? "video" : "image";
+  const provider = providers[need];
 
   /*
    * Everything fetched is keyed by what it was fetched for, rather than reset
@@ -189,7 +196,14 @@ export function Freeform() {
     [modelsBy, catKey],
   );
   const spec = CATEGORIES.find((c) => c.id === category);
-  const preferred = provider === "replicate" ? spec?.preferReplicate : spec?.prefer;
+  const preferred =
+    provider === "openai"
+      ? spec && "preferOpenAI" in spec
+        ? spec.preferOpenAI
+        : undefined
+      : provider === "replicate"
+        ? spec?.preferReplicate
+        : spec?.prefer;
   const model =
     chosenBy[catKey] ??
     (models.some((m) => m.id === preferred) ? preferred : models[0]?.id) ??
@@ -303,10 +317,15 @@ export function Freeform() {
         input.image_urls = [refUrl.trim()];
       }
 
-      const requestId = await submitJob(model, "freeform", input);
-      const data = await awaitJob<unknown>(model, requestId, {
-        onUpdate: (u) => setBusy({ state: u.status, queuePosition: u.queuePosition }),
-      });
+      // The category travels with it: a model id does not say whether it draws
+      // a picture or a clip, and that decides which provider serves the request.
+      const { requestId, data: inline } = await submitJob(model, "freeform", input, category);
+      const data =
+        inline !== undefined
+          ? inline
+          : await awaitJob<unknown>(model, requestId, {
+              onUpdate: (u) => setBusy({ state: u.status, queuePosition: u.queuePosition }),
+            });
       const found = readResult(data);
       if (!found.length) throw new Error("That model returned nothing this page knows how to show.");
       const made: Asset[] = found.map((r, i) => ({
@@ -333,7 +352,7 @@ export function Freeform() {
     } finally {
       setBusy(null);
     }
-  }, [model, finalPrompt, values, negative, schema, needsImage, refUrl, prompt, current]);
+  }, [model, finalPrompt, values, negative, schema, needsImage, refUrl, prompt, current, category]);
 
 
   return (
@@ -359,14 +378,14 @@ export function Freeform() {
           */}
         <div
           role="group"
-          aria-label="Generation provider"
+          aria-label={need === "video" ? "Video provider" : "Image provider"}
           className="mt-4 flex w-fit items-center rounded-full border border-hairline bg-canvas-2/60 p-0.5"
         >
-          {PROVIDER_IDS.map((id) => (
+          {providersThatDo(need).map((id) => (
             <button
               key={id}
               type="button"
-              onClick={() => void setProvider(id)}
+              onClick={() => void setProvider(need, id)}
               aria-pressed={provider === id}
               className={cx(
                 "focus-stamp rounded-full px-3 py-1.5 text-[11px] font-bold transition-all",

@@ -75,7 +75,10 @@ function KeyDialogBody({ onClose, onSaved, connected, hint, provider }: DialogPr
               Your {spec.label} key 🔑
             </h2>
             <p className="mt-1.5 text-sm leading-relaxed text-ink-soft">
-              Generations run on your own {spec.label} account. The key is stored in a secure,
+              {spec.does.video
+                ? `Generations run on your own ${spec.label} account.`
+                : `Images are drawn on your own ${spec.label} account. Video runs wherever the header's video toggle points, which needs its own key.`}{" "}
+              The key is stored in a secure,
               http-only cookie on this browser — it never touches our database.
             </p>
           </div>

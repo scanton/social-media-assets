@@ -33,7 +33,15 @@ export async function GET(req: Request) {
   }
 
   try {
-    return NextResponse.json(await statusFromProvider(await activeProvider(), model, requestId));
+    /*
+     * Polled against whoever issued the id. Only video and non-OpenAI image
+     * jobs are ever polled at all — OpenAI answers inline — so resolving by
+     * "video" here would be wrong for a fal or Replicate image job. The active
+     * provider is right in every case except OpenAI, which never gets here.
+     */
+    const image = await activeProvider("image");
+    const provider = image === "openai" ? await activeProvider("video") : image;
+    return NextResponse.json(await statusFromProvider(provider, model, requestId));
   } catch (err) {
     return errorResponse(err);
   }

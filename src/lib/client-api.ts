@@ -1,26 +1,32 @@
 "use client";
 
 import {
-  DEFAULT_PROVIDER, PROVIDER_COOKIE, isProviderId, type ProviderId,
+  LEGACY_PROVIDER_COOKIE, defaultProviderFor, isProviderId, providerCookieFor, providerFor,
+  type Capability, type ProviderId,
 } from "@/lib/providers";
 import { capturePreview, previewFor, rememberPreview } from "@/lib/local-preview";
 import { isLocalRender, localRenderSrc } from "@/lib/render-store";
 
 export class NoKeyError extends Error {
-  constructor(message = "Add your fal.ai key to start generating.") {
+  /** Whose key is missing, when the server said. */
+  readonly provider?: ProviderId;
+  constructor(message = "Add a key to start generating.", provider?: ProviderId) {
     super(message);
     this.name = "NoKeyError";
+    this.provider = provider;
   }
 }
 
 async function readError(res: Response): Promise<never> {
-  let payload: { error?: string; detail?: string; code?: string } = {};
+  let payload: { error?: string; detail?: string; code?: string; provider?: string } = {};
   try {
     payload = await res.json();
   } catch {
     /* non-JSON body */
   }
-  if (res.status === 428 || payload.code === "NO_KEY") throw new NoKeyError(payload.error);
+  if (res.status === 428 || payload.code === "NO_KEY") {
+    throw new NoKeyError(payload.error, isProviderId(payload.provider) ? payload.provider : undefined);
+  }
   throw new Error([payload.error ?? `Request failed (${res.status})`, payload.detail].filter(Boolean).join(" — "));
 }
 
@@ -90,11 +96,18 @@ export async function uploadToFal(file: File, onProgress?: (pct: number) => void
       xhr.onload = () => {
         if (xhr.status < 200 || xhr.status >= 300) {
           let msg = `Upload failed (${xhr.status}).`;
+          let j: { error?: string; detail?: string; code?: string; provider?: string } = {};
           try {
-            const j = JSON.parse(xhr.responseText) as { error?: string; detail?: string };
+            j = JSON.parse(xhr.responseText);
             msg = [j.error, j.detail].filter(Boolean).join(" — ") || msg;
           } catch {
             /* not JSON */
+          }
+          // A missing key is its own error, so the caller can open the dialog
+          // for the right provider instead of just showing a toast.
+          if (xhr.status === 428 || j.code === "NO_KEY") {
+            reject(new NoKeyError(msg, isProviderId(j.provider) ? j.provider : undefined));
+            return;
           }
           reject(new Error(msg));
           return;
@@ -142,19 +155,29 @@ export async function uploadToFal(file: File, onProgress?: (pct: number) => void
  * is a legitimate stand-in and to reshape this payload to that model's schema —
  * see lib/model-input.ts.
  */
+/**
+ * Queues a job, or — on a provider that answers with the picture — finishes it.
+ *
+ * `data` comes back set only when there was nothing to poll. OpenAI's Images
+ * API returns the image on the same request, and a stateless function has
+ * nowhere to park a result for a later status call, so the result travels with
+ * the submit and the caller skips the wait.
+ */
 export async function submitJob(
   model: string,
   slot: string,
   input: Record<string, unknown>,
-): Promise<string> {
+  /** Freeform only: the open category, so the server knows image from video. */
+  category?: string,
+): Promise<{ requestId: string; data?: unknown }> {
   const res = await fetch("/api/fal/submit", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model, slot, input }),
+    body: JSON.stringify({ model, slot, input, category }),
   });
   if (!res.ok) await readError(res);
-  const { requestId } = (await res.json()) as { requestId: string };
-  return requestId;
+  const { requestId, data } = (await res.json()) as { requestId: string; data?: unknown };
+  return { requestId, data };
 }
 
 export type PollUpdate = { status: string; queuePosition?: number };
@@ -184,14 +207,25 @@ export async function awaitJob<T>(
   }
 }
 
-/** The provider this browser is pointed at, for code outside a React hook. */
-export function currentProvider(): ProviderId {
-  if (typeof document === "undefined") return DEFAULT_PROVIDER;
-  const raw = document.cookie
-    .split("; ")
-    .find((c) => c.startsWith(`${PROVIDER_COOKIE}=`))
-    ?.slice(PROVIDER_COOKIE.length + 1);
-  return isProviderId(raw) ? raw : DEFAULT_PROVIDER;
+/**
+ * A chosen provider, for code outside a React hook.
+ *
+ * Its one caller asks about uploads, which is an image-side concern — where the
+ * finished clip can be PUT, not what rendered it — so `image` is the default
+ * question. The capability is a parameter rather than assumed, because the same
+ * function answering differently for video is a bug waiting to be written.
+ */
+export function currentProvider(need: Capability = "image"): ProviderId {
+  if (typeof document === "undefined") return defaultProviderFor(need);
+  const read = (name: string) =>
+    document.cookie
+      .split("; ")
+      .find((c) => c.startsWith(`${name}=`))
+      ?.slice(name.length + 1);
+  const own = read(providerCookieFor(need));
+  if (isProviderId(own)) return providerFor(own, need);
+  const legacy = read(LEGACY_PROVIDER_COOKIE);
+  return providerFor(isProviderId(legacy) ? legacy : undefined, need);
 }
 
 export function downloadUrl(url: string, filename: string) {

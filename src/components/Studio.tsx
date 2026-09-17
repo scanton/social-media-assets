@@ -12,8 +12,9 @@ import { SURFACES, type SurfaceKind } from "@/lib/options";
 import { sweepAssets, useExpiredUrls } from "@/lib/asset-health";
 import { StudioProvider, useStudio } from "./studio-store";
 import { KeyDialog } from "./KeyDialog";
-import { useProvider } from "@/lib/use-provider";
-import { PROVIDERS, PROVIDER_IDS, type ProviderId } from "@/lib/providers";
+import { useProviders } from "@/lib/use-provider";
+import { ChangelogLink } from "./ChangelogLink";
+import { PROVIDERS, providersThatDo, type ProviderId } from "@/lib/providers";
 import { AssetTile } from "./AssetTile";
 import { Step1Card } from "./steps/Step1Card";
 import { Step2Scene } from "./steps/Step2Scene";
@@ -71,7 +72,14 @@ function StudioShell({
 }) {
   const s = useStudio();
   const [rollOpen, setRollOpen] = useState(false);
-  const { provider, setProvider } = useProvider();
+  const { providers, setProvider } = useProviders();
+  /*
+   * The key button still shows one provider: the image one, because that is
+   * what most of the studio is doing most of the time. The note beside the
+   * toggles covers the case where the other key is needed too.
+   */
+  const provider = providers.image;
+  const dialogProvider = s.keyDialogFor ?? provider;
   useRenders();
 
   /*
@@ -84,14 +92,27 @@ function StudioShell({
    */
   useEffect(() => {
     void readKeys().then((state) => {
-      const mine = state.providers?.[provider] ?? { connected: false, hint: null };
-      s.setKeyConnected(mine.connected);
-      s.setKeyHint(mine.hint);
-      if (!mine.connected) s.setKeyDialogOpen(true);
+      for (const id of new Set([providers.image, providers.video])) {
+        const k = state.providers?.[id] ?? { connected: false, hint: null };
+        s.setKeyState(id, { connected: k.connected, hint: k.hint });
+      }
+      // Ask for the image key first; the video one has its own button.
+      const first = [providers.image, providers.video].find(
+        (id) => !state.providers?.[id]?.connected,
+      );
+      if (first) s.openKeyDialog(first);
     });
-    // Setters are stable; the provider is the only real dependency.
+    // Setters are stable; the providers are the only real dependencies.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [provider]);
+  }, [providers.image, providers.video]);
+
+  const keyButtons: { id: ProviderId; need?: string }[] =
+    providers.image === providers.video
+      ? [{ id: providers.image }]
+      : [
+          { id: providers.image, need: "images" },
+          { id: providers.video, need: "video" },
+        ];
 
   const steps = STEPS[s.surface];
   const done: Record<number, boolean> =
@@ -113,7 +134,10 @@ function StudioShell({
 
       {/* ------------------------------ header ------------------------------ */}
       <header className="sticky top-0 z-40 border-b border-hairline/80 bg-white/85 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-[110rem] items-center gap-3 px-4 py-3 sm:px-6">
+        {/* Wraps on narrow screens: two provider switches, the key, Roll and
+            the changelog do not fit on one phone-width row, and overflowing
+            clipped the switches off the right-hand edge. */}
+        <div className="mx-auto flex max-w-[110rem] flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 sm:px-6">
           <StampMark />
           {/* Below sm the header row is too tight for the wordmark — the mark carries it. */}
           <div className="hidden min-w-0 leading-tight sm:block">
@@ -125,7 +149,9 @@ function StudioShell({
             </p>
           </div>
 
-          <div className="ml-auto flex items-center gap-2">
+          <ChangelogLink />
+
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
             {s.busy && (
               <span className="hidden items-center gap-2 rounded-full border border-stamp-200 bg-stamp-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-stamp-700 sm:flex">
                 <span className="h-1.5 w-1.5 animate-blink rounded-full bg-stamp-600" />
@@ -163,58 +189,92 @@ function StudioShell({
               * shown belongs to the provider selected here, and switching
               * changes which catalogue every picker offers.
               */}
-            <div
-              role="group"
-              aria-label="Generation provider"
-              className="flex items-center rounded-full border border-hairline bg-canvas-2/60 p-0.5"
-            >
-              {PROVIDER_IDS.map((id) => (
+            {/*
+              * One row per kind of work, because they are separate decisions.
+              *
+              * A single toggle made video a consequence of the image choice —
+              * pick OpenAI, and clips "fell" to Replicate because OpenAI cannot
+              * do them. That is the right default and the wrong way to arrive
+              * at it: somebody drawing on OpenAI may well want their video on
+              * fal, and there was no way to say so.
+              *
+              * The video row is the shorter one. OpenAI's Images API has no
+              * video endpoint, so offering it there would be offering a choice
+              * that cannot be honoured — see `providersThatDo`.
+              */}
+            {(["image", "video"] as const).map((need) => (
+              <div key={need} className="flex items-center gap-1.5">
+                <span className="hidden text-[10px] font-bold uppercase tracking-[0.08em] text-ink-faint xl:block">
+                  {need === "image" ? "Img" : "Vid"}
+                </span>
+                <div
+                  role="group"
+                  aria-label={`${need === "image" ? "Image" : "Video"} provider`}
+                  className="flex items-center rounded-full border border-hairline bg-canvas-2/60 p-0.5"
+                >
+                  {providersThatDo(need).map((id) => (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => void setProvider(need, id)}
+                      aria-pressed={providers[need] === id}
+                      title={`Render ${need === "image" ? "images" : "video"} on ${PROVIDERS[id].label}`}
+                      className={cx(
+                        "focus-stamp rounded-full px-2.5 py-1.5 text-[11px] font-bold transition-all",
+                        providers[need] === id
+                          ? "bg-white text-ink shadow-sm"
+                          : "text-ink-faint hover:text-ink",
+                      )}
+                    >
+                      {PROVIDERS[id].label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+
+            {/*
+              * One key button per provider in use. With images and video on
+              * different providers that is two buttons, so the second key is
+              * asked for up front rather than discovered when a clip fails.
+              */}
+            {keyButtons.map(({ id, need }) => {
+              const k = s.keys[id];
+              const connected = Boolean(k?.connected);
+              const label = PROVIDERS[id].label;
+              return (
                 <button
                   key={id}
                   type="button"
-                  onClick={() => void setProvider(id as ProviderId)}
-                  aria-pressed={provider === id}
-                  title={`Run generations on ${PROVIDERS[id].label}`}
+                  onClick={() => s.openKeyDialog(id)}
+                  title={
+                    connected
+                      ? `${label} key ${k?.hint ?? "connected"}${need ? ` (${need})` : ""}`
+                      : `Add your ${label} key${need ? ` for ${need}` : ""}`
+                  }
                   className={cx(
-                    "focus-stamp rounded-full px-2.5 py-1.5 text-[11px] font-bold transition-all",
-                    provider === id
-                      ? "bg-white text-ink shadow-sm"
-                      : "text-ink-faint hover:text-ink",
+                    "focus-stamp flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-xs font-bold transition-all hover:-translate-y-0.5",
+                    connected
+                      ? "border-hairline bg-white text-ink hover:border-stamp-300"
+                      : "animate-pulse-ring border-stamp-600 bg-stamp-600 text-white",
                   )}
                 >
-                  {PROVIDERS[id].label}
+                  <span
+                    className={cx("h-1.5 w-1.5 rounded-full", connected ? "bg-emerald-500" : "bg-white")}
+                  />
+                  <span className="hidden sm:inline">
+                    {connected
+                      ? keyButtons.length > 1
+                        ? `${label} key`
+                        : "key connected"
+                      : `Add ${label} key`}
+                  </span>
+                  <span className="sm:hidden">{keyButtons.length > 1 ? label : "key"}</span>
                 </button>
-              ))}
-            </div>
+              );
+            })}
 
-            <button
-              type="button"
-              onClick={s.openKeyDialog}
-              title={
-                s.keyConnected
-                  ? `${PROVIDERS[provider].label} key ${s.keyHint ?? "connected"}`
-                  : `Add your ${PROVIDERS[provider].label} key`
-              }
-              className={cx(
-                "focus-stamp flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-xs font-bold transition-all hover:-translate-y-0.5",
-                s.keyConnected
-                  ? "border-hairline bg-white text-ink hover:border-stamp-300"
-                  : "animate-pulse-ring border-stamp-600 bg-stamp-600 text-white",
-              )}
-            >
-              <span
-                className={cx(
-                  "h-1.5 w-1.5 rounded-full",
-                  s.keyConnected ? "bg-emerald-500" : "bg-white",
-                )}
-              />
-              <span className="hidden sm:inline">
-                {s.keyConnected ? "key connected" : `Add ${PROVIDERS[provider].label} key`}
-              </span>
-              <span className="sm:hidden">key</span>
-            </button>
-
-{/* No account UI while AUTH_ENABLED is false — see src/auth.ts */}
+            {/* No account UI while AUTH_ENABLED is false — see src/auth.ts */}
             {authEnabled && (
               <div className="flex items-center gap-2 border-l border-hairline pl-2">
                 {user.image ? (
@@ -295,6 +355,20 @@ function StudioShell({
               navigates to another page instead of swapping the panel below, and
               a link answering to `role="tab"` lies to a screen reader about what
               pressing it does. Styled as the row's third item all the same. */}
+          {/* Between the card pipelines and PopKit, which is where it sits in
+              the work: make the plate, put a card on it, then annotate. */}
+          <Link
+            href="/devices"
+            className="focus-stamp group flex items-center gap-2.5 rounded-2xl border border-hairline bg-white px-4 py-2.5 text-left text-ink transition-all duration-200 hover:-translate-y-0.5 hover:border-stamp-300 hover:bg-stamp-50/50 active:scale-[0.98]"
+          >
+            <span className="text-lg leading-none">📱</span>
+            <span className="min-w-0">
+              <span className="block text-sm font-bold leading-tight">Device Shots</span>
+              <span className="mt-0.5 hidden text-[11px] font-medium leading-tight text-ink-faint 2xl:block">
+                Closeups of a blank screen, ready for artwork
+              </span>
+            </span>
+          </Link>
           <Link
             href="/nuggets"
             className="focus-stamp group flex items-center gap-2.5 rounded-2xl border border-hairline bg-white px-4 py-2.5 text-left text-ink transition-all duration-200 hover:-translate-y-0.5 hover:border-stamp-300 hover:bg-stamp-50/50 active:scale-[0.98]"
@@ -436,13 +510,11 @@ function StudioShell({
       <KeyDialog
         open={s.keyDialogOpen}
         onClose={() => s.setKeyDialogOpen(false)}
-        provider={provider}
-        connected={s.keyConnected}
-        hint={s.keyHint}
-        onSaved={(hint) => {
-          s.setKeyConnected(Boolean(hint));
-          s.setKeyHint(hint);
-        }}
+        key={dialogProvider}
+        provider={dialogProvider}
+        connected={Boolean(s.keys[dialogProvider]?.connected)}
+        hint={s.keys[dialogProvider]?.hint ?? null}
+        onSaved={(hint) => s.setKeyState(dialogProvider, { connected: Boolean(hint), hint })}
       />
     </div>
   );

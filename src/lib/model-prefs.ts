@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useSyncExternalStore } from "react";
-import { useProvider } from "@/lib/use-provider";
+import { useProviders } from "@/lib/use-provider";
 import type { ProviderId } from "@/lib/providers";
 import {
   MODEL_COOKIE,
   MODEL_SLOTS,
   parseModelChoices,
   resolveModel,
+  slotCapability,
   type ModelChoices,
   type ModelSlotId,
   choiceKey,
@@ -78,13 +79,14 @@ export function useModelChoices() {
   /*
    * The default model differs per provider, so `modelFor` has to know which one
    * is active — a stored choice still wins, but an unset slot resolves to that
-   * provider's own default rather than fal's.
+   * provider's own default rather than fal's. Image and video steps can sit on
+   * different providers, so each step asks the provider for its own kind.
    */
-  const { provider } = useProvider();
+  const { providers } = useProviders();
 
   const modelFor = useCallback(
-    (slot: ModelSlotId) => resolveModel(choices, slot, provider),
-    [choices, provider],
+    (slot: ModelSlotId) => resolveModel(choices, slot, providers[slotCapability(slot)]),
+    [choices, providers],
   );
 
   return { choices, setChoice, modelFor };
