@@ -25,6 +25,16 @@ import { CUES } from "./kit/feedback.js";
 
 interface CueSpec {
   file: string | null;
+  /**
+   * A ready-made URL, for cues that are not files in `public/sfx`.
+   *
+   * The shipped pack is addressed as `basePath + file`, which cannot express an
+   * object URL — `"/sfx/" + "blob:http://…"` resolves to nothing. An uploaded
+   * cue carries its URL instead, and both readers prefer it when it is there.
+   */
+  url?: string;
+  /** True for anything the user uploaded. The picker groups on it. */
+  custom?: boolean;
   /** Length of the file, used by the picker to say how long a cue runs. */
   ms: number;
   /** Playback level. The files are full scale; this table owns the mix. */
@@ -91,6 +101,39 @@ const EXTRA: Record<string, CueSpec> = {
 
 const TABLE = CUES as Record<string, CueSpec>;
 for (const [key, spec] of Object.entries(EXTRA)) TABLE[key] ??= spec;
+
+/* -------------------------- the user's own cues --------------------------- */
+
+/**
+ * Registers an uploaded cue into the same table everything else reads.
+ *
+ * Same reasoning as EXTRA above — one table, so the picker, the player and the
+ * export mixer cannot disagree about what exists. The difference is that these
+ * arrive after module load, so this is a function rather than a loop, and it
+ * OVERWRITES rather than using `??=`: re-hydrating after a reload hands back the
+ * same keys with fresh object URLs, and keeping the stale ones would leave every
+ * custom cue silently unplayable.
+ */
+export function registerCustomCue(
+  key: string,
+  spec: { url: string; ms: number; gain: number; desc: string },
+): void {
+  TABLE[key] = { file: null, url: spec.url, custom: true, ms: spec.ms, gain: spec.gain, desc: spec.desc };
+  CUE_MS[key] = spec.ms;
+}
+
+export function unregisterCustomCue(key: string): void {
+  delete TABLE[key];
+  delete CUE_MS[key];
+}
+
+/** Where to fetch a cue from, whichever kind it is. */
+export function cueSrc(key: string): string | null {
+  const spec = TABLE[key];
+  if (!spec) return null;
+  if (spec.url) return spec.url;
+  return spec.file ? "/sfx/" + spec.file : null;
+}
 
 /** The one table, kit cues and ours together. */
 export const CUE_TABLE = TABLE;

@@ -5,7 +5,7 @@ import { renderBeat } from "./preview";
 import { silencedByClatter } from "./rules";
 import { tryGlyphDataUri } from "./glyphs";
 import { wellLayout } from "./kit/media.js";
-import { CUE_TABLE } from "./cues";
+import { CUE_TABLE, cueSrc } from "./cues";
 import { makeTicker, pickRecorderMime, seekTo, type RenderProgress } from "@/lib/video-encode";
 import { coverFit, heartStampLogo, paintLogo, variantForBackground, type LogoSet, type LogoVariant } from "@/lib/watermark";
 import { beatScaleFor, wellFit, type Beat, type CanvasId, type WellFit } from "./deck";
@@ -610,10 +610,12 @@ export async function renderNuggets({
     for (const b of beats) {
       const cue = b.cue;
       if (!cue || cue === "silent" || silenced.has(b.id) || decoded.has(cue)) continue;
-      const spec = CUE_TABLE[cue];
-      if (!spec?.file) continue;
+      // `cueSrc` rather than "/sfx/" + file: an uploaded cue carries an object
+      // URL and has no file in the pack at all.
+      const src = cueSrc(cue);
+      if (!src) continue;
       try {
-        const res = await fetch("/sfx/" + spec.file);
+        const res = await fetch(src);
         decoded.set(cue, await ac.decodeAudioData(await res.arrayBuffer()));
       } catch {
         // A missing cue file silences that beat, never the whole render.
