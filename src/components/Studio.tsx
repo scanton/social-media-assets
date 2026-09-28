@@ -9,6 +9,7 @@ import type { StudioUser } from "@/auth";
 import { BRAND } from "@/lib/brand";
 import { LLMS_TXT } from "@/lib/llms";
 import { SURFACES, type SurfaceKind } from "@/lib/options";
+import { DemoVideoLink } from "./DemoVideoLink";
 import { sweepAssets, useExpiredUrls } from "@/lib/asset-health";
 import { StudioProvider, useStudio } from "./studio-store";
 import { KeyDialog } from "./KeyDialog";
@@ -405,6 +406,12 @@ function StudioShell({
               </span>
             </span>
           </Link>
+          {/* The walkthrough for whichever card pipeline is open. */}
+          <DemoVideoLink
+            key={s.surface}
+            tool={s.surface === "print" ? "print" : "digital"}
+            className="self-center sm:ml-auto"
+          />
           </div>
         </div>
 

@@ -6,6 +6,7 @@ import { HELP, type HelpEntry } from "@/lib/help";
 import { exampleGallery } from "@/lib/examples";
 import { cx } from "./cx";
 import { ExampleGalleryDialog, ExampleImage } from "./ExampleGallery";
+import { VideoIcon } from "./DemoVideoLink";
 
 /**
  * The little "?" beside a title.
@@ -257,11 +258,7 @@ export function HelpTip({
  * a live-looking control that does nothing.
  */
 function VideoLink({ video, title }: { video?: HelpEntry["video"]; title: string }) {
-  const icon = (
-    <svg viewBox="0 0 16 16" aria-hidden="true" className="h-3.5 w-3.5" fill="currentColor">
-      <path d="M2 4.2A1.7 1.7 0 0 1 3.7 2.5h5.1a1.7 1.7 0 0 1 1.7 1.7v7.6a1.7 1.7 0 0 1-1.7 1.7H3.7A1.7 1.7 0 0 1 2 11.8V4.2Zm9.9 2.6 2.5-1.6a.5.5 0 0 1 .8.4v4.8a.5.5 0 0 1-.8.4l-2.5-1.6V6.8Z" />
-    </svg>
-  );
+  const icon = <VideoIcon />;
 
   if (!video) {
     return (

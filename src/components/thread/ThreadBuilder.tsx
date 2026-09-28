@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { DemoVideoLink } from "@/components/DemoVideoLink";
 import Link from "next/link";
 import { CANVASES } from "@/lib/popkit/catalogue";
 import type { CanvasId } from "@/lib/popkit/deck";
@@ -225,12 +226,15 @@ export function ThreadBuilder() {
   return (
     <div className="mx-auto max-w-[110rem] px-4 py-5 sm:px-6">
       <header className="mb-5">
-        <Link
-          href="/"
-          className="focus-stamp mb-4 inline-flex items-center gap-1.5 text-xs font-bold text-ink-faint transition-colors hover:text-stamp-600"
-        >
-          <span aria-hidden>←</span> Asset Studio
-        </Link>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <Link
+            href="/"
+            className="focus-stamp inline-flex items-center gap-1.5 text-xs font-bold text-ink-faint transition-colors hover:text-stamp-600"
+          >
+            <span aria-hidden>←</span> Asset Studio
+          </Link>
+          <DemoVideoLink tool="thread" />
+        </div>
         <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-stamp-600">THREAD</p>
         <h1 className="mt-2 font-display text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">
           Thread Tool
