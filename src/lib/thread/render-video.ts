@@ -24,6 +24,17 @@ export interface ThreadRenderResult {
   ext: string;
 }
 
+/** An uploaded picture, decoded and ready to draw — or null when there isn't one. */
+async function decodeImage(blob: Blob | null | undefined): Promise<HTMLImageElement | null> {
+  if (!blob) return null;
+  const url = URL.createObjectURL(blob);
+  const img = new Image();
+  img.src = url;
+  await img.decode().catch(() => undefined);
+  URL.revokeObjectURL(url);
+  return img;
+}
+
 export function canRenderThread(): boolean {
   return canEncodeOffline();
 }
@@ -32,6 +43,7 @@ export async function renderThread({
   thread,
   card,
   thumb,
+  avatar,
   w,
   h,
   onProgress,
@@ -42,6 +54,8 @@ export async function renderThread({
   card: File | Blob;
   /** The link preview's thumbnail. */
   thumb?: Blob | null;
+  /** The contact's photo. */
+  avatar?: Blob | null;
   w: number;
   h: number;
   onProgress?: (p: RenderProgress) => void;
@@ -79,15 +93,7 @@ export async function renderThread({
       btoa(unescape(encodeURIComponent(chromeSvgFor(w, h, thread.clock))));
     await chrome.decode().catch(() => undefined);
 
-    let thumbImage: HTMLImageElement | null = null;
-    if (thumb) {
-      const url = URL.createObjectURL(thumb);
-      const img = new Image();
-      img.src = url;
-      await img.decode().catch(() => undefined);
-      URL.revokeObjectURL(url);
-      thumbImage = img;
-    }
+    const [thumbImage, avatarImage] = await Promise.all([decodeImage(thumb), decodeImage(avatar)]);
 
     /*
      * The card's audio, offset to where the card starts.
@@ -150,7 +156,7 @@ export async function renderThread({
         const frame = t >= cardAt ? await source.at(t - cardAt) : null;
         paintThread(
           ctx,
-          { thread, w, h, card: frame, thumb: thumbImage, chrome, cardSeconds: source.duration },
+          { thread, w, h, card: frame, thumb: thumbImage, avatar: avatarImage, chrome, cardSeconds: source.duration },
           t,
         );
       },
