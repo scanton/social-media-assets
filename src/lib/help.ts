@@ -51,6 +51,8 @@ export interface HelpEntry {
   terms?: HelpTerm[];
   /** Filled in as the walkthroughs are recorded. */
   video?: { url: string; label?: string };
+  /** A gallery in lib/examples with a picture of every option. */
+  examples?: string;
 }
 
 /* ------------------------------ builders ----------------------------- */
@@ -225,11 +227,13 @@ export const HELP: Record<string, HelpEntry> = {
   },
   "scene.setting": {
     title: "Setting",
+    examples: "setting",
     body:
       "Where the shot happens. This is the single biggest lever on the finished picture — more than lighting, more than lens. The list is filtered by the audience above, so change that first if nothing here fits.",
   },
   "scene.lighting": {
     title: "Lighting",
+    examples: "lighting",
     body:
       "The quality and colour of the light. Soft light flatters and calms; hard light adds drama and texture. If a render looks flat or fake, this is usually the control to change.",
     terms: gloss(LIGHTING, {
@@ -245,6 +249,7 @@ export const HELP: Record<string, HelpEntry> = {
   },
   "scene.look": {
     title: "Film look",
+    examples: "look",
     body:
       "What the picture was supposedly taken with. This is the finish rather than the content: the same scene shot as 35mm film and as a Y2K digicam are the same objects with completely different credibility.",
     terms: gloss(LOOKS, {
@@ -257,6 +262,7 @@ export const HELP: Record<string, HelpEntry> = {
   },
   "scene.presence": {
     title: "Who's in frame",
+    examples: "presence",
     body:
       "How much of a person appears. No option here shows a face — faces are the thing image models get uncannily wrong, and a wrong face sinks an otherwise good shot — so presence is carried by hands, shoulders and the backs of heads.",
     terms: gloss(PRESENCE, {
@@ -269,6 +275,7 @@ export const HELP: Record<string, HelpEntry> = {
   },
   "scene.framing": {
     title: "How close",
+    examples: "framing",
     body:
       "How much of the frame the card takes up. Separate from camera angle: that says where the camera is, this says how close it gets. Every setting pushes in harder when the device is a phone — a phone screen is only about six inches tall, so a shot framed at a comfortable distance from a person leaves the artwork too small to read while somebody is scrolling.",
     terms: gloss(FRAMINGS, {
@@ -280,12 +287,14 @@ export const HELP: Record<string, HelpEntry> = {
   },
   "scene.angle": {
     title: "Camera angles",
+    examples: "angle",
     body:
       "Where the camera sits relative to the card. Pick as many as you like — each one is rendered separately, so this is the fastest way to get genuine variety rather than the same shot four times.",
     terms: ANGLE_TERMS,
   },
   "scene.angleOne": {
     title: "Camera angle",
+    examples: "angle",
     body:
       "Where the camera sits relative to the card. One per render here — this page makes a single clip rather than a batch, so pick the one that suits the moment.",
     terms: ANGLE_TERMS,
@@ -494,6 +503,7 @@ export const HELP: Record<string, HelpEntry> = {
   },
   "hand.style": {
     title: "Handwriting",
+    examples: "handwriting",
     body:
       "Whose hand it looks like. Grouped by how the writing reads rather than by any font name, because the model is being asked to imitate a person, not to set type. Ignored while a sample of your own handwriting is uploaded — that replaces the preset rather than blending with it.",
     terms: gloss(HANDWRITING_STYLES),
@@ -555,7 +565,7 @@ export const HELP: Record<string, HelpEntry> = {
   "thread.panel": {
     title: "The conversation",
     body:
-      "The messages, in order, ending with the card link. The ▶ marks where the live conversation starts: everything above it is already on screen when the clip opens, and everything from it down arrives one at a time while the camera watches. That split is what makes it read as a phone somebody just picked up rather than a thread being demonstrated — a conversation that starts empty always looks staged. Incoming messages get a typing indicator first, for about as long as they would take to type; your own do not, because you know what you wrote.",
+      "The messages, in order, ending with the card link. The ▶ marks where the live conversation starts: everything above it is already on screen when the clip opens, and everything from it down arrives one at a time while the camera watches. That split is what makes it read as a phone somebody just picked up rather than a thread being demonstrated — a conversation that starts empty always looks staged. Incoming messages get a typing indicator first, for about as long as they would take to type; your own do not, because you know what you wrote. The contact's name sits in the header with their initial in a circle; add a contact photo and the photo replaces the initial, cropped to the circle in both the preview and the video.",
   },
   "thread.card": {
     title: "The card",

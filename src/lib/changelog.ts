@@ -32,6 +32,35 @@ export interface Release {
 
 export const CHANGELOG: Release[] = [
   {
+    id: "2026-09-18",
+    date: "2026-09-18",
+    title: "Example pictures, and contact photos in Thread",
+    summary:
+      "Example pictures for the choices that are hard to picture from a name alone, and a real face at the top of a Thread conversation.",
+    changes: [
+      {
+        kind: "new",
+        area: "Thread",
+        title: "A photo for the person you're messaging",
+        detail:
+          "Upload a contact photo beside the contact's name and it replaces their initial in the header circle, in the preview and the exported video.",
+      },
+      {
+        kind: "new",
+        area: "All tools",
+        title: "Example galleries in the ? tooltips",
+        detail:
+          "Setting, Lighting, Film look, Camera angle, How close, Who's in frame and Handwriting now show a picture of every option. Open the ? beside the control, then pick a thumbnail, an option name, or See all. Each gallery keeps everything else the same, so the one thing that changes is the thing you're choosing.",
+      },
+      {
+        kind: "fixed",
+        area: "Digital Card",
+        title: "\"No people\" phone shots no longer sneak in a hand",
+        detail: "The close-up framing for phones assumed someone was holding it; with No people the phone now rests on its own.",
+      },
+    ],
+  },
+  {
     id: "2026-09-17",
     date: "2026-09-17",
     title: "Device Shots, OpenAI images, and sound everywhere",

@@ -33,6 +33,13 @@ export function ThreadBuilder() {
   const [canvas, setCanvas] = useState<CanvasId>("reels");
   const [card, setCard] = useState<{ file: File; url: string; seconds: number } | null>(null);
   const [thumb, setThumb] = useState<{ file: File; url: string } | null>(null);
+  const [avatar, setAvatar] = useState<{ file: File; url: string } | null>(null);
+  /*
+   * Bumped when an uploaded picture finishes decoding. The pictures live in
+   * refs so the preview loop can read them without restarting, which also
+   * meant a paused preview never learned one had arrived.
+   */
+  const [imagesReady, setImagesReady] = useState(0);
   const [playhead, setPlayhead] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [rendering, setRendering] = useState<RenderProgress | null>(null);
@@ -49,6 +56,8 @@ export function ThreadBuilder() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chromeRef = useRef<HTMLImageElement | null>(null);
   const thumbRef = useRef<HTMLImageElement | null>(null);
+  const avatarRef = useRef<HTMLImageElement | null>(null);
+  const avatarInput = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   // The status bar and home indicator, rasterised whenever the frame or clock
@@ -72,8 +81,24 @@ export function ThreadBuilder() {
     img.src = thumb.url;
     void img.decode().catch(() => undefined).then(() => {
       thumbRef.current = img;
+      setImagesReady((n) => n + 1);
     });
+    return () => URL.revokeObjectURL(thumb.url);
   }, [thumb]);
+
+  useEffect(() => {
+    if (!avatar) {
+      avatarRef.current = null;
+      return;
+    }
+    const img = new Image();
+    img.src = avatar.url;
+    void img.decode().catch(() => undefined).then(() => {
+      avatarRef.current = img;
+      setImagesReady((n) => n + 1);
+    });
+    return () => URL.revokeObjectURL(avatar.url);
+  }, [avatar]);
 
   /*
    * One effect owns the preview loop and the hidden <video> the card frames
@@ -117,7 +142,9 @@ export function ThreadBuilder() {
         ctx,
         {
           thread, w: preset.w, h: preset.h,
-          card: frame, thumb: thumbRef.current, chrome: chromeRef.current, cardSeconds,
+          // Gated on the upload too, so a removed picture vanishes at once.
+          card: frame, thumb: thumb ? thumbRef.current : null, avatar: avatar ? avatarRef.current : null,
+          chrome: chromeRef.current, cardSeconds,
         },
         t,
       );
@@ -164,7 +191,7 @@ export function ThreadBuilder() {
       cancelAnimationFrame(raf);
       started = 0;
     };
-  }, [thread, preset.w, preset.h, playing, playhead, card, cardAt, cardSeconds, total]);
+  }, [thread, preset.w, preset.h, playing, playhead, card, cardAt, cardSeconds, total, thumb, avatar, imagesReady]);
 
   /* ---- message editing ---- */
   const setMessage = (i: number, next: Partial<ThreadMessage>) =>
@@ -243,6 +270,55 @@ export function ThreadBuilder() {
                   }))}
                 />
               </Field>
+            </div>
+
+            {/* The contact's photo: the circle in the header, instead of their initial. */}
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => avatarInput.current?.click()}
+                title={avatar ? "Replace the contact photo" : "Add a contact photo"}
+                className="focus-stamp grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full bg-[#3a3a3c] text-lg font-semibold text-white transition-transform hover:scale-105"
+              >
+                {avatar ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img src={avatar.url} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  (thread.contact.trim()[0] || "?").toUpperCase()
+                )}
+              </button>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-ink">Contact photo</p>
+                <p className="text-[11px] text-ink-faint">
+                  {avatar ? "Shown in the header, cropped to a circle." : "Optional. Without one, the header shows their initial."}
+                </p>
+              </div>
+              <div className="ml-auto flex items-center gap-2">
+                <Button variant="ghost" onClick={() => avatarInput.current?.click()}>
+                  {avatar ? "Replace" : "Upload photo"}
+                </Button>
+                {avatar && (
+                  <Button variant="ghost" onClick={() => setAvatar(null)}>
+                    Remove
+                  </Button>
+                )}
+              </div>
+              <input
+                ref={avatarInput}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/heic"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (!file) return;
+                  if (!file.type.startsWith("image/")) {
+                    toast("That isn't an image.", "error");
+                    return;
+                  }
+                  setAvatar({ file, url: URL.createObjectURL(file) });
+                }}
+              />
             </div>
 
             <div className="space-y-2">
@@ -425,7 +501,7 @@ export function ThreadBuilder() {
             setRendering({ stage: "Preparing" });
             try {
               const { blob, ext } = await renderThread({
-                thread, card: card.file, thumb: thumb?.file ?? null,
+                thread, card: card.file, thumb: thumb?.file ?? null, avatar: avatar?.file ?? null,
                 w: preset.w, h: preset.h, onProgress: setRendering,
               });
               const a = document.createElement("a");

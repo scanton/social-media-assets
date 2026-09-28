@@ -49,6 +49,8 @@ export interface ThreadFrame {
   card?: CanvasImageSource | null;
   /** The link preview's thumbnail. */
   thumb?: CanvasImageSource | null;
+  /** The contact's photo. Without one, the header shows their initial. */
+  avatar?: CanvasImageSource | null;
   /** Rasterised status bar and home indicator, from screen-chrome. */
   chrome?: CanvasImageSource | null;
   /** How long the card animation runs, so the clip knows when it ends. */
@@ -340,11 +342,23 @@ export function paintThread(ctx: CanvasRenderingContext2D, f: ThreadFrame, t: nu
   ctx.beginPath();
   ctx.arc(w / 2, avatarY, avatarR, 0, Math.PI * 2);
   ctx.fill();
+  if (f.avatar) {
+    // Cover-fit into the circle, centred, as Messages crops a contact photo.
+    const aw = (f.avatar as HTMLImageElement).naturalWidth || (f.avatar as HTMLCanvasElement).width || 1;
+    const ah = (f.avatar as HTMLImageElement).naturalHeight || (f.avatar as HTMLCanvasElement).height || 1;
+    const scale = (avatarR * 2) / Math.min(aw, ah);
+    ctx.save();
+    ctx.clip();
+    ctx.drawImage(f.avatar, w / 2 - (aw * scale) / 2, avatarY - (ah * scale) / 2, aw * scale, ah * scale);
+    ctx.restore();
+  }
   ctx.fillStyle = INK.text;
   ctx.font = `600 ${avatarR * 0.95}px -apple-system, system-ui, sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText((thread.contact.trim()[0] || "?").toUpperCase(), w / 2, avatarY + avatarR * 0.03);
+  if (!f.avatar) {
+    ctx.fillText((thread.contact.trim()[0] || "?").toUpperCase(), w / 2, avatarY + avatarR * 0.03);
+  }
   ctx.font = `${m.dividerFont * 1.05}px -apple-system, system-ui, sans-serif`;
   ctx.fillText(thread.contact, w / 2, m.statusH + m.headerH * 0.82);
 
