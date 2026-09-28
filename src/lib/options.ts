@@ -749,7 +749,13 @@ export const FRAMINGS: Option[] = [
  * gets its own, much tighter, set of targets and is told outright that the
  * phone is the subject and the person is not.
  */
-function framingClause(framingId: string, surface: SurfaceKind, deviceId?: string): string {
+function framingClause(
+  framingId: string,
+  surface: SurfaceKind,
+  deviceId?: string,
+  /** False for "No people": the phone rests on its own, so no hand is described. */
+  withPeople = true,
+): string {
   const subject = surface === "print" ? "greeting card" : "device";
   const face = surface === "print" ? "printed front panel" : "screen";
   const tight = Boolean(deviceId && byId(DEVICES, deviceId)?.pocketSized);
@@ -758,13 +764,15 @@ function framingClause(framingId: string, surface: SurfaceKind, deviceId?: strin
     ? {
         extreme: {
           area: "80-92%",
-          tail:
-            "This is a macro shot of the phone. Almost nothing else is in frame — the holding hand and a sliver of blurred surroundings at the very edges, nothing more",
+          tail: withPeople
+            ? "This is a macro shot of the phone. Almost nothing else is in frame — the holding hand and a sliver of blurred surroundings at the very edges, nothing more"
+            : "This is a macro shot of the phone. Almost nothing else is in frame — the surface it rests on and a sliver of blurred surroundings at the very edges, nothing more",
         },
         hero: {
           area: "62-78%",
-          tail:
-            "Push right in on the phone. The camera is close enough that the phone and the hand holding it are essentially the whole picture, with the setting reduced to soft blurred colour behind them",
+          tail: withPeople
+            ? "Push right in on the phone. The camera is close enough that the phone and the hand holding it are essentially the whole picture, with the setting reduced to soft blurred colour behind them"
+            : "Push right in on the phone. The camera is close enough that the phone and the surface it rests on are essentially the whole picture, with the setting reduced to soft blurred colour behind them",
         },
         balanced: {
           area: "40-55%",
@@ -803,7 +811,9 @@ function framingClause(framingId: string, surface: SurfaceKind, deviceId?: strin
     `FRAMING — this matters as much as anything else: get in close on the ${subject}. It is unmistakably the hero of the shot, positioned near the centre of frame`,
     ...(tight
       ? [
-          "This is a photograph OF THE PHONE, not a portrait of a person who happens to be holding one — the camera is pushed right in on the device and the person is present only as the hand holding it and whatever the crop happens to include",
+          withPeople
+            ? "This is a photograph OF THE PHONE, not a portrait of a person who happens to be holding one — the camera is pushed right in on the device and the person is present only as the hand holding it and whatever the crop happens to include"
+            : "This is a photograph OF THE PHONE, and nobody is holding it — it lies flat or leans against something on a real surface, standing on its own, with no hands, arms or people anywhere in frame",
           "a phone screen is only about six inches tall, so the camera has to come to it: shoot it the way a product photographer would, close and deliberate, not from conversational distance",
         ]
       : []),
@@ -2133,7 +2143,7 @@ export function buildScenePrompt(sel: SceneSelection): string {
      * says so rather than the prompt silently dropping it.
      */
     angle?.prompt,
-    framingClause(sel.framingId, sel.surface, sel.deviceId),
+    framingClause(sel.framingId, sel.surface, sel.deviceId, sel.presenceId !== "none"),
     /*
      * Only when somebody is actually holding it. A card standing on a table or
      * a billboard by a road has no hands to miscount, and the rule would be
@@ -2980,7 +2990,7 @@ export function buildOneShotPrompt(sel: {
       details: sel.details,
     }),
     angle?.prompt,
-    framingClause(sel.framingId, sel.surface, sel.deviceId),
+    framingClause(sel.framingId, sel.surface, sel.deviceId, sel.presenceId !== "none"),
     light?.prompt,
     look?.prompt,
     audience ? `the styling, wardrobe and props should read as authentically ${audience.prompt}` : undefined,

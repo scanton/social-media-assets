@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { HELP, type HelpEntry } from "@/lib/help";
+import { exampleGallery } from "@/lib/examples";
 import { cx } from "./cx";
+import { ExampleGalleryDialog, ExampleImage } from "./ExampleGallery";
 
 /**
  * The little "?" beside a title.
@@ -74,7 +76,14 @@ export function HelpTip({
   className?: string;
 }) {
   const entry: HelpEntry | undefined = HELP[id];
+  const gallery = entry?.examples ? exampleGallery(entry.examples) : null;
   const [open, setOpen] = useState(false);
+  /** Open gallery: null when shut, "" for the grid, or the option to enlarge. */
+  const [showing, setShowing] = useState<string | null>(null);
+  const showExamples = (optionId: string) => {
+    setOpen(false);
+    setShowing(optionId);
+  };
   const [pos, setPos] = useState<{
     left: number;
     top: number;
@@ -122,6 +131,9 @@ export function HelpTip({
   }, [open, reposition]);
 
   if (!entry) return null;
+
+  // Glossary terms are option labels, so each can open its own picture.
+  const termExample = (term: string) => gallery?.items.find((i) => i.label === term)?.id;
 
   return (
     <>
@@ -176,13 +188,50 @@ export function HelpTip({
 
             <p className="mt-2 text-xs leading-relaxed text-ink-soft">{entry.body}</p>
 
+            {gallery && (
+              <div className="mt-3">
+                {/* A taste of the gallery, so there is something to click toward. */}
+                <div className="grid grid-cols-4 gap-1.5">
+                  {gallery.items.slice(0, 4).map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => showExamples(item.id)}
+                      title={item.label}
+                      className="focus-stamp overflow-hidden rounded-lg border border-hairline transition-transform hover:scale-[1.04]"
+                    >
+                      <ExampleImage item={item} className="aspect-4/5 w-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => showExamples("")}
+                  className="focus-stamp mt-2 w-full rounded-full border border-stamp-200 bg-stamp-50 px-3 py-1.5 text-xs font-bold text-stamp-700 transition-colors hover:bg-stamp-100"
+                >
+                  See all {gallery.items.length} examples
+                </button>
+              </div>
+            )}
+
             {entry.terms && entry.terms.length > 0 && (
               <ul className="mt-3 space-y-1.5 border-t border-hairline pt-3">
                 {entry.terms.map((t) => (
                   <li key={t.term} className="flex gap-2 text-xs leading-relaxed">
                     <span aria-hidden="true" className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-stamp-400" />
                     <span className="min-w-0">
-                      <span className="font-bold text-ink">{t.term}</span>
+                      {termExample(t.term) ? (
+                        <button
+                          type="button"
+                          onClick={() => showExamples(termExample(t.term)!)}
+                          title={`See an example of ${t.term}`}
+                          className="focus-stamp font-bold text-ink underline decoration-stamp-300 decoration-dotted underline-offset-2 hover:text-stamp-600"
+                        >
+                          {t.term}
+                        </button>
+                      ) : (
+                        <span className="font-bold text-ink">{t.term}</span>
+                      )}
                       <span className="text-ink-soft"> — {t.what}</span>
                     </span>
                   </li>
@@ -192,6 +241,10 @@ export function HelpTip({
           </div>,
           studioRoot(),
         )}
+
+      {gallery && showing !== null && (
+        <ExampleGalleryDialog gallery={gallery} startAt={showing || null} onClose={() => setShowing(null)} />
+      )}
     </>
   );
 }
